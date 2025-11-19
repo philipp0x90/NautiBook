@@ -1,0 +1,48 @@
+<!-- templates/add_photo.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Photo</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        form { display: flex; flex-direction: column; gap: 15px; }
+        label { font-weight: bold; }
+        input, textarea { padding: 8px; font-size: 16px; border: 1px solid #ddd; border-radius: 3px; }
+        button { 
+            padding: 10px; 
+            background: #28a745; 
+            color: white; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            font-size: 16px;
+        }
+        button:hover { background: #218838; }
+        .back { color: #007bff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <a href="/logbook/{{ entry.id }}" class="back">← Back to Entry</a>
+    <h1>Add Photo to Trip</h1>
+    <h3>{{ entry.timestamp.split('.')[0] }}</h3>
+    
+    <form method="POST" action="/logbook/{{ entry.id }}/add-photo">
+        <div>
+            <label>Photo Path/URL</label>
+            <input type="text" name="photo_path" required placeholder="/photos/sunset.jpg">
+        </div>
+        
+        <div>
+            <label>Comment</label>
+            <textarea name="comment" placeholder="Beautiful sunset at the harbor..."></textarea>
+        </div>
+        
+        <div>
+            <label>Added By</label>
+            <input type="text" name="added_by" placeholder="Your name">
+        </div>
+        
+        <button type="submit">Add Photo</button>
+    </form>
+</body>
+</html>

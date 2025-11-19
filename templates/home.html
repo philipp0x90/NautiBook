@@ -1,0 +1,56 @@
+<!-- templates/home.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Boat Logbook</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .entry { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .entry h3 { margin: 0 0 10px 0; }
+        .entry .meta { color: #666; font-size: 14px; }
+        .button { 
+            display: inline-block; 
+            padding: 10px 20px; 
+            background: #007bff; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            margin: 10px 0;
+        }
+        .button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>⚓ Boat Logbook</h1>
+    <a href="/logbook/new" class="button">+ New Entry</a>
+    
+    <h2>Recent Entries</h2>
+    {% if entries %}
+        {% for entry in entries %}
+        <div class="entry">
+            <h3>
+                <a href="/logbook/{{ entry.id }}">
+                    {{ entry.timestamp.split('.')[0] }}
+                </a>
+            </h3>
+            <div class="meta">
+                {% if entry.position_lat and entry.position_lon %}
+                    📍 {{ entry.position_lat }}°, {{ entry.position_lon }}° |
+                {% endif %}
+                {% if entry.speed %}
+                    🚤 {{ entry.speed }} knots |
+                {% endif %}
+                {% if entry.wind_speed %}
+                    💨 {{ entry.wind_speed }} knots
+                {% endif %}
+            </div>
+            {% if entry.notes %}
+                <p>{{ entry.notes }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <p>No entries yet. Create your first one!</p>
+    {% endif %}
+</body>
+</html>
