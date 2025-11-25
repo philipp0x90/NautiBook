@@ -1,59 +1,43 @@
-<!-- templates/new_entry.html -->
-<!DOCTYPE html>
-<html>
-<head>
-    <title>New Logbook Entry</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-        form { display: flex; flex-direction: column; gap: 15px; }
-        label { font-weight: bold; }
-        input, textarea { padding: 8px; font-size: 16px; border: 1px solid #ddd; border-radius: 3px; }
-        textarea { min-height: 100px; }
-        button { 
-            padding: 10px; 
-            background: #28a745; 
-            color: white; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer; 
-            font-size: 16px;
-        }
-        button:hover { background: #218838; }
-        .back { color: #007bff; text-decoration: none; }
-    </style>
-</head>
-<body>
-    <a href="/" class="back">← Back to Logbook</a>
-    <h1>New Logbook Entry</h1>
-    
-    <form method="POST" action="/logbook/new">
+{% extends "base.html" %}
+
+{% block title %}New Entry — NautiBook{% endblock %}
+
+{% block content %}
+<a href="/">← Back to Logbook</a>
+<h1 style="margin-top:8px">New Logbook Entry</h1>
+
+<form method="POST" action="/logbook/new" class="card" style="margin-top:12px;display:grid;gap:12px">
+    <div class="grid">
         <div>
             <label>Latitude</label>
             <input type="number" step="any" name="position_lat" placeholder="43.7034">
         </div>
-        
         <div>
             <label>Longitude</label>
             <input type="number" step="any" name="position_lon" placeholder="7.2663">
         </div>
-        
+    </div>
+
+    <div class="grid">
         <div>
             <label>Speed (knots)</label>
             <input type="number" step="any" name="speed" placeholder="5.2">
         </div>
-        
         <div>
             <label>Wind Speed (knots)</label>
             <input type="number" step="any" name="wind_speed" placeholder="12.5">
         </div>
-        
-        <div>
-            <label>Notes</label>
-            <textarea name="notes" placeholder="Beautiful day sailing..."></textarea>
-        </div>
-        
-        <button type="submit">Save Entry</button>
-    </form>
-</body>
-</html>
+    </div>
+
+    <div>
+        <label>Notes</label>
+        <textarea name="notes" placeholder="Beautiful day sailing..."></textarea>
+    </div>
+
+    <div>
+        <button type="submit" class="primary">Save Entry</button>
+    </div>
+</form>
+
+{% endblock %}
 

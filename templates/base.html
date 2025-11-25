@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>{% block title %}Boat Logbook{% endblock %}</title>
+    <style>
+        :root{
+            --max-width:1100px;
+            --muted:#6b7280;
+            --accent:#2b79c6;
+            --accent-dark:#1b5fa3;
+            --bg:#ffffff;
+            --card:#f6f9fb;
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        }
+        html,body{height:100%;margin:0;background:var(--bg);color:#111}
+        /* Top centered rounded nav bar similar to screenshot */
+        .topbar-wrap{width:100%;display:flex;justify-content:center;padding:18px 12px}
+        .topbar{width:min(980px,96%);background:#fff;border-radius:10px;padding:8px 18px;box-shadow:0 6px 14px rgba(18,52,84,0.06);display:flex;align-items:center;gap:12px}
+        .topbar .left, .topbar .right{width:46px;height:46px;display:flex;align-items:center;justify-content:center;border-radius:8px}
+        .topbar .left{background:transparent}
+        .icon-circle{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f1f5f8}
+        .brand-small{font-size:20px;color:var(--accent);font-weight:700;text-decoration:none}
+        nav.main-nav{flex:1;display:flex;justify-content:center}
+        nav ul{list-style:none;margin:0;padding:0;display:flex;gap:22px;align-items:center}
+        nav a{color:var(--accent-dark);text-decoration:none;font-weight:700;letter-spacing:1px;font-size:18px;padding:6px 6px}
+        nav li{position:relative}
+        /* dropdown */
+        nav .dropdown > a::after{content:'▾';display:inline-block;margin-left:6px;font-size:12px;color:var(--muted)}
+        nav .menu{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 10px);background:var(--card);padding:10px;border-radius:10px;box-shadow:0 8px 18px rgba(18,52,84,0.07);min-width:160px;display:none}
+        nav .menu a{display:block;padding:8px 10px;color:#0f172a;font-weight:600;text-decoration:none}
+        nav li:hover > .menu{display:block}
+
+        .wrap{max-width:var(--max-width);margin:8px auto 36px;padding:0 12px}
+        main{min-height:60vh}
+        .card{background:var(--card);padding:16px;border-radius:8px;border:1px solid #e6eef6}
+        label{display:block;margin-bottom:6px;font-weight:600}
+        input,textarea,select{width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:15px}
+        button.primary{background:var(--accent);color:#fff;padding:10px 14px;border-radius:8px;border:0;cursor:pointer}
+        .meta{color:var(--muted);font-size:14px}
+        .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+        footer{margin-top:32px;color:var(--muted);font-size:13px}
+        @media (max-width:760px){
+            nav ul{gap:12px;font-size:15px}
+            .topbar{padding:6px 12px}
+        }
+    </style>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="topbar-wrap">
+        <div class="topbar" role="banner">
+            <div class="left"><div class="icon-circle">⚓</div></div>
+            <nav class="main-nav" role="navigation" aria-label="Main">
+                <ul>
+                    <li><a href="#">Routes</a></li>
+                    <li class="dropdown">
+                        <a href="#">Croisières</a>
+                        <div class="menu" role="menu">
+                            <a href="#">Croisière</a>
+                            <a href="#">Liste des croisières</a>
+                            <a href="#">Equipiers</a>
+                            <a href="#">Escales</a>
+                        </div>
+                    </li>
+                    <li><a href="#">Navire</a></li>
+                    <li><a href="#">Météo</a></li>
+                    <li><a href="#">Carte</a></li>
+                </ul>
+            </nav>
+            <div class="right"><div class="icon-circle">⚙️</div></div>
+        </div>
+    </div>
+
+    <div class="wrap">
+
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+
+        <footer>
+            <div>Simple server-rendered logbook • data stored in `logbook.db`</div>
+        </footer>
+    </div>
+</body>
+</html>

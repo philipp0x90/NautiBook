@@ -1,70 +1,41 @@
-<!-- templates/entry_detail.html -->
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Logbook Entry</title>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
-        .meta { color: #666; margin: 10px 0; }
-        .notes { background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0; }
-        .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
-        .photo { border: 1px solid #ddd; padding: 10px; border-radius: 5px; }
-        .photo img { max-width: 100%; height: auto; }
-        .button { 
-            display: inline-block; 
-            padding: 10px 20px; 
-            background: #007bff; 
-            color: white; 
-            text-decoration: none; 
-            border-radius: 5px; 
-        }
-        .back { color: #007bff; text-decoration: none; }
-    </style>
-</head>
-<body>
-    <a href="/" class="back">← Back to Logbook</a>
-    
-    <h1>Logbook Entry</h1>
-    <h2>{{ entry.timestamp.split('.')[0] }}</h2>
-    
-    <div class="meta">
-        {% if entry.position_lat and entry.position_lon %}
-            <strong>Position:</strong> {{ entry.position_lat }}°, {{ entry.position_lon }}°<br>
-        {% endif %}
-        {% if entry.speed %}
-            <strong>Speed:</strong> {{ entry.speed }} knots<br>
-        {% endif %}
-        {% if entry.wind_speed %}
-            <strong>Wind Speed:</strong> {{ entry.wind_speed }} knots<br>
-        {% endif %}
+{% extends "base.html" %}
+
+{% block title %}Entry — {{ entry.timestamp.split('.')[0] }}{% endblock %}
+
+{% block content %}
+<a href="/">← Back to Logbook</a>
+<h1 style="margin-top:8px">Logbook Entry</h1>
+<h2 style="margin-top:6px">{{ entry.timestamp.split('.')[0] }}</h2>
+
+<div class="card" style="margin-top:12px">
+    <div class="meta" style="margin-bottom:10px">
+        {% if entry.position_lat and entry.position_lon %}<div><strong>Position:</strong> {{ entry.position_lat }}°, {{ entry.position_lon }}°</div>{% endif %}
+        {% if entry.speed %}<div><strong>Speed:</strong> {{ entry.speed }} knots</div>{% endif %}
+        {% if entry.wind_speed %}<div><strong>Wind Speed:</strong> {{ entry.wind_speed }} knots</div>{% endif %}
     </div>
-    
+
     {% if entry.notes %}
-    <div class="notes">
-        <strong>Notes:</strong><br>
-        {{ entry.notes }}
-    </div>
+    <div style="background:#fff;padding:12px;border-radius:6px">{{ entry.notes }}</div>
     {% endif %}
-    
-    <h3>Photos</h3>
-    <a href="/logbook/{{ entry.id }}/add-photo" class="button">+ Add Photo</a>
-    
+
+    <div style="margin-top:14px">
+        <h3 style="margin:0 0 8px 0">Photos</h3>
+        <a href="/logbook/{{ entry.id }}/add-photo" class="actions"><span style="display:inline-block;padding:8px 10px;background:var(--accent);color:#fff;border-radius:6px;text-decoration:none">+ Add Photo</span></a>
+    </div>
+
     {% if photos %}
-    <div class="photos">
+    <div class="grid" style="margin-top:12px">
         {% for photo in photos %}
-        <div class="photo">
-            <img src="{{ photo.photo_path }}" alt="Trip photo">
-            {% if photo.comment %}
-                <p><strong>{{ photo.comment }}</strong></p>
-            {% endif %}
-            {% if photo.added_by %}
-                <p><small>Added by {{ photo.added_by }}</small></p>
-            {% endif %}
-        </div>
+        <figure class="card" style="padding:8px">
+            <img src="{{ photo.photo_path }}" alt="Trip photo" style="width:100%;height:auto;border-radius:6px">
+            {% if photo.comment %}<figcaption style="margin-top:8px;font-weight:600">{{ photo.comment }}</figcaption>{% endif %}
+            {% if photo.added_by %}<div class="meta">Added by {{ photo.added_by }}</div>{% endif %}
+        </figure>
         {% endfor %}
     </div>
     {% else %}
-        <p>No photos yet.</p>
+        <p class="meta" style="margin-top:12px">No photos yet.</p>
     {% endif %}
-</body>
-</html>
+</div>
+
+{% endblock %}
