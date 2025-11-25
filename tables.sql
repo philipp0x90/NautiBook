@@ -135,8 +135,6 @@ CREATE TABLE ta_Routes (
     -- Additional fields
     NM_So_far REAL,
     Journal TEXT,
-    ServerAddress TEXT,
-    MRN_IMO TEXT,
     AllAvailableData TEXT,
     AllAvailableData_Formated TEXT,
     LastData TEXT,
