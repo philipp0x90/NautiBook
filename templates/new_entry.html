@@ -9,6 +9,84 @@
 <form method="POST" action="/logbook/new" class="card" style="margin-top:12px;display:grid;gap:12px">
     <div class="grid">
         <div>
+            <label>AWS</label>
+            <input type="number" value={{ data.aws if data else 0 }} name="app_windspeed" >
+        </div>
+        <div>
+            <label>AWA</label>
+            <input type="number" value={{ data.awa if data else 0 }} name="app_windangle" >
+        </div>
+        <div>
+            <label>État de la mer</label>
+            <select name="environment" id="sea_state">
+              <option value="Calme">Calme</option>
+              <option value="Belle">Belle</option>
+              <option value="Peu Agitée">Peu Agitée</option>
+              <option value="Agitée">Agitée</option>
+              <option value="Forte">Forte</option>
+              <option value="Très forte">Très forte</option>
+              <option value="Grosse">Grosse</option>
+              <option value="Très grosse">Très grosse</option>
+              <option value="Énorme">Énorme</option>
+            </select>
+        </div>
+        <div>
+            <label>Visibilité</label>
+            <select name="environment" id="visibility">
+              <option value="Bonne">Bonne</option>
+              <option value="Moyenne">Moyenne</option>
+              <option value="Mauvaise">Mauvaise</option>
+              <option value="Très Mauvaise">Très Mauvaise</option>
+            </select>
+        </div>
+        <div>
+            <label>T°</label>
+            <input type="number" name="water_temp" value=43>
+        </div>
+        <div>
+            <label>P°</label>
+            <input type="number" name="air_pressure" value=1020>
+        </div>
+        <div>
+            <label>Cap</label>
+            <input type="number" name="bearing" value=300>
+        </div>
+        <div>
+            <label>Course over ground</label>
+            <input type="number" name="course_over_gnd" value=300>
+        </div>
+        <div>
+            <label>Voiles</label>
+            <select name="sails" id="sails">
+              <option value="Moteur">Moteur</option>
+              <option value="GV + Génois">GV + Génois</option>
+              <option value="GV 1 Ris + Génois">GV 1 Ris + Génois</option>
+              <option value="GV 2 Ris + Génois">GV 2 Ris + Génois</option>
+              <option value="GV + Moteur">GV + Moteur</option>
+              <option value="+ Appui Moteur">+ Appui Moteur</option>
+              <option value="Génois seul">Génois seul</option>
+              <option value="GV seule">GV seule</option>
+              <option value="GV + Trinq.">GV + Trinq.</option>
+              <option value="GV 1 Ris + Trinq.">GV 1 Ris + Trinq.</option>
+              <option value="GV 2 Ris + Trinq.">GV 2 Ris + Trinq.</option>
+              <option value="Trinq. seule">Trinq. seule</option>
+                <option disabled>__________________</option>
+              <option value="À sec">À sec</option>
+            </select>
+        </div>
+        <div>
+            <label>Loch</label>
+            <input type="number" name="loch" placeholder="7034">
+        </div>
+        <div>
+            <label>Trip</label>
+            <input type="number" name="trip" placeholder="704">
+        </div>
+        <div>
+            <label>Sonde</label>
+            <input type="number" name="depth" placeholder="22.22">
+        </div>
+        <div>
             <label>Latitude</label>
             <input type="number" step="any" name="position_lat" placeholder="43.7034">
         </div>
@@ -16,9 +94,6 @@
             <label>Longitude</label>
             <input type="number" step="any" name="position_lon" placeholder="7.2663">
         </div>
-    </div>
-
-    <div class="grid">
         <div>
             <label>Speed (knots)</label>
             <input type="number" step="any" name="speed" placeholder="5.2">
