@@ -5,11 +5,20 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 import aiosqlite
+import requests
+import json
 from contextlib import asynccontextmanager
 from typing import Optional
 
 # Database configuration
 DATABASE_URL = "logbook.db"
+iKommunicate_URL = "https://demo.signalk.org/signalk"
+# Connect to iKommunicate to make sure we have the right endpoint
+SIGNALK_URL  = requests.get(iKommunicate_URL).json()["endpoints"]["v1"]["signalk-http"]
+enpoints = {
+    "AWS": "vessels/self/environment/wind/speedApparent",
+    "AWA": "vessels/self/environment/wind/angleApparent"
+}
 
 # Templates setup
 templates = Jinja2Templates(directory="templates")
@@ -46,6 +55,12 @@ async def init_db():
 
         await db.commit()
 
+def get_signalk_data(endpoint):
+    resp = requests.get(f"{SIGNALK_URL}{endpoint}")
+    if not resp:
+        print(f"Error retrieving signalk data")
+        return
+    return resp.json()
 
 # Lifespan context manager
 @asynccontextmanager
@@ -80,13 +95,18 @@ async def home(request: Request):
     )
 
 
-@app.get("/logbook/new", response_class=HTMLResponse)
+@app.get("/logbook/new_entry", response_class=HTMLResponse)
 async def new_entry_form(request: Request):
     """Show form to create new logbook entry"""
-    return templates.TemplateResponse("new_entry.html", {"request": request})
+    data = {}
+    data["aws"] = get_signalk_data(endpoints["AWS"])["value"]
+    data["awa"] = get_signalk_data(endpoints["AWA"])["value"]
+    print(f"{data=}")
+    # Collect data from signalK and send the prefilled template.
+    return templates.TemplateResponse("new_entry.html", {"request": request, "data": data})
 
 
-@app.post("/logbook/new")
+@app.post("/logbook/new_entry")
 async def create_entry(
     request: Request,
     position_lat: Optional[float] = Form(None),

@@ -6,7 +6,7 @@
 <a href="/">← Back to Logbook</a>
 <h1 style="margin-top:8px">New Logbook Entry</h1>
 
-<form method="POST" action="/logbook/new" class="card" style="margin-top:12px;display:grid;gap:12px">
+<form method="POST" action="/logbook/new_entry" class="card" style="margin-top:12px;display:grid;gap:12px">
     <div class="grid">
         <div>
             <label>AWS</label>
@@ -49,11 +49,11 @@
         </div>
         <div>
             <label>Cap</label>
-            <input type="number" name="bearing" value=300>
+            <input type="number" name="bearing" value={{ data.bearing if data else 0 }}>
         </div>
         <div>
             <label>Course over ground</label>
-            <input type="number" name="course_over_gnd" value=300>
+            <input type="number" name="course_over_gnd" value={{ data.course_over_gnd if data else 0 }}>
         </div>
         <div>
             <label>Voiles</label>
