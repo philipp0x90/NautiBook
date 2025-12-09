@@ -15,9 +15,20 @@ DATABASE_URL = "logbook.db"
 iKommunicate_URL = "https://demo.signalk.org/signalk"
 # Connect to iKommunicate to make sure we have the right endpoint
 SIGNALK_URL  = requests.get(iKommunicate_URL).json()["endpoints"]["v1"]["signalk-http"]
-enpoints = {
+endpoints = {
     "AWS": "vessels/self/environment/wind/speedApparent",
-    "AWA": "vessels/self/environment/wind/angleApparent"
+    "AWA": "vessels/self/environment/wind/angleApparent",
+    "water_temp": "vessels/self/environment/water/temperature",
+    "heading": "vessels/self/navigation/headingTrue",
+    "cog": "vessels/self/navigation/courseOverGroundTrue",
+    "loch": "vessels/self/navigation/log",
+    "trip": "vessels/self/navigation/trip/log",
+    "depth": "vessels/self/environment/depth/belowKeel", # ALT: belowSurface
+    "coordinates": "vessels/self/navigation/position/",
+    "stw": "vessels/self/navigation/speedThroughWater",
+    "sog": "vessels/self/navigation/speedOverGround",
+    "tws": "vessels/self/environment/wind/speedTrue",
+    "twa": "vessels/self/environment/wind/directionTrue"
 }
 
 # Templates setup
@@ -101,6 +112,20 @@ async def new_entry_form(request: Request):
     data = {}
     data["aws"] = get_signalk_data(endpoints["AWS"])["value"]
     data["awa"] = get_signalk_data(endpoints["AWA"])["value"]
+    data["water_temp"] = get_signalk_data(endpoints["water_temp"])["value"]
+    data["heading"] = get_signalk_data(endpoints["heading"])["value"]
+    data["cog"] = get_signalk_data(endpoints["cog"])["value"]
+    data["loch"] = get_signalk_data(endpoints["loch"])["value"]
+    data["trip"] = get_signalk_data(endpoints["trip"])["value"]
+    data["depth"] = get_signalk_data(endpoints["depth"])["value"]
+    coord = get_signalk_data(endpoints["coordinates"])["value"]
+    data["lat"] = coord["latitude"]
+    data["long"] = coord["longitude"]
+    data["stw"] = get_signalk_data(endpoints["stw"])["value"] # Speed through water
+    data["sog"] = get_signalk_data(endpoints["sog"])["value"] # Speed over ground
+    # Test server doesn't have the proper sensors
+    # data["tws"] = get_signalk_data(endpoints["tws"])["value"]
+    # data["twa"] = get_signalk_data(endpoints["twa"])["value"]
     print(f"{data=}")
     # Collect data from signalK and send the prefilled template.
     return templates.TemplateResponse("new_entry.html", {"request": request, "data": data})
