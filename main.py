@@ -4,35 +4,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
 import aiosqlite
-import requests
 from contextlib import asynccontextmanager
 from typing import Optional
+from utils import get_sensor_data
 
 # Database configuration
 DATABASE_URL = "logbook.db"
-iKommunicate_URL = "https://demo.signalk.org/signalk"
-# Connect to iKommunicate to make sure we have the right endpoint
-SIGNALK_URL  = requests.get(iKommunicate_URL).json()["endpoints"]["v1"]["signalk-http"]
 
-# TODO: get this dynamically
-VESSEL = "self"
-
-endpoints = {
-    "AWS": f"vessels/{VESSEL}/environment/wind/speedApparent",
-    "AWA": f"vessels/{VESSEL}/environment/wind/angleApparent",
-    "water_temp": f"vessels/{VESSEL}/environment/water/temperature",
-    "heading": f"vessels/{VESSEL}/navigation/headingTrue",
-    "cog": f"vessels/{VESSEL}/navigation/courseOverGroundTrue",
-    "log": f"vessels/{VESSEL}/navigation/log",
-    "trip": f"vessels/{VESSEL}/navigation/trip/log",
-    "depth": f"vessels/{VESSEL}/environment/depth/belowKeel", # ALT: belowSurface
-    "position": f"vessels/{VESSEL}/navigation/position/",
-    "stw": f"vessels/{VESSEL}/navigation/speedThroughWater",
-    "sog": f"vessels/{VESSEL}/navigation/speedOverGround",
-    "tws": f"vessels/{VESSEL}/environment/wind/speedTrue",
-    "twa": f"vessels/{VESSEL}/environment/wind/directionTrue",
-    # "pressure": f"vessels/{VESSEL}/environment/outside/pressure"
-}
 
 # Templates setup
 templates = Jinja2Templates(directory="templates")
@@ -60,8 +38,10 @@ async def init_db():
                 sog REAL,
                 tws REAL,
                 twa REAL,
+                pressure REAL,
                 sea_state TEXT,
                 visibility TEXT,
+                sails TEXT,
                 notes TEXT
             )
         """)
@@ -79,13 +59,6 @@ async def init_db():
         """)
 
         await db.commit()
-
-def get_signalk_data(endpoint):
-    resp = requests.get(f"{SIGNALK_URL}{endpoint}")
-    if not resp:
-        print("Error retrieving signalk data")
-        return
-    return resp.json()
 
 # Lifespan context manager
 @asynccontextmanager
@@ -123,25 +96,7 @@ async def home(request: Request):
 @app.get("/logbook/new_entry", response_class=HTMLResponse)
 async def new_entry_form(request: Request):
     """Show form to create new logbook entry"""
-    data = {}
-    data["aws"] = get_signalk_data(endpoints["AWS"])["value"]
-    data["awa"] = get_signalk_data(endpoints["AWA"])["value"]
-    data["water_temp"] = get_signalk_data(endpoints["water_temp"])["value"]
-    data["heading"] = get_signalk_data(endpoints["heading"])["value"]
-    data["cog"] = get_signalk_data(endpoints["cog"])["value"]
-    data["log"] = get_signalk_data(endpoints["log"])["value"]
-    data["trip"] = get_signalk_data(endpoints["trip"])["value"]
-    data["depth"] = get_signalk_data(endpoints["depth"])["value"]
-    coord = get_signalk_data(endpoints["position"])["value"]
-    data["lat"] = coord["latitude"]
-    data["long"] = coord["longitude"]
-    data["stw"] = get_signalk_data(endpoints["stw"])["value"] # Speed through water
-    data["sog"] = get_signalk_data(endpoints["sog"])["value"] # Speed over ground
-    # data["pressure"] = get_signalk_data(endpoints["pressure"])["value"] # Speed over ground
-    # Test server doesn't have the proper sensors
-    # data["tws"] = get_signalk_data(endpoints["tws"])["value"]
-    # data["twa"] = get_signalk_data(endpoints["twa"])["value"]
-    # Collect data from signalK and send the prefilled template.
+    data = get_sensor_data()
     return templates.TemplateResponse("new_entry.html", {"request": request, "data": data})
 
 
@@ -152,8 +107,8 @@ async def create_entry(
     position_lon: Optional[float] = Form(None),
     speed: Optional[float] = Form(None),
     aws: Optional[float] = Form(None),
-    tws: Optional[float] = Form(None),
-    twa: Optional[float] = Form(None),
+    tws: Optional[str] = Form(None),
+    twa: Optional[str] = Form(None),
     stw: Optional[float] = Form(None),
     sog: Optional[float] = Form(None),
     awa: Optional[float] = Form(None),
@@ -171,15 +126,15 @@ async def create_entry(
 ):
     """Create a new logbook entry"""
     print(f"{position_lat=}, {position_lon=}, {speed=}, {aws=}, {log=}, {sog=}")
-    return
     async with aiosqlite.connect(DATABASE_URL) as db:
+        # Replaced tws, twa, pressure with 0 while using demo server, tws not available on demo server
         await db.execute(
             """
             INSERT INTO logbook_entries 
-            (timestamp, aws, awa, water_temp, heading, cog, log, trip, depth, position_lat, position_lon, stw, sog, tws, twa, pressure, notes)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (timestamp, aws, awa, water_temp, heading, cog, log, trip, depth, position_lat, position_lon, stw, sog, tws, twa, pressure, sea_state, visibility, sails, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-            (datetime.utcnow(), aws, awa, water_temp, heading, cog, log, trip, depth, position_lat, position_lon, stw, sog, tws, twa, pressure, notes),
+            (datetime.utcnow(), aws, awa, water_temp, heading, cog, log, trip, depth, position_lat, position_lon, stw, sog, 0, 0, 0, sea_state, visibility, sails, notes),
         )
         await db.commit()
 
