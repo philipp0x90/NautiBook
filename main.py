@@ -2,11 +2,9 @@
 from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from datetime import datetime
 import aiosqlite
 import requests
-import json
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -15,20 +13,25 @@ DATABASE_URL = "logbook.db"
 iKommunicate_URL = "https://demo.signalk.org/signalk"
 # Connect to iKommunicate to make sure we have the right endpoint
 SIGNALK_URL  = requests.get(iKommunicate_URL).json()["endpoints"]["v1"]["signalk-http"]
+
+# TODO: get this dynamically
+VESSEL = "self"
+
 endpoints = {
-    "AWS": "vessels/self/environment/wind/speedApparent",
-    "AWA": "vessels/self/environment/wind/angleApparent",
-    "water_temp": "vessels/self/environment/water/temperature",
-    "heading": "vessels/self/navigation/headingTrue",
-    "cog": "vessels/self/navigation/courseOverGroundTrue",
-    "loch": "vessels/self/navigation/log",
-    "trip": "vessels/self/navigation/trip/log",
-    "depth": "vessels/self/environment/depth/belowKeel", # ALT: belowSurface
-    "coordinates": "vessels/self/navigation/position/",
-    "stw": "vessels/self/navigation/speedThroughWater",
-    "sog": "vessels/self/navigation/speedOverGround",
-    "tws": "vessels/self/environment/wind/speedTrue",
-    "twa": "vessels/self/environment/wind/directionTrue"
+    "AWS": f"vessels/{VESSEL}/environment/wind/speedApparent",
+    "AWA": f"vessels/{VESSEL}/environment/wind/angleApparent",
+    "water_temp": f"vessels/{VESSEL}/environment/water/temperature",
+    "heading": f"vessels/{VESSEL}/navigation/headingTrue",
+    "cog": f"vessels/{VESSEL}/navigation/courseOverGroundTrue",
+    "log": f"vessels/{VESSEL}/navigation/log",
+    "trip": f"vessels/{VESSEL}/navigation/trip/log",
+    "depth": f"vessels/{VESSEL}/environment/depth/belowKeel", # ALT: belowSurface
+    "position": f"vessels/{VESSEL}/navigation/position/",
+    "stw": f"vessels/{VESSEL}/navigation/speedThroughWater",
+    "sog": f"vessels/{VESSEL}/navigation/speedOverGround",
+    "tws": f"vessels/{VESSEL}/environment/wind/speedTrue",
+    "twa": f"vessels/{VESSEL}/environment/wind/directionTrue",
+    # "pressure": f"vessels/{VESSEL}/environment/outside/pressure"
 }
 
 # Templates setup
@@ -43,12 +46,23 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS logbook_entries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME NOT NULL,
+                aws REAL,
+                awa REAL,
+                water_temp REAL,
+                heading REAL,
+                cog REAL,
+                log REAL,
+                trip REAL,
+                depth REAL,
                 position_lat REAL,
                 position_lon REAL,
-                speed REAL,
-                wind_speed REAL,
-                notes TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                stw REAL,
+                sog REAL,
+                tws REAL,
+                twa REAL,
+                sea_state TEXT,
+                visibility TEXT,
+                notes TEXT
             )
         """)
 
@@ -69,7 +83,7 @@ async def init_db():
 def get_signalk_data(endpoint):
     resp = requests.get(f"{SIGNALK_URL}{endpoint}")
     if not resp:
-        print(f"Error retrieving signalk data")
+        print("Error retrieving signalk data")
         return
     return resp.json()
 
@@ -115,18 +129,18 @@ async def new_entry_form(request: Request):
     data["water_temp"] = get_signalk_data(endpoints["water_temp"])["value"]
     data["heading"] = get_signalk_data(endpoints["heading"])["value"]
     data["cog"] = get_signalk_data(endpoints["cog"])["value"]
-    data["loch"] = get_signalk_data(endpoints["loch"])["value"]
+    data["log"] = get_signalk_data(endpoints["log"])["value"]
     data["trip"] = get_signalk_data(endpoints["trip"])["value"]
     data["depth"] = get_signalk_data(endpoints["depth"])["value"]
-    coord = get_signalk_data(endpoints["coordinates"])["value"]
+    coord = get_signalk_data(endpoints["position"])["value"]
     data["lat"] = coord["latitude"]
     data["long"] = coord["longitude"]
     data["stw"] = get_signalk_data(endpoints["stw"])["value"] # Speed through water
     data["sog"] = get_signalk_data(endpoints["sog"])["value"] # Speed over ground
+    # data["pressure"] = get_signalk_data(endpoints["pressure"])["value"] # Speed over ground
     # Test server doesn't have the proper sensors
     # data["tws"] = get_signalk_data(endpoints["tws"])["value"]
     # data["twa"] = get_signalk_data(endpoints["twa"])["value"]
-    print(f"{data=}")
     # Collect data from signalK and send the prefilled template.
     return templates.TemplateResponse("new_entry.html", {"request": request, "data": data})
 
@@ -137,29 +151,35 @@ async def create_entry(
     position_lat: Optional[float] = Form(None),
     position_lon: Optional[float] = Form(None),
     speed: Optional[float] = Form(None),
-    app_windspeed: Optional[float] = Form(None),
-    app_windangle: Optional[float] = Form(None),
+    aws: Optional[float] = Form(None),
+    tws: Optional[float] = Form(None),
+    twa: Optional[float] = Form(None),
+    stw: Optional[float] = Form(None),
+    sog: Optional[float] = Form(None),
+    awa: Optional[float] = Form(None),
     sea_state: Optional[str] = Form(None),
     visibility: Optional[str] = Form(None),
     water_temp: Optional[float] = Form(None),
-    air_pressure: Optional[float] = Form(None),
-    bearing: Optional[float] = Form(None),
-    course_over_ground: Optional[float] = Form(None),
+    # pressure: Optional[float] = Form(None),
+    heading: Optional[float] = Form(None),
+    cog: Optional[float] = Form(None),
     sails: Optional[str] = Form(None),
-    loch: Optional[float] = Form(None),
+    log: Optional[float] = Form(None),
     trip: Optional[float] = Form(None),
     depth: Optional[float] = Form(None),
     notes: Optional[str] = Form(None),
 ):
     """Create a new logbook entry"""
+    print(f"{position_lat=}, {position_lon=}, {speed=}, {aws=}, {log=}, {sog=}")
+    return
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
             """
             INSERT INTO logbook_entries 
-            (timestamp, position_lat, position_lon, speed, wind_speed, notes)
+            (timestamp, aws, awa, water_temp, heading, cog, log, trip, depth, position_lat, position_lon, stw, sog, tws, twa, pressure, notes)
             VALUES (?, ?, ?, ?, ?, ?)
         """,
-            (datetime.utcnow(), position_lat, position_lon, speed, wind_speed, notes),
+            (datetime.utcnow(), aws, awa, water_temp, heading, cog, log, trip, depth, position_lat, position_lon, stw, sog, tws, twa, pressure, notes),
         )
         await db.commit()
 
