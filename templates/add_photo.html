@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Add Photo — {{ entry.timestamp.split('.')[0] }}{% endblock %}
+{% block title %}Add Photo — {{ line.timestamp.split('.')[0] }}{% endblock %}
 
 {% block content %}
-<a href="/logbook/{{ entry.id }}">← Back to Entry</a>
+<a href="/logbook/{{ line.id }}">← Back to Entry</a>
 <h1 style="margin-top:8px">Add Photo to Trip</h1>
-<h3 style="margin-top:4px">{{ entry.timestamp.split('.')[0] }}</h3>
+<h3 style="margin-top:4px">{{ line.timestamp.split('.')[0] }}</h3>
 
-<form method="POST" action="/logbook/{{ entry.id }}/add-photo" class="card" style="margin-top:12px;display:grid;gap:12px">
+<form method="POST" action="/logbook/{{ line.id }}/add-photo" class="card" style="margin-top:12px;display:grid;gap:12px">
     <div>
         <label>Photo Path / URL</label>
         <input type="text" name="photo_path" required placeholder="/photos/sunset.jpg">

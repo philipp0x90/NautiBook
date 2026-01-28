@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}New Entry — NautiBook{% endblock %}
+{% block title %}New Line — NautiBook{% endblock %}
 
 {% block content %}
 <a href="/">← Back to Logbook</a>
-<h1 style="margin-top:8px">New Logbook Entry</h1>
+<h1 style="margin-top:8px">New Logbook Line</h1>
 
-<form method="POST" action="/logbook/new_entry" class="card" style="margin-top:12px;display:grid;gap:12px">
+<form method="POST" action="/logbook/new_line" class="card" style="margin-top:12px;display:grid;gap:12px">
     <div class="grid">
         <div>
             <label>AWS</label>
@@ -95,8 +95,12 @@
             <input type="number" step="any" name="position_lon" value={{ data.long if data else 0}}>
         </div>
         <div>
-            <label>Speed (knots)</label>
+            <label>Speed Over Ground</label>
             <input type="number" step="any" name="sog" value={{ data.sog if data else 0}}>
+        </div>
+        <div>
+            <label>Speed Through Water</label>
+            <input type="number" step="any" name="stw" value={{ data.stw if data else 0}}>
         </div>
         <div>
             <label>True Wind Speed (knots)</label>
@@ -110,7 +114,7 @@
     </div>
 
     <div>
-        <button type="submit" class="primary">Save Entry</button>
+        <button type="submit" class="primary">Save Line</button>
     </div>
 </form>
 

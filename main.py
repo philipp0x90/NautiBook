@@ -20,8 +20,39 @@ templates = Jinja2Templates(directory="templates")
 async def init_db():
     """Initialize database tables"""
     async with aiosqlite.connect(DATABASE_URL) as db:
+        # Enable foreign keys in SQLite (important!)
+        await db.execute("PRAGMA foreign_keys = ON;")
+
+        # Cruises table
         await db.execute("""
-            CREATE TABLE IF NOT EXISTS logbook_entries (
+            CREATE TABLE IF NOT EXISTS cruises (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                start_time DATETIME,
+                end_time DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Routes table
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS routes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                start_time DATETIME,
+                end_time DATETIME,
+                departure_location TEXT,
+                destination_location TEXT,
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                finished BOOLEAN,
+                cruise_id INTEGER,
+                FOREIGN KEY(cruise_id) REFERENCES cruises(id) ON DELETE CASCADE
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS logbook_lines (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME NOT NULL,
                 aws REAL,
@@ -42,7 +73,9 @@ async def init_db():
                 sea_state TEXT,
                 visibility TEXT,
                 sails TEXT,
-                notes TEXT
+                notes TEXT,
+                route_id INTEGER,
+                FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
             )
         """)
 
@@ -54,7 +87,8 @@ async def init_db():
                 comment TEXT,
                 added_by TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (trip_id) REFERENCES logbook_entries(id)
+                cruise_id INTEGER,
+                FOREIGN KEY (cruise_id) REFERENCES cruises(id)
             )
         """)
 
@@ -78,30 +112,30 @@ app = FastAPI(lifespan=lifespan)
 # Routes
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """Home page - show recent logbook entries"""
+    """Home page - show recent logbook lines"""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
-            SELECT * FROM logbook_entries 
+            SELECT * FROM logbook_lines 
             ORDER BY timestamp DESC 
             LIMIT 20
         """)
-        entries = await cursor.fetchall()
+        lines = await cursor.fetchall()
 
     return templates.TemplateResponse(
-        "home.html", {"request": request, "entries": entries}
+        "home.html", {"request": request, "lines": lines}
     )
 
 
-@app.get("/logbook/new_entry", response_class=HTMLResponse)
-async def new_entry_form(request: Request):
-    """Show form to create new logbook entry"""
+@app.get("/logbook/new_line", response_class=HTMLResponse)
+async def new_line_form(request: Request):
+    """Show form to create new logbook line"""
     data = get_sensor_data()
-    return templates.TemplateResponse("new_entry.html", {"request": request, "data": data})
+    return templates.TemplateResponse("new_line.html", {"request": request, "data": data})
 
 
-@app.post("/logbook/new_entry")
-async def create_entry(
+@app.post("/logbook/new_line")
+async def create_line(
     request: Request,
     position_lat: Optional[float] = Form(None),
     position_lon: Optional[float] = Form(None),
@@ -124,13 +158,13 @@ async def create_entry(
     depth: Optional[float] = Form(None),
     notes: Optional[str] = Form(None),
 ):
-    """Create a new logbook entry"""
-    print(f"{position_lat=}, {position_lon=}, {speed=}, {aws=}, {log=}, {sog=}")
+    """Create a new logbook line"""
+    #TODO change SQL to add line to current route
     async with aiosqlite.connect(DATABASE_URL) as db:
         # Replaced tws, twa, pressure with 0 while using demo server, tws not available on demo server
         await db.execute(
             """
-            INSERT INTO logbook_entries 
+            INSERT INTO logbook_lines 
             (timestamp, aws, awa, water_temp, heading, cog, log, trip, depth, position_lat, position_lon, stw, sog, tws, twa, pressure, sea_state, visibility, sails, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -142,64 +176,64 @@ async def create_entry(
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.get("/logbook/{entry_id}", response_class=HTMLResponse)
-async def view_entry(request: Request, entry_id: int):
-    """View a specific logbook entry with photos"""
+@app.get("/logbook/{line_id}", response_class=HTMLResponse)
+async def view_line(request: Request, line_id: int):
+    """View a specific logbook line with photos"""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
 
-        # Get entry
+        # Get line
         cursor = await db.execute(
-            "SELECT * FROM logbook_entries WHERE id = ?", (entry_id,)
+            "SELECT * FROM logbook_lines WHERE id = ?", (line_id,)
         )
-        entry = await cursor.fetchone()
+        line = await cursor.fetchone()
 
-        if entry is None:
+        if line is None:
             raise HTTPException(status_code=404, detail="Entry not found")
 
-        # Get photos for this entry
+        # Get photos for this line
         cursor = await db.execute(
             "SELECT * FROM trip_photos WHERE trip_id = ? ORDER BY created_at DESC",
-            (entry_id,),
+            (line_id,),
         )
         photos = await cursor.fetchall()
 
     return templates.TemplateResponse(
-        "entry_detail.html", {"request": request, "entry": entry, "photos": photos}
+        "line_detail.html", {"request": request, "line": line, "photos": photos}
     )
 
 
-@app.get("/logbook/{entry_id}/add-photo", response_class=HTMLResponse)
-async def add_photo_form(request: Request, entry_id: int):
+@app.get("/logbook/{line_id}/add-photo", response_class=HTMLResponse)
+async def add_photo_form(request: Request, line_id: int):
     """Show form to add photo to a trip"""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM logbook_entries WHERE id = ?", (entry_id,)
+            "SELECT * FROM logbook_lines WHERE id = ?", (line_id,)
         )
-        entry = await cursor.fetchone()
+        line = await cursor.fetchone()
 
-        if entry is None:
+        if line is None:
             raise HTTPException(status_code=404, detail="Entry not found")
 
     return templates.TemplateResponse(
-        "add_photo.html", {"request": request, "entry": entry}
+        "add_photo.html", {"request": request, "line": line}
     )
 
 
-@app.post("/logbook/{entry_id}/add-photo")
+@app.post("/logbook/{line_id}/add-photo")
 async def add_photo(
     request: Request,
-    entry_id: int,
+    line_id: int,
     photo_path: str = Form(...),
     comment: Optional[str] = Form(None),
     added_by: Optional[str] = Form(None),
 ):
     """Add a photo to a trip"""
     async with aiosqlite.connect(DATABASE_URL) as db:
-        # Check if entry exists
+        # Check if line exists
         cursor = await db.execute(
-            "SELECT id FROM logbook_entries WHERE id = ?", (entry_id,)
+            "SELECT id FROM logbook_lines WHERE id = ?", (line_id,)
         )
         if await cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Entry not found")
@@ -210,12 +244,12 @@ async def add_photo(
             INSERT INTO trip_photos (trip_id, photo_path, comment, added_by)
             VALUES (?, ?, ?, ?)
         """,
-            (entry_id, photo_path, comment, added_by),
+            (line_id, photo_path, comment, added_by),
         )
         await db.commit()
 
-    # Redirect back to entry detail page
-    return RedirectResponse(url=f"/logbook/{entry_id}", status_code=303)
+    # Redirect back to line detail page
+    return RedirectResponse(url=f"/logbook/{line_id}", status_code=303)
 
 
 # Run with: uvicorn main:app --reload --host 0.0.0.0 --port 8000

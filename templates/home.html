@@ -5,18 +5,18 @@
 {% block content %}
 <!-- Empty content area to match provided screenshot: centered top navigation with large whitespace below -->
 <div style="text-align:center;margin-bottom:14px">
-    <a href="/logbook/new_entry" style="background:var(--accent);color:#fff;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">+ New Route</a>
+    <a href="/logbook/new_line" style="background:var(--accent);color:#fff;padding:8px 14px;border-radius:20px;text-decoration:none;font-weight:700;font-size:15px;display:inline-block">+ New Line</a>
 </div>
 <div style="min-height:60vh;display:flex;align-items:flex-start;justify-content:center;padding-top:40px">
     <div style="width:100%;max-width:840px;">
-        {% if entries %}
+        {% if lines %}
             <!-- show a minimal list aligned left inside the centered container -->
             <div style="display:flex;flex-direction:column;gap:10px">
-                {% for entry in entries %}
-                <a href="/logbook/{{ entry.id }}" class="card" style="display:block;text-decoration:none;color:inherit;padding:14px">
+                {% for line in lines %}
+                <a href="/logbook/{{ line.id }}" class="card" style="display:block;text-decoration:none;color:inherit;padding:14px">
                     <div style="display:flex;align-items:center;justify-content:space-between">
-                        <div style="font-weight:700">{{ entry.timestamp.split('.')[0] }}</div>
-                        <div class="meta">{% if entry.position_lat and entry.position_lon %}📍 {{ entry.position_lat }}°, {{ entry.position_lon }}°{% endif %}</div>
+                        <div style="font-weight:700">{{ line.timestamp.split('.')[0] }}</div>
+                        <div class="meta">{% if line.position_lat and line.position_lon %}📍 {{ line.position_lat }}°, {{ line.position_lon }}°{% endif %}</div>
                     </div>
                 </a>
                 {% endfor %}

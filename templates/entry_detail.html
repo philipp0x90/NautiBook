@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 
-{% block title %}Entry — {{ entry.timestamp.split('.')[0] }}{% endblock %}
+{% block title %}Entry — {{ line.timestamp.split('.')[0] }}{% endblock %}
 
 {% block content %}
 <a href="/">← Back to Logbook</a>
 <h1 style="margin-top:8px">Logbook Entry</h1>
-<h2 style="margin-top:6px">{{ entry.timestamp.split('.')[0] }}</h2>
+<h2 style="margin-top:6px">{{ line.timestamp.split('.')[0] }}</h2>
 
 <div class="card" style="margin-top:12px">
     <div class="meta" style="margin-bottom:10px">
-        {% if entry.position_lat and entry.position_lon %}<div><strong>Position:</strong> {{ entry.position_lat }}°, {{ entry.position_lon }}°</div>{% endif %}
-        {% if entry.speed %}<div><strong>Speed:</strong> {{ entry.speed }} knots</div>{% endif %}
-        {% if entry.wind_speed %}<div><strong>Wind Speed:</strong> {{ entry.wind_speed }} knots</div>{% endif %}
+        {% if line.position_lat and line.position_lon %}<div><strong>Position:</strong> {{ line.position_lat }}°, {{ line.position_lon }}°</div>{% endif %}
+        {% if line.speed %}<div><strong>Speed:</strong> {{ line.speed }} knots</div>{% endif %}
+        {% if line.wind_speed %}<div><strong>Wind Speed:</strong> {{ line.wind_speed }} knots</div>{% endif %}
     </div>
 
-    {% if entry.notes %}
-    <div style="background:#fff;padding:12px;border-radius:6px">{{ entry.notes }}</div>
+    {% if line.notes %}
+    <div style="background:#fff;padding:12px;border-radius:6px">{{ line.notes }}</div>
     {% endif %}
 
     <div style="margin-top:14px">
         <h3 style="margin:0 0 8px 0">Photos</h3>
-        <a href="/logbook/{{ entry.id }}/add-photo" class="actions"><span style="display:inline-block;padding:8px 10px;background:var(--accent);color:#fff;border-radius:6px;text-decoration:none">+ Add Photo</span></a>
+        <a href="/logbook/{{ line.id }}/add-photo" class="actions"><span style="display:inline-block;padding:8px 10px;background:var(--accent);color:#fff;border-radius:6px;text-decoration:none">+ Add Photo</span></a>
     </div>
 
     {% if photos %}
