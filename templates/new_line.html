@@ -4,9 +4,20 @@
 
 {% block content %}
 <a href="/">← Back to Logbook</a>
-<h1 style="margin-top:8px">New Logbook Line</h1>
+<div style="margin-top:8px;margin-bottom:2px" class="meta">
+    {{ route.cruise_name }} &rsaquo;
+    {% if route.departure_location and route.destination_location %}
+        {{ route.departure_location }} &rarr; {{ route.destination_location }}
+    {% elif route.name %}
+        {{ route.name }}
+    {% else %}
+        Route #{{ route.id }}
+    {% endif %}
+</div>
+<h1 style="margin-top:2px">New Logbook Line</h1>
 
 <form method="POST" action="/logbook/new_line" class="card" style="margin-top:12px;display:grid;gap:12px">
+    <input type="hidden" name="route_id" value="{{ route.id }}">
     <div class="grid">
         <div>
             <label>AWS</label>
@@ -15,6 +26,20 @@
         <div>
             <label>AWA</label>
             <input type="number" name="awa" value={{ data.awa if data else 0 }}>
+        </div>
+        <div>
+            <label>Allure</label>
+            <select name="points_of_sail" id="points_of_sail">
+              <option value="Près">Près</option>
+              <option value="Bon plein">Bon plein</option>
+              <option value="Travers">Travers</option>
+              <option value="Largue">Largue</option>
+              <option value="Grand largue">Grand largue</option>
+              <option value="Vent arrière">Vent arrière</option>
+              <option value="Cape">Cape</option>
+              <option value="N/A">N/A</option>
+              <option value="Vent debout">Vent debout</option>
+            </select>
         </div>
         <div>
             <label>État de la mer</label>
@@ -111,6 +136,11 @@
     <div>
         <label>Notes</label>
         <textarea name="notes" placeholder="Beautiful day sailing..."></textarea>
+    </div>
+
+    <div>
+        <label>Position (visuelle)</label>
+        <textarea name="visual_pos" placeholder="Next to Poseidon's cellar"></textarea>
     </div>
 
     <div>

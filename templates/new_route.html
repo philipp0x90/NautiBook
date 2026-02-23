@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}New Route — NautiBook{% endblock %}
+
+{% block content %}
+<a href="/">← Back to Logbook</a>
+<div style="margin-top:8px;margin-bottom:2px" class="meta">{{ cruise.name }}</div>
+<h1 style="margin-top:2px">New Route</h1>
+
+<form method="POST" action="/route/new" class="card" style="margin-top:12px;display:grid;gap:14px;max-width:520px">
+    <input type="hidden" name="cruise_id" value="{{ cruise.id }}">
+    <div class="grid">
+        <div>
+            <label>Departure</label>
+            <input type="text" name="departure_location" placeholder="Marseille">
+        </div>
+        <div>
+            <label>Destination</label>
+            <input type="text" name="destination_location" placeholder="Ajaccio">
+        </div>
+    </div>
+    <div>
+        <label>Name <span class="meta" style="font-weight:400">(optional — leave blank to use departure/destination)</span></label>
+        <input type="text" name="name" placeholder="Leg 1">
+    </div>
+    <div>
+        <label>Departure date/time</label>
+        <input type="datetime-local" name="start_time">
+    </div>
+    <div>
+        <label>Notes</label>
+        <textarea name="notes" placeholder="Weather forecast, waypoints..."></textarea>
+    </div>
+    <div>
+        <button type="submit" class="primary">Create Route</button>
+    </div>
+</form>
+{% endblock %}

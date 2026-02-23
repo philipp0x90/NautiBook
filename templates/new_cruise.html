@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}New Cruise — NautiBook{% endblock %}
+
+{% block content %}
+<a href="/">← Back to Logbook</a>
+<h1 style="margin-top:8px">New Cruise</h1>
+
+<form method="POST" action="/cruise/new" class="card" style="margin-top:12px;display:grid;gap:14px;max-width:520px">
+    <div>
+        <label>Name</label>
+        <input type="text" name="name" placeholder="Summer 2025 — Med" required>
+    </div>
+    <div class="grid">
+        <div>
+            <label>Start date</label>
+            <input type="date" name="start_time">
+        </div>
+        <div>
+            <label>End date</label>
+            <input type="date" name="end_time">
+        </div>
+    </div>
+    <div>
+        <button type="submit" class="primary">Create Cruise</button>
+    </div>
+</form>
+{% endblock %}
