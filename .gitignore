@@ -1,3 +1,4 @@
 .boatenv
 __pycache__
 .DS_Store
+logbook.db
