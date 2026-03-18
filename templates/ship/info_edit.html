@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Modifier infos navire — NautiBook{% endblock %}
+{% block content %}
+
+{% set s = ship or {} %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ s.name or 'Navire' }}</div>
+    <div class="section-bar-title">Infos Navire — Modification</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<form method="POST" action="/ship/info/edit" style="display:flex;flex-direction:column;gap:24px;max-width:860px">
+
+    <!-- Informations générales -->
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Informations générales</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+            <div><label>Nom du navire</label><input type="text" name="name" value="{{ s.name or '' }}"></div>
+            <div><label>Port d'attache</label><input type="text" name="home_port" value="{{ s.home_port or '' }}"></div>
+            <div><label>Pavillon</label><input type="text" name="flag" value="{{ s.flag or '' }}" placeholder="FR"></div>
+            <div><label>MMSI #</label><input type="text" name="mmsi" value="{{ s.mmsi or '' }}"></div>
+            <div><label>Call sign #</label><input type="text" name="call_sign" value="{{ s.call_sign or '' }}"></div>
+            <div><label>Immatriculation #</label><input type="text" name="registration" value="{{ s.registration or '' }}"></div>
+            <div><label>Registre #</label><input type="text" name="registry" value="{{ s.registry or '' }}"></div>
+            <div><label>Délivré le</label><input type="date" name="issued_date" value="{{ s.issued_date or '' }}"></div>
+            <div><label>Valable jusqu'au</label><input type="date" name="valid_until" value="{{ s.valid_until or '' }}"></div>
+        </div>
+    </section>
+
+    <!-- Dimensions -->
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Dimensions</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+            <div><label>Longueur HT (m)</label><input type="number" step="0.01" name="loa" value="{{ s.loa or '' }}"></div>
+            <div><label>Longueur coque (m)</label><input type="number" step="0.01" name="hull_length" value="{{ s.hull_length or '' }}"></div>
+            <div><label>Longueur flottaison (m)</label><input type="number" step="0.01" name="waterline_length" value="{{ s.waterline_length or '' }}"></div>
+            <div><label>Surface (m²)</label><input type="number" step="0.01" name="surface" value="{{ s.surface or '' }}"></div>
+            <div><label>Largeur / Bau (m)</label><input type="number" step="0.01" name="beam" value="{{ s.beam or '' }}"></div>
+            <div><label>Tirant d'eau (m)</label><input type="number" step="0.01" name="draft" value="{{ s.draft or '' }}"></div>
+            <div><label>Tirant d'air (m)</label><input type="number" step="0.01" name="air_draft" value="{{ s.air_draft or '' }}"></div>
+            <div><label>Hauteur mât (m)</label><input type="number" step="0.01" name="mast_height" value="{{ s.mast_height or '' }}"></div>
+            <div><label>Hauteur sans mât (m)</label><input type="number" step="0.01" name="clearance_no_mast" value="{{ s.clearance_no_mast or '' }}"></div>
+            <div><label>Franc-bord</label><input type="text" name="freeboard" value="{{ s.freeboard or '' }}"></div>
+            <div><label>Déplacement (T)</label><input type="number" step="0.01" name="displacement" value="{{ s.displacement or '' }}"></div>
+            <div><label>Lest (T)</label><input type="number" step="0.01" name="ballast" value="{{ s.ballast or '' }}"></div>
+        </div>
+    </section>
+
+    <!-- Voiles & Réservoirs -->
+    <div style="display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start">
+        <section>
+            <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Voiles (m²)</h3>
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+                <div><label>Grand voile</label><input type="number" step="0.01" name="sail_main" value="{{ s.sail_main or '' }}"></div>
+                <div><label>Génois</label><input type="number" step="0.01" name="sail_genoa" value="{{ s.sail_genoa or '' }}"></div>
+                <div><label>Spinnaker</label><input type="number" step="0.01" name="sail_spinnaker" value="{{ s.sail_spinnaker or '' }}"></div>
+                <div><label>Trinquette</label><input type="number" step="0.01" name="sail_trinquette" value="{{ s.sail_trinquette or '' }}"></div>
+                <div><label>Voile de portant</label><input type="number" step="0.01" name="sail_portant" value="{{ s.sail_portant or '' }}"></div>
+            </div>
+        </section>
+        <section style="min-width:200px">
+            <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Réservoirs (L)</h3>
+            <div style="display:grid;gap:12px">
+                <div><label>Gasoil</label><input type="number" step="1" name="tank_fuel" value="{{ s.tank_fuel or '' }}"></div>
+                <div><label>Eau douce</label><input type="number" step="1" name="tank_water" value="{{ s.tank_water or '' }}"></div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Moteur -->
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Moteur</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+            <div><label>Marque</label><input type="text" name="engine_brand" value="{{ s.engine_brand or '' }}"></div>
+            <div><label>Modèle</label><input type="text" name="engine_model" value="{{ s.engine_model or '' }}"></div>
+            <div><label># Série</label><input type="text" name="engine_serial" value="{{ s.engine_serial or '' }}"></div>
+            <div><label>Puissance</label><input type="text" name="engine_power" value="{{ s.engine_power or '' }}" placeholder="30 CV"></div>
+            <div><label>Consommation (L/h)</label><input type="number" step="0.1" name="engine_consumption" value="{{ s.engine_consumption or '' }}"></div>
+            <div><label>Horamètre initial (h)</label><input type="number" step="0.1" name="engine_hours_initial" value="{{ s.engine_hours_initial or '' }}"></div>
+            <div><label>En date du</label><input type="date" name="engine_hours_date" value="{{ s.engine_hours_date or '' }}"></div>
+        </div>
+    </section>
+
+    <!-- Assurance -->
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Assurance</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+            <div><label>Compagnie</label><input type="text" name="insurance_company" value="{{ s.insurance_company or '' }}"></div>
+            <div><label>Police #</label><input type="text" name="insurance_policy" value="{{ s.insurance_policy or '' }}"></div>
+            <div><label>Date d'effet</label><input type="date" name="insurance_start" value="{{ s.insurance_start or '' }}"></div>
+            <div><label>Date de fin</label><input type="date" name="insurance_end" value="{{ s.insurance_end or '' }}"></div>
+        </div>
+    </section>
+
+    <!-- Divers -->
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Divers</h3>
+        <textarea name="misc_notes" rows="4" placeholder="Notes libres...">{{ s.misc_notes or '' }}</textarea>
+    </section>
+
+    <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <a href="/ship/info" class="btn" style="background:#eee;color:#333">Annuler</a>
+    </div>
+
+</form>
+
+{% endblock %}

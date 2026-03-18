@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Gallerie — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    body { background: #111; }
+    .wrap { background: #111; }
+    .photo-grid {
+        columns: 4 220px;
+        gap: 10px;
+        padding: 16px 0;
+    }
+    .photo-grid img {
+        width: 100%;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        display: block;
+        object-fit: cover;
+    }
+    footer { color: #555; border-top-color: #333; }
+    nav > ul > li > a { color: #ddd; }
+    nav > ul > li > a:hover { background: #333; }
+    nav > ul > li.active > a { background: var(--nav-active); color: #0f3a4a; }
+    .topbar { background: #222; border-bottom-color: #333; }
+    .topbar-logo-text { color: #aaa; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:flex;align-items:center;gap:10px;margin:16px 0">
+    <a href="/gallery/add" class="btn btn-yellow">+ Photo</a>
+</div>
+
+{% if photos %}
+<div class="photo-grid">
+    {% for p in photos %}
+    <img src="{{ p.photo_path }}" alt="{{ p.comment or '' }}" loading="lazy">
+    {% endfor %}
+</div>
+{% else %}
+<div class="stub" style="color:#555">
+    <div style="font-size:36px;margin-bottom:12px">📷</div>
+    <div>Aucune photo dans la gallerie.</div>
+    <div style="margin-top:16px">
+        <a href="/gallery/add" class="btn btn-yellow">+ Ajouter une photo</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

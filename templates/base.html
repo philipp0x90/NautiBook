@@ -1,87 +1,243 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>{% block title %}Boat Logbook{% endblock %}</title>
+    <title>{% block title %}NautiBook{% endblock %}</title>
     <style>
-        :root{
-            --max-width:1100px;
-            --muted:#6b7280;
-            --accent:#2b79c6;
-            --accent-dark:#1b5fa3;
-            --bg:#ffffff;
-            --card:#f6f9fb;
+        :root {
+            --max-width: 1280px;
+            --muted: #6b7280;
+            --accent: #2b79c6;
+            --accent-dark: #1b5fa3;
+            --bg: #f0f4f8;
+            --card: #ffffff;
+            --nav-active: #7dd3e8;
             font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
         }
-        html,body{height:100%;margin:0;background:var(--bg);color:#111}
-        /* Top centered rounded nav bar similar to screenshot */
-        .topbar-wrap{width:100%;display:flex;justify-content:center;padding:18px 12px}
-        .topbar{width:min(980px,96%);background:#fff;border-radius:10px;padding:8px 18px;box-shadow:0 6px 14px rgba(18,52,84,0.06);display:flex;align-items:center;gap:12px}
-        .topbar .left, .topbar .right{width:46px;height:46px;display:flex;align-items:center;justify-content:center;border-radius:8px}
-        .topbar .left{background:transparent}
-        .icon-circle{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#f1f5f8}
-        .brand-small{font-size:20px;color:var(--accent);font-weight:700;text-decoration:none}
-        nav.main-nav{flex:1;display:flex;justify-content:center}
-        nav ul{list-style:none;margin:0;padding:0;display:flex;gap:22px;align-items:center}
-        nav a{color:var(--accent-dark);text-decoration:none;font-weight:700;letter-spacing:1px;font-size:18px;padding:6px 6px}
-        nav li{position:relative}
-        /* dropdown */
-        nav .dropdown > a::after{content:'▾';display:inline-block;margin-left:6px;font-size:12px;color:var(--muted)}
-        nav .menu{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 10px);background:var(--card);padding:10px;border-radius:10px;box-shadow:0 8px 18px rgba(18,52,84,0.07);min-width:160px;display:none}
-        nav .menu a{display:block;padding:8px 10px;color:#0f172a;font-weight:600;text-decoration:none}
-        nav li:hover > .menu{display:block}
+        html, body { height: 100%; margin: 0; background: var(--bg); color: #111; }
 
-        .wrap{max-width:var(--max-width);margin:8px auto 36px;padding:0 12px}
-        main{min-height:60vh}
-        .card{background:var(--card);padding:16px;border-radius:8px;border:1px solid #e6eef6}
-        label{display:block;margin-bottom:6px;font-weight:600}
-        input,textarea,select{width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:15px}
-        button.primary{background:var(--accent);color:#fff;padding:10px 14px;border-radius:8px;border:0;cursor:pointer}
-        .meta{color:var(--muted);font-size:14px}
-        .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-        footer{margin-top:32px;color:var(--muted);font-size:13px}
-        @media (max-width:760px){
-            nav ul{gap:12px;font-size:15px}
-            .topbar{padding:6px 12px}
+        /* ── Topbar ── */
+        .topbar {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            padding: 10px 24px;
+            background: var(--card);
+            border-bottom: 1px solid #dde5ee;
+            box-sizing: border-box;
+            position: sticky;
+            top: 0;
+            z-index: 200;
+        }
+        .topbar-logo {
+            width: 52px;
+            flex-shrink: 0;
+            text-align: center;
+            text-decoration: none;
+        }
+        .topbar-logo-text {
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--accent-dark);
+            line-height: 1.15;
+            letter-spacing: 1px;
+        }
+
+        /* ── Nav ── */
+        nav.main-nav { flex: 1; display: flex; justify-content: center; }
+        nav ul { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; }
+        nav li { position: relative; }
+        nav > ul > li > a {
+            display: block;
+            padding: 7px 28px;
+            color: #222;
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 500;
+            border-radius: 20px;
+            white-space: nowrap;
+            transition: background 0.12s;
+        }
+        nav > ul > li > a:hover { background: #e8f4f9; }
+        nav > ul > li.active > a {
+            background: var(--nav-active);
+            font-weight: 600;
+            color: #0f3a4a;
+        }
+
+
+        /* Dropdown */
+        nav .dropdown-menu {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            top: 100%;
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(18,52,84,0.13);
+            min-width: 210px;
+            display: none;
+            z-index: 300;
+            padding: 10px 0 6px;
+        }
+        nav li:hover > .dropdown-menu { display: block; }
+        nav .dropdown-menu a {
+            display: block;
+            padding: 9px 18px;
+            color: #1a1a2e;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            border-radius: 8px;
+            margin: 2px 6px;
+        }
+        nav .dropdown-menu a:hover { background: #e8f4f9; }
+
+        .topbar-gear {
+            width: 44px;
+            flex-shrink: 0;
+            text-align: center;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--muted);
+            text-decoration: none;
+        }
+        .topbar-gear:hover { color: var(--accent-dark); }
+
+        /* ── Section sub-header bar ── */
+        .section-bar {
+            display: flex;
+            align-items: center;
+            background: #5bc8e0;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 14px 0 20px;
+        }
+        .section-bar-left {
+            min-width: 140px;
+            background: rgba(255,255,255,0.25);
+            border-radius: 16px;
+            padding: 3px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+        }
+        .section-bar-title {
+            flex: 1;
+            text-align: center;
+            font-size: 17px;
+            font-weight: 700;
+        }
+        .section-bar-right {
+            min-width: 80px;
+            background: rgba(255,255,255,0.25);
+            border-radius: 16px;
+            padding: 3px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        /* ── Layout ── */
+        .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 18px 48px; }
+        main { min-height: 60vh; }
+
+        /* ── Common components ── */
+        .card { background: var(--card); padding: 16px; border-radius: 8px; border: 1px solid #dde5ee; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 13px; color: var(--muted); }
+        input, textarea, select {
+            width: 100%; padding: 7px 10px; border: 1px solid #dde5ee;
+            border-radius: 6px; font-size: 14px; box-sizing: border-box;
+            background: #f8fafc;
+        }
+        input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); background: #fff; }
+        .btn { display: inline-block; padding: 8px 18px; border-radius: 20px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600; text-decoration: none; }
+        .btn-blue { background: #3bbfe0; color: #fff; }
+        .btn-orange { background: #f47c3c; color: #fff; }
+        .btn-yellow { background: #f5c842; color: #333; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn:hover { opacity: 0.88; }
+        button.primary { background: var(--accent); color: #fff; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600; }
+        .meta { color: var(--muted); font-size: 13px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+
+        /* ── Data table ── */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .data-table th { padding: 8px 10px; text-align: left; font-weight: 700; color: #fff; background: #5bc8e0; border-bottom: 2px solid #3aaec8; }
+        .data-table td { padding: 6px 10px; border-bottom: 1px solid #edf2f7; }
+        .data-table tr:hover td { background: #f0fafd; }
+        .data-table tfoot td { font-weight: 700; border-top: 2px solid #5bc8e0; }
+
+        /* ── Stub placeholder ── */
+        .stub { text-align: center; padding: 80px 0; color: var(--muted); font-size: 16px; }
+
+        /* ── Footer ── */
+        footer { text-align: center; padding: 28px 0 10px; color: var(--muted); font-size: 13px; border-top: 1px solid #dde5ee; margin-top: 40px; }
+
+        @media (max-width: 780px) {
+            nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
+            .topbar { padding: 8px 10px; }
         }
     </style>
     {% block head %}{% endblock %}
 </head>
 <body>
-    <div class="topbar-wrap">
-        <div class="topbar" role="banner">
-            <div class="left"><div class="icon-circle">⚓</div></div>
-            <nav class="main-nav" role="navigation" aria-label="Main">
-                <ul>
-                    <li><a href="#">Routes</a></li>
-                    <li class="dropdown">
-                        <a href="#">Croisières</a>
-                        <div class="menu" role="menu">
-                            <a href="#">Croisière</a>
-                            <a href="#">Liste des croisières</a>
-                            <a href="#">Equipiers</a>
-                            <a href="#">Escales</a>
-                        </div>
-                    </li>
-                    <li><a href="#">Navire</a></li>
-                    <li><a href="#">Météo</a></li>
-                    <li><a href="#">Carte</a></li>
-                </ul>
-            </nav>
-            <div class="right"><div class="icon-circle">⚙️</div></div>
-        </div>
-    </div>
 
-    <div class="wrap">
+<header class="topbar">
+    <a href="/" class="topbar-logo">
+        <div class="topbar-logo-text">NAUTI<br>BOOK</div>
+    </a>
 
-        <main>
-            {% block content %}{% endblock %}
-        </main>
+    <nav class="main-nav" role="navigation" aria-label="Main">
+        <ul>
+            <li class="{{ 'active' if active_section == 'ship' else '' }}">
+                <a href="/ship/info">{{ current_ship.name if current_ship is defined and current_ship else 'Navire' }}</a>
+                <div class="dropdown-menu">
+                    <a href="/ship/expenses">Dépenses</a>
+                    <a href="/ship/todo">To Do</a>
+                    <a href="/ship/fuel">Gasoil</a>
+                    <a href="/ship/info">Infos</a>
+                    <a href="/ship/contacts">Carnet d'adresses</a>
+                    <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
+                    <a href="/ship/select">Changer de navire</a>
+                </div>
+            </li>
+            <li class="{{ 'active' if active_section == 'cruises' else '' }}">
+                <a href="/cruises/current">Croisières</a>
+                <div class="dropdown-menu">
+                    <a href="/cruises/current">Croisière en cours</a>
+                    <a href="/cruises/stopovers">Escales</a>
+                    <a href="/cruises/list">Liste des croisières</a>
+                    <a href="/cruises/new">Nouvelle croisière</a>
+                </div>
+            </li>
+            <li class="{{ 'active' if active_section == 'routes' else '' }}">
+                <a href="/routes">Routes</a>
+            </li>
+            <li class="{{ 'active' if active_section == 'tools' else '' }}">
+                <a href="/tools/weather">Outils</a>
+                <div class="dropdown-menu">
+                    <a href="/tools/weather">Météo</a>
+                    <a href="/tools/chart">Carte</a>
+                </div>
+            </li>
+            <li class="{{ 'active' if active_section == 'gallery' else '' }}">
+                <a href="/gallery">Gallerie</a>
+            </li>
+        </ul>
+    </nav>
 
-        <footer>
-            <div>Simple server-rendered logbook • data stored in `logbook.db`</div>
-        </footer>
-    </div>
+    <a href="/settings" class="topbar-gear" title="Paramètres">⚙</a>
+</header>
+
+<div class="wrap">
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>— Nautibook —</footer>
+</div>
+
 </body>
 </html>

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Choisir un navire — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">Navires</div>
+    <div class="section-bar-title">Choisir un navire</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px;margin-bottom:24px">
+    {% for ship in ships %}
+    <div class="card" style="display:flex;flex-direction:column;gap:12px;
+        {{ 'border:2px solid var(--accent);' if ship.id == current_ship_id else '' }}">
+        <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:28px">⛵</div>
+            <div>
+                <div style="font-weight:700;font-size:16px">{{ ship.name or 'Navire sans nom' }}</div>
+                {% if ship.home_port %}
+                <div class="meta">{{ ship.home_port }}{% if ship.flag %} · {{ ship.flag }}{% endif %}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% if ship.id == current_ship_id %}
+        <div style="background:#dcfce7;color:#166534;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;text-align:center">
+            Navire actif
+        </div>
+        {% else %}
+        <form method="POST" action="/ship/select/{{ ship.id }}">
+            <button type="submit" class="btn btn-blue" style="width:100%">Sélectionner</button>
+        </form>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="stub" style="grid-column:1/-1">
+        <div style="font-size:36px;margin-bottom:12px">⛵</div>
+        <div>Aucun navire enregistré.</div>
+    </div>
+    {% endfor %}
+
+    <a href="/ship/new" class="card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:120px;border:2px dashed #dde5ee;text-decoration:none;color:var(--muted);cursor:pointer">
+        <div style="font-size:28px">＋</div>
+        <div style="font-weight:600">Nouveau navire</div>
+    </a>
+</div>
+
+{% endblock %}

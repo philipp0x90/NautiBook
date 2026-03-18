@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Nouveau contact — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">Nouveau contact</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<form method="POST" action="/ship/contacts/new" style="display:grid;gap:14px;max-width:600px">
+
+    <div class="grid">
+        <div>
+            <label>Société</label>
+            <input type="text" name="company" placeholder="Voilerie Dupont">
+        </div>
+        <div>
+            <label>Nom du contact</label>
+            <input type="text" name="contact_name" placeholder="Jean Dupont">
+        </div>
+    </div>
+
+    <div>
+        <label>Catégorie</label>
+        <select name="category">
+            <option value="">— Choisir —</option>
+            <option value="Gréement / Voiles">Gréement / Voiles</option>
+            <option value="Moteur">Moteur</option>
+            <option value="Électronique">Électronique</option>
+            <option value="Accastillage">Accastillage</option>
+            <option value="Chantier naval">Chantier naval</option>
+            <option value="Port / Capitainerie">Port / Capitainerie</option>
+            <option value="Assurance">Assurance</option>
+            <option value="Carburant">Carburant</option>
+            <option value="Autre">Autre</option>
+        </select>
+    </div>
+
+    <div class="grid">
+        <div>
+            <label>Téléphone</label>
+            <input type="tel" name="phone" placeholder="+33 6 12 34 56 78">
+        </div>
+        <div>
+            <label>Email</label>
+            <input type="email" name="email" placeholder="contact@example.com">
+        </div>
+    </div>
+
+    <div>
+        <label>Site web</label>
+        <input type="text" name="website" placeholder="https://...">
+    </div>
+
+    <div>
+        <label>Adresse</label>
+        <textarea name="address" rows="2" placeholder="1 rue de la Mer, 13000 Marseille"></textarea>
+    </div>
+
+    <div>
+        <label>Notes</label>
+        <textarea name="notes" rows="3" placeholder="Notes libres..."></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <a href="/ship/contacts" class="btn" style="background:#eee;color:#333">Annuler</a>
+    </div>
+
+</form>
+
+{% endblock %}

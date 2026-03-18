@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Carnet d'adresses — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">Carnet d'adresses</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
+    <a href="/ship/contacts/new" class="btn btn-yellow">+ Nouveau contact</a>
+</div>
+
+{% if contacts %}
+<div style="overflow-x:auto">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Société / Nom</th>
+                <th>Contact</th>
+                <th>Catégorie</th>
+                <th>Téléphone</th>
+                <th>Email</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in contacts %}
+            <tr>
+                <td><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
+                <td>{{ c.contact_name or '' }}</td>
+                <td>{{ c.category or '' }}</td>
+                <td>{{ c.phone or '' }}</td>
+                <td>{{ c.email or '' }}</td>
+                <td>
+                    <a href="/ship/contacts/{{ c.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="stub">
+    <div style="font-size:36px;margin-bottom:12px">📒</div>
+    <div>Aucun contact enregistré.</div>
+    <div style="margin-top:16px">
+        <a href="/ship/contacts/new" class="btn btn-yellow">+ Ajouter un contact</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

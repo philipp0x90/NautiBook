@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Nouvelle ligne — NautiBook{% endblock %}
+{% block content %}
+
+<div style="margin-bottom:4px" class="meta">
+    {{ route.cruise_name }} ›
+    {% if route.departure_location and route.destination_location %}
+        {{ route.departure_location }} → {{ route.destination_location }}
+    {% elif route.name %}
+        {{ route.name }}
+    {% else %}
+        Route #{{ route.id }}
+    {% endif %}
+</div>
+<h2 style="margin:0 0 18px;font-size:18px">Nouvelle ligne de bord</h2>
+
+<form method="POST" action="/routes/{{ route.id }}/new-line" class="card" style="display:grid;gap:12px">
+    <div class="grid">
+        <div>
+            <label>AWS (kn)</label>
+            <input type="number" step="any" name="aws" value="{{ data.aws if data else '' }}">
+        </div>
+        <div>
+            <label>AWA (°)</label>
+            <input type="number" step="any" name="awa" value="{{ data.awa if data else '' }}">
+        </div>
+        <div>
+            <label>TWS (kn)</label>
+            <input type="number" step="any" name="tws">
+        </div>
+        <div>
+            <label>TWA (°)</label>
+            <input type="number" step="any" name="twa">
+        </div>
+        <div>
+            <label>État de la mer</label>
+            <select name="sea_state">
+                {% for opt in ['Calme','Belle','Peu Agitée','Agitée','Forte','Très forte','Grosse','Très grosse','Énorme'] %}
+                <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Visibilité</label>
+            <select name="visibility">
+                {% for opt in ['Bonne','Moyenne','Mauvaise','Très Mauvaise'] %}
+                <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>T° eau (°C)</label>
+            <input type="number" step="any" name="water_temp" value="{{ data.water_temp if data else '' }}">
+        </div>
+        <div>
+            <label>P° Atmo. (hPa)</label>
+            <input type="number" step="any" name="pressure" value="{{ data.pressure if data else '' }}">
+        </div>
+        <div>
+            <label>Cap (°)</label>
+            <input type="number" step="any" name="heading" value="{{ data.heading if data else '' }}">
+        </div>
+        <div>
+            <label>COG (°)</label>
+            <input type="number" step="any" name="cog" value="{{ data.cog if data else '' }}">
+        </div>
+        <div>
+            <label>SOG (kn)</label>
+            <input type="number" step="any" name="sog" value="{{ data.sog if data else '' }}">
+        </div>
+        <div>
+            <label>STW (kn)</label>
+            <input type="number" step="any" name="stw" value="{{ data.stw if data else '' }}">
+        </div>
+        <div>
+            <label>Voiles</label>
+            <select name="sails">
+                {% for opt in ['Moteur','GV + Génois','GV 1 Ris + Génois','GV 2 Ris + Génois','GV + Moteur','+ Appui Moteur','Génois seul','GV seule','GV + Trinq.','GV 1 Ris + Trinq.','GV 2 Ris + Trinq.','Trinq. seule','À sec'] %}
+                <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Allure</label>
+            <select name="points_of_sail">
+                {% for opt in ['Près','Bon plein','Travers','Largue','Grand largue','Vent arrière','Cape','N/A','Vent debout'] %}
+                <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Log (NM)</label>
+            <input type="number" step="any" name="log" value="{{ data.log if data else '' }}">
+        </div>
+        <div>
+            <label>Trip (NM)</label>
+            <input type="number" step="any" name="trip" value="{{ data.trip if data else '' }}">
+        </div>
+        <div>
+            <label>Sonde (m)</label>
+            <input type="number" step="any" name="depth" value="{{ data.depth if data else '' }}">
+        </div>
+        <div>
+            <label>Latitude</label>
+            <input type="number" step="any" name="position_lat" value="{{ data.lat if data else '' }}">
+        </div>
+        <div>
+            <label>Longitude</label>
+            <input type="number" step="any" name="position_lon" value="{{ data.long if data else '' }}">
+        </div>
+    </div>
+
+    <div>
+        <label>Position (visuelle)</label>
+        <input type="text" name="visual_pos" placeholder="Bouée xyz, devant le cap...">
+    </div>
+
+    <div>
+        <label>Notes / Journal</label>
+        <textarea name="notes" rows="3" placeholder="Observations, événements..."></textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+        <button type="submit" class="primary">Enregistrer la ligne</button>
+        <a href="/routes/{{ route.id }}" style="padding:9px 16px;color:var(--muted);text-decoration:none;font-size:14px">Annuler</a>
+    </div>
+</form>
+
+{% endblock %}

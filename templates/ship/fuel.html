@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Gasoil — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">Gasoil</div>
+    <div class="section-bar-right">Ship #1</div>
+</div>
+
+<div class="stub">
+    <div style="font-size:36px;margin-bottom:12px">⛽</div>
+    <div>Suivi de carburant — à venir</div>
+</div>
+
+{% endblock %}

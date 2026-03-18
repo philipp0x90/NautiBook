@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Nouveau navire — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">Navires</div>
+    <div class="section-bar-title">Nouveau navire</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<form method="POST" action="/ship/new" style="display:grid;gap:14px;max-width:400px">
+    <div>
+        <label>Nom du navire <span style="color:#e05">*</span></label>
+        <input type="text" name="name" placeholder="Bébé Samba" required autofocus>
+    </div>
+    <p class="meta">Vous pourrez remplir tous les détails sur la page suivante.</p>
+    <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">Créer le navire</button>
+        <a href="/ship/select" class="btn" style="background:#eee;color:#333">Annuler</a>
+    </div>
+</form>
+
+{% endblock %}

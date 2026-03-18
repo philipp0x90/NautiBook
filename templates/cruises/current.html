@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Croisière en cours — NautiBook{% endblock %}
+{% block content %}
+
+{% if cruise %}
+
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+    <a href="/cruises/{{ cruise.id }}/delete" class="btn btn-orange"
+       onclick="return confirm('Supprimer cette croisière ?')">— Supprimer croisière</a>
+    <div style="flex:1;text-align:center">
+        <div style="font-size:20px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:10px 20px;display:inline-block">
+            {{ cruise.name or 'Croisière sans nom' }}
+        </div>
+    </div>
+    <a href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid #dde5ee;border-radius:8px;overflow:hidden;margin-bottom:16px">
+    <div style="padding:14px 20px;border-right:1px solid #dde5ee">
+        <span style="font-size:14px;color:var(--muted)">Départ :</span>
+        <strong style="font-size:16px;margin-left:8px">{{ cruise.start_time[:10] if cruise.start_time else '—' }}</strong>
+    </div>
+    <div style="padding:14px 20px;text-align:right">
+        <span style="font-size:14px;color:var(--muted)">Arrivée :</span>
+        <strong style="font-size:16px;margin-left:8px">{{ cruise.end_time[:10] if cruise.end_time else '—' }}</strong>
+    </div>
+</div>
+
+{% if routes %}
+<div style="overflow-x:auto;margin-bottom:16px">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Route #</th>
+                <th>Départ</th>
+                <th>De</th>
+                <th>À</th>
+                <th>Arrivée</th>
+                <th>Lignes</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in routes %}
+            <tr>
+                <td>{{ r.id }}</td>
+                <td style="white-space:nowrap">{{ r.start_time[:10] if r.start_time else '—' }}</td>
+                <td>{{ r.departure_location or '—' }}</td>
+                <td>{{ r.destination_location or '—' }}</td>
+                <td style="white-space:nowrap">{{ r.end_time[:10] if r.end_time else '—' }}</td>
+                <td>{{ r.line_count or 0 }}</td>
+                <td><a href="/routes/{{ r.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card" style="color:var(--muted);text-align:center;padding:24px">
+    Aucune route dans cette croisière.
+</div>
+{% endif %}
+
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">
+    <a href="/cruises/previous" class="btn btn-blue">← Croisière Préc.</a>
+    <div style="flex:1;text-align:center">
+        <a href="/cruises/{{ cruise.id }}/arrival" class="btn btn-blue">Arrivée</a>
+    </div>
+    <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
+    <a href="/cruises/next" class="btn btn-blue">Croisière Suiv. →</a>
+</div>
+
+{% else %}
+<div class="stub">
+    <div style="font-size:36px;margin-bottom:12px">⛵</div>
+    <div>Aucune croisière en cours.</div>
+    <div style="margin-top:16px">
+        <a href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

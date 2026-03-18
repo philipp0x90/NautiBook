@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Escales — NautiBook{% endblock %}
+{% block content %}
+
+<div style="display:flex;gap:10px;margin-bottom:20px">
+    <a href="/cruises/current" class="btn btn-blue" style="font-size:13px">Escales croisière en cours</a>
+    <span style="padding:8px 18px;background:#dde5ee;border-radius:20px;font-size:13px;font-weight:600">Toutes les escales</span>
+</div>
+
+{% if stopovers %}
+<div style="overflow-x:auto">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Crois.Route</th>
+                <th>Arrivée</th>
+                <th>Localité</th>
+                <th>Nom</th>
+                <th>Type</th>
+                <th style="text-align:right">Coût</th>
+                <th>Départ</th>
+                <th style="text-align:center">Nuits</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in stopovers %}
+            <tr>
+                <td>{{ s.route_id or '—' }}</td>
+                <td style="white-space:nowrap">{{ s.arrival_date or '—' }}</td>
+                <td>{{ s.locality or '' }}</td>
+                <td>{{ s.name or '' }}</td>
+                <td>{{ s.type or '' }}</td>
+                <td style="text-align:right">{{ ('%.2f €'|format(s.cost)) if s.cost is not none else '0,00 €' }}</td>
+                <td style="white-space:nowrap">{{ s.departure_date or '—' }}</td>
+                <td style="text-align:center">{{ s.nights or '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5" style="text-align:right">Total escales</td>
+                <td style="text-align:right">{{ '%.2f €'|format(stopovers|sum(attribute='cost') or 0) }}</td>
+                <td colspan="2"></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="stub">
+    <div style="font-size:36px;margin-bottom:12px">⚓</div>
+    <div>Aucune escale enregistrée.</div>
+</div>
+{% endif %}
+
+{% endblock %}

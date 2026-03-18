@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Météo — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">Outils</div>
+    <div class="section-bar-title">Météo</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<div style="border-radius:12px;overflow:hidden;border:1px solid #dde5ee;margin-bottom:20px">
+    <iframe
+        width="100%"
+        height="500"
+        src="https://embed.windy.com/embed2.html?lat={{ lat }}&lon={{ lon }}&detailLat={{ lat }}&detailLon={{ lon }}&width=650&height=500&zoom=8&level=surface&overlay=wind&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=true&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1"
+        frameborder="0"
+        style="display:block">
+    </iframe>
+</div>
+
+<p class="meta" style="text-align:center">Position affichée : {{ "%.4f"|format(lat) }}°N, {{ "%.4f"|format(lon) }}°E — dernière position enregistrée dans le journal de bord.</p>
+
+{% endblock %}

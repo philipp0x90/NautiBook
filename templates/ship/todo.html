@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}To Do — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">To Do</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
+    <a href="/ship/todo/new" class="btn btn-yellow">+ Nouvelle tâche</a>
+</div>
+
+{% if items %}
+
+{% set pending = items | selectattr('status', '!=', 'Terminé') | list %}
+{% set done = items | selectattr('status', '==', 'Terminé') | list %}
+
+{% if pending %}
+<h3 style="margin:0 0 8px;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">À faire ({{ pending|length }})</h3>
+<div style="display:grid;gap:8px;margin-bottom:24px">
+    {% for item in pending %}
+    {% set tags = (item.tags or '').split(',') | select | list %}
+    <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;
+        {{ 'border-left:4px solid #dc2626' if item.urgent else 'border-left:4px solid #dde5ee' }}">
+        <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:15px;margin-bottom:4px">
+                {% if item.urgent %}<span style="color:#dc2626;font-size:12px;font-weight:700;margin-right:6px">URGENT</span>{% endif %}
+                {{ item.task }}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                {% if item.due_date %}
+                <span style="font-size:12px;color:var(--muted)">Échéance : <strong>{{ item.due_date }}</strong></span>
+                {% endif %}
+                {% if item.status == 'En cours' %}
+                <span style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:600">En cours</span>
+                {% endif %}
+                {% for tag in tags %}
+                <span style="background:#f0f4f8;border:1px solid #dde5ee;border-radius:10px;padding:1px 9px;font-size:11px;color:#555">{{ tag }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+            <form method="POST" action="/ship/todo/{{ item.id }}/done">
+                <button type="submit" class="btn" style="background:#dcfce7;color:#166534;padding:4px 10px;font-size:12px" title="Marquer comme terminé">✓ Fait</button>
+            </form>
+            <a href="/ship/todo/{{ item.id }}/edit" class="btn" style="background:#e0f2fe;color:#0369a1;padding:4px 10px;font-size:12px">Modifier</a>
+            <form method="POST" action="/ship/todo/{{ item.id }}/delete"
+                  onsubmit="return confirm('Supprimer cette tâche ?')">
+                <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:4px 10px;font-size:12px">✕</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if done %}
+<details {{ 'open' if not pending else '' }}>
+    <summary style="cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;list-style:none;display:flex;align-items:center;gap:8px">
+        <span>▶</span> Terminées ({{ done|length }})
+    </summary>
+    <div style="display:grid;gap:6px;margin-top:8px">
+        {% for item in done %}
+        {% set tags = (item.tags or '').split(',') | select | list %}
+        <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;opacity:.7;border-left:4px solid #86efac">
+            <div style="flex:1;min-width:0">
+                <div style="font-weight:500;font-size:14px;text-decoration:line-through;margin-bottom:3px">{{ item.task }}</div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                    {% if item.completed_at %}
+                    <span style="font-size:12px;color:var(--muted)">Terminé le : <strong>{{ item.completed_at }}</strong></span>
+                    {% endif %}
+                    {% for tag in tags %}
+                    <span style="background:#f0f4f8;border:1px solid #dde5ee;border-radius:10px;padding:1px 9px;font-size:11px;color:#555">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+                <a href="/ship/todo/{{ item.id }}/edit" class="btn" style="background:#e0f2fe;color:#0369a1;padding:3px 9px;font-size:11px">Modifier</a>
+                <form method="POST" action="/ship/todo/{{ item.id }}/delete"
+                      onsubmit="return confirm('Supprimer cette tâche ?')">
+                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:3px 9px;font-size:11px">✕</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</details>
+{% endif %}
+
+{% else %}
+<div class="stub">
+    <div style="font-size:36px;margin-bottom:12px">✅</div>
+    <div>Aucune tâche enregistrée.</div>
+    <div style="margin-top:16px">
+        <a href="/ship/todo/new" class="btn btn-yellow">+ Première tâche</a>
+    </div>
+</div>
+{% endif %}
+
+<style>
+details summary::-webkit-details-marker { display: none; }
+details[open] summary span:first-child { transform: rotate(90deg); display:inline-block; }
+</style>
+
+{% endblock %}

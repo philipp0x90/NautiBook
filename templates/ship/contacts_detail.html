@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{{ contact.company or contact.contact_name or 'Contact' }} — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
+    <div class="section-bar-right">{{ contact.category or '' }}</div>
+</div>
+
+<div style="display:flex;gap:10px;margin-bottom:16px">
+    <a href="/ship/contacts" class="btn" style="background:#eee;color:#333">← Retour</a>
+</div>
+
+<div style="display:grid;gap:20px">
+
+    <section class="card">
+        <h3 style="margin:0 0 12px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Informations</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+            {% for label, val in [
+                ('Société', contact.company),
+                ('Contact', contact.contact_name),
+                ('Catégorie', contact.category),
+                ('Téléphone', contact.phone),
+                ('Email', contact.email),
+                ('Site web', contact.website),
+            ] %}
+            <div>
+                <div class="meta">{{ label }}</div>
+                <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">
+                    {% if label == 'Email' and val %}
+                        <a href="mailto:{{ val }}" style="color:var(--accent)">{{ val }}</a>
+                    {% elif label == 'Téléphone' and val %}
+                        <a href="tel:{{ val }}" style="color:var(--accent)">{{ val }}</a>
+                    {% else %}
+                        {{ val or '—' }}
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% if contact.address %}
+        <div style="margin-top:12px">
+            <div class="meta">Adresse</div>
+            <div style="background:#e8f4f9;border-radius:6px;padding:8px 10px;margin-top:2px;white-space:pre-line">{{ contact.address }}</div>
+        </div>
+        {% endif %}
+        {% if contact.notes %}
+        <div style="margin-top:12px">
+            <div class="meta">Notes</div>
+            <div style="background:#e8f4f9;border-radius:6px;padding:8px 10px;margin-top:2px;white-space:pre-line">{{ contact.notes }}</div>
+        </div>
+        {% endif %}
+    </section>
+
+    <section>
+        <h3 style="margin:0 0 12px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">
+            Historique des achats
+            {% if purchases %}<span class="meta" style="font-weight:400;font-size:13px">({{ purchases|length }})</span>{% endif %}
+        </h3>
+
+        {% if purchases %}
+        <div style="overflow-x:auto">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Désignation</th>
+                        <th>Catégorie</th>
+                        <th style="text-align:right">Montant</th>
+                        <th>Paiement</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in purchases %}
+                    <tr>
+                        <td style="white-space:nowrap">{{ p.date or '' }}</td>
+                        <td>{{ p.designation or '' }}</td>
+                        <td>{{ p.category or '' }}</td>
+                        <td style="text-align:right">{{ ('%.2f €'|format(p.paid)) if p.paid is not none else '' }}</td>
+                        <td>{{ p.payment or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3">Total</td>
+                        <td style="text-align:right">{{ '%.2f €'|format((purchases | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) }}</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <div class="card" style="color:var(--muted);text-align:center;padding:24px">
+            Aucun achat enregistré avec ce fournisseur.
+        </div>
+        {% endif %}
+    </section>
+
+</div>
+
+{% endblock %}

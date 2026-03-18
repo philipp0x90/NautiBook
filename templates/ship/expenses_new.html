@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Nouvelle dépense — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">Nouvelle dépense</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<form method="POST" action="/ship/expenses/new" style="display:grid;gap:14px;max-width:680px">
+
+    <div class="grid" style="grid-template-columns:1fr 2fr">
+        <div>
+            <label>Date</label>
+            <input type="date" name="date" value="{{ today }}">
+        </div>
+        <div>
+            <label>Désignation</label>
+            <input type="text" name="designation" placeholder="Remplacement winch tribord" required>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div>
+            <label>Type de frais</label>
+            <select name="expense_type">
+                <option value="">—</option>
+                <option value="Matériel">Matériel</option>
+                <option value="Main d'œuvre">Main d'œuvre</option>
+                <option value="Carburant">Carburant</option>
+                <option value="Port">Port</option>
+                <option value="Assurance">Assurance</option>
+                <option value="Divers">Divers</option>
+            </select>
+        </div>
+        <div>
+            <label>Catégorie</label>
+            <select name="category">
+                <option value="">—</option>
+                <option value="Gréement">Gréement</option>
+                <option value="Moteur">Moteur</option>
+                <option value="Électronique">Électronique</option>
+                <option value="Coque / Structure">Coque / Structure</option>
+                <option value="Sécurité">Sécurité</option>
+                <option value="Voiles">Voiles</option>
+                <option value="Pont / Cockpit">Pont / Cockpit</option>
+                <option value="Intérieur">Intérieur</option>
+                <option value="Divers">Divers</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+        <div>
+            <label>Unité</label>
+            <select name="unit_type">
+                <option value="">—</option>
+                <option value="Forfait">Forfait</option>
+                <option value="Pièce">Pièce</option>
+                <option value="Heure">Heure</option>
+                <option value="Litre">Litre</option>
+                <option value="Mètre">Mètre</option>
+            </select>
+        </div>
+        <div>
+            <label>PU TVAc (€)</label>
+            <input type="number" name="unit_price" step="0.01" min="0" placeholder="0.00"
+                   oninput="calcBalance()">
+        </div>
+        <div>
+            <label>Payé (€)</label>
+            <input type="number" name="paid" id="paid" step="0.01" min="0" placeholder="0.00"
+                   oninput="calcBalance()">
+        </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+        <div>
+            <label>Mode de paiement</label>
+            <select name="payment">
+                <option value="">—</option>
+                <option value="Carte">Carte</option>
+                <option value="Espèces">Espèces</option>
+                <option value="Virement">Virement</option>
+                <option value="Chèque">Chèque</option>
+            </select>
+        </div>
+        <div>
+            <label>Fournisseur</label>
+            {% if contacts %}
+            <select name="supplier">
+                <option value="">— Saisir manuellement —</option>
+                {% for c in contacts %}
+                <option value="{{ c.company or c.contact_name }}">{{ c.company or c.contact_name }}</option>
+                {% endfor %}
+            </select>
+            {% else %}
+            <input type="text" name="supplier" placeholder="Voilerie Dupont">
+            {% endif %}
+        </div>
+    </div>
+
+    <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
+    </div>
+
+</form>
+
+<script>
+function calcBalance() {
+    const up = parseFloat(document.querySelector('[name=unit_price]').value) || 0;
+    const paid = parseFloat(document.querySelector('[name=paid]').value) || 0;
+}
+</script>
+
+{% endblock %}

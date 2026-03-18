@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Dépenses — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">Dépenses</div>
+    <div class="section-bar-right"></div>
+</div>
+
+<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
+    <a href="/ship/expenses/new" class="btn btn-yellow">+ Nouvelle dépense</a>
+</div>
+
+{% if entries %}
+<div style="overflow-x:auto">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Désignation</th>
+                <th>Unité</th>
+                <th>Type frais</th>
+                <th>Catégorie</th>
+                <th>Paiement</th>
+                <th>Fournisseur</th>
+                <th style="text-align:right">PU TVAc</th>
+                <th style="text-align:right">Payé</th>
+                <th style="text-align:right">Solde</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in entries %}
+            <tr>
+                <td style="white-space:nowrap">{{ e.date or '' }}</td>
+                <td>{{ e.designation or '' }}</td>
+                <td>{{ e.unit_type or '' }}</td>
+                <td>{{ e.expense_type or '' }}</td>
+                <td>{{ e.category or '' }}</td>
+                <td>{{ e.payment or '' }}</td>
+                <td>
+                    {% if e.supplier %}
+                    <a href="/ship/contacts?q={{ e.supplier }}" style="color:var(--accent);text-decoration:none">{{ e.supplier }}</a>
+                    {% endif %}
+                </td>
+                <td style="text-align:right">{{ ('%.2f €'|format(e.unit_price)) if e.unit_price is not none else '' }}</td>
+                <td style="text-align:right">{{ ('%.2f €'|format(e.paid)) if e.paid is not none else '' }}</td>
+                <td style="text-align:right">{{ ('%.2f €'|format(e.balance)) if e.balance is not none else '' }}</td>
+                <td>
+                    <form method="POST" action="/ship/expenses/{{ e.id }}/delete"
+                          onsubmit="return confirm('Supprimer cette dépense ?')">
+                        <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="7">Total</td>
+                <td></td>
+                <td style="text-align:right">{{ '%.2f €'|format((entries | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) }}</td>
+                <td style="text-align:right">{{ '%.2f €'|format((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="stub">
+    <div style="font-size:36px;margin-bottom:12px">💰</div>
+    <div>Aucune dépense enregistrée.</div>
+    <div style="margin-top:16px">
+        <a href="/ship/expenses/new" class="btn btn-yellow">+ Première dépense</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

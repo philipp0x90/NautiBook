@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Modifier tâche — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div class="section-bar-title">Modifier tâche</div>
+    <div class="section-bar-right"></div>
+</div>
+
+{% set current_tags = (item.tags or '').split(',') %}
+
+<form method="POST" action="/ship/todo/{{ item.id }}/edit" style="display:grid;gap:14px;max-width:560px">
+
+    <div>
+        <label>Tâche <span style="color:#e05">*</span></label>
+        <textarea name="task" rows="3" required>{{ item.task }}</textarea>
+    </div>
+
+    <div class="grid">
+        <div>
+            <label>Statut</label>
+            <select name="status">
+                <option value="A faire" {{ 'selected' if item.status == 'A faire' else '' }}>À faire</option>
+                <option value="En cours" {{ 'selected' if item.status == 'En cours' else '' }}>En cours</option>
+                <option value="Terminé" {{ 'selected' if item.status == 'Terminé' else '' }}>Terminé</option>
+            </select>
+        </div>
+        <div>
+            <label>Échéance</label>
+            <input type="date" name="due_date" value="{{ item.due_date or '' }}">
+        </div>
+    </div>
+
+    <div class="grid">
+        <div>
+            <label>Date de réalisation</label>
+            <input type="date" name="completed_at" value="{{ item.completed_at or '' }}">
+        </div>
+        <div style="display:flex;flex-direction:column;justify-content:flex-end">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#dc2626;margin-bottom:0">
+                <input type="checkbox" name="urgent" value="1" style="width:auto;accent-color:#dc2626"
+                       {{ 'checked' if item.urgent else '' }}>
+                Urgent
+            </label>
+        </div>
+    </div>
+
+    <div>
+        <label>Tags</label>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px" id="tag-pills">
+            {% for tag in ['À faire ensuite', 'En attente de pièces', 'En attente devis', 'Récurrent', 'Hiver'] %}
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:#f0f4f8;border:1px solid #dde5ee;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:500;color:#444">
+                <input type="checkbox" name="tag_{{ loop.index }}" value="{{ tag }}"
+                       style="width:auto"
+                       {{ 'checked' if tag in current_tags else '' }}
+                       onchange="updateTags()">
+                {{ tag }}
+            </label>
+            {% endfor %}
+        </div>
+        <input type="hidden" name="tags" id="tags-hidden" value="{{ item.tags or '' }}">
+    </div>
+
+    <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <a href="/ship/todo" class="btn" style="background:#eee;color:#333">Annuler</a>
+    </div>
+
+</form>
+
+<script>
+function updateTags() {
+    const checked = [...document.querySelectorAll('#tag-pills input:checked')].map(el => el.value);
+    document.getElementById('tags-hidden').value = checked.join(',');
+}
+</script>
+
+{% endblock %}
