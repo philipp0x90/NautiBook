@@ -2,3 +2,5 @@
 __pycache__
 .DS_Store
 logbook.db
+claude_todo.md
+*.pdf
