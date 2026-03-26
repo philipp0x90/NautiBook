@@ -74,7 +74,7 @@
                 <tbody>
                     {% for p in purchases %}
                     <tr>
-                        <td style="white-space:nowrap">{{ p.date or '' }}</td>
+                        <td style="white-space:nowrap">{{ p.date | datefr if p.date else '' }}</td>
                         <td>{{ p.designation or '' }}</td>
                         <td>{{ p.category or '' }}</td>
                         <td style="text-align:right">{{ ('%.2f €'|format(p.paid)) if p.paid is not none else '' }}</td>

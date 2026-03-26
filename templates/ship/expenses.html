@@ -33,7 +33,7 @@
         <tbody>
             {% for e in entries %}
             <tr>
-                <td style="white-space:nowrap">{{ e.date or '' }}</td>
+                <td style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
                 <td>{{ e.designation or '' }}</td>
                 <td>{{ e.unit_type or '' }}</td>
                 <td>{{ e.expense_type or '' }}</td>

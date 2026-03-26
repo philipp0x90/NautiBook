@@ -35,8 +35,8 @@
                 <td style="font-weight:700">{{ '%03d'|format(c.id) }}</td>
                 <td>{{ c.departure or '—' }}</td>
                 <td>{{ c.destination or '—' }}</td>
-                <td style="white-space:nowrap">{{ c.start_time[:10] if c.start_time else '—' }}</td>
-                <td style="white-space:nowrap">{{ c.end_time[:10] if c.end_time else '—' }}</td>
+                <td style="white-space:nowrap">{{ c.start_time | datefr }}</td>
+                <td style="white-space:nowrap">{{ c.end_time | datefr }}</td>
                 <td style="text-align:center">{{ c.duration_days or '—' }}</td>
                 <td style="text-align:right">{{ c.loch_start or '—' }}</td>
                 <td style="text-align:right">{{ c.loch_end or '—' }}</td>

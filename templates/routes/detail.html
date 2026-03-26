@@ -213,14 +213,36 @@
         <h4>Escales</h4>
         <div style="display:flex;gap:8px;margin-bottom:12px">
             <a href="/routes/{{ route.id }}/stopovers/new" class="btn btn-yellow" style="padding:5px 14px;font-size:12px">+ Nouvelle escale</a>
-            <a href="/cruises/stopovers" class="btn btn-blue" style="padding:5px 14px;font-size:12px">Liste escales</a>
+            <a href="/cruises/stopovers" class="btn btn-blue" style="padding:5px 14px;font-size:12px">Toutes les escales</a>
         </div>
         {% if stopovers %}
         {% for s in stopovers %}
-        <div style="font-size:13px;border-bottom:1px solid #edf2f7;padding:6px 0">
-            <div style="font-weight:600">{{ s.name or s.locality or 'Escale' }}</div>
-            <div class="meta">{{ s.type or '' }}{% if s.cost %} — {{ '%.2f €'|format(s.cost) }}{% endif %}</div>
-            <div class="meta">{{ s.locality or '' }}</div>
+        <div style="font-size:13px;border-bottom:1px solid #edf2f7;padding:8px 0;display:flex;align-items:flex-start;gap:8px">
+            <div style="flex:1;min-width:0">
+                <div style="font-weight:600">
+                    {{ s.name or s.locality or 'Escale' }}
+                    {% if s.type %}
+                    <span style="background:{{ '#dbeafe' if s.type == 'Port' else ('#dcfce7' if s.type == 'Mouillage' else '#fef9c3') }};
+                                 color:{{ '#1e40af' if s.type == 'Port' else ('#166534' if s.type == 'Mouillage' else '#854d0e') }};
+                                 border-radius:8px;padding:1px 7px;font-size:11px;font-weight:600;margin-left:4px">
+                        {{ s.type }}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if s.locality and s.name %}<div class="meta">{{ s.locality }}</div>{% endif %}
+                <div class="meta">
+                    {{ s.arrival_date | datefr if s.arrival_date else '' }}{% if s.arrival_date and s.departure_date %} → {{ s.departure_date | datefr }}{% endif %}
+                    {% if s.cost and s.cost > 0 %} — {{ '%.2f €'|format(s.cost) }}{% endif %}
+                </div>
+                {% if s.notes %}<div class="meta" style="font-style:italic;margin-top:2px">{{ s.notes }}</div>{% endif %}
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+                <a href="/stopovers/{{ s.id }}/edit" class="btn" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;font-size:11px">✎</a>
+                <form method="POST" action="/stopovers/{{ s.id }}/delete"
+                      onsubmit="return confirm('Supprimer cette escale ?')">
+                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:2px 8px;font-size:11px">✕</button>
+                </form>
+            </div>
         </div>
         {% endfor %}
         {% else %}

@@ -195,10 +195,10 @@
             <li class="{{ 'active' if active_section == 'ship' else '' }}">
                 <a href="/ship/info">{{ current_ship.name if current_ship is defined and current_ship else 'Navire' }}</a>
                 <div class="dropdown-menu">
-                    <a href="/ship/expenses">Dépenses</a>
+                    <a href="/ship/info">Infos</a>
                     <a href="/ship/todo">To Do</a>
                     <a href="/ship/fuel">Gasoil</a>
-                    <a href="/ship/info">Infos</a>
+                    <a href="/ship/expenses">Dépenses</a>
                     <a href="/ship/contacts">Carnet d'adresses</a>
                     <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
                     <a href="/ship/select">Changer de navire</a>
@@ -207,10 +207,10 @@
             <li class="{{ 'active' if active_section == 'cruises' else '' }}">
                 <a href="/cruises/current">Croisières</a>
                 <div class="dropdown-menu">
+                    <a href="/cruises/new">Nouvelle croisière</a>
                     <a href="/cruises/current">Croisière en cours</a>
                     <a href="/cruises/stopovers">Escales</a>
                     <a href="/cruises/list">Liste des croisières</a>
-                    <a href="/cruises/new">Nouvelle croisière</a>
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'routes' else '' }}">

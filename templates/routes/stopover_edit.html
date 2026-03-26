@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Modifier escale — NautiBook{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left">{{ stopover.cruise_name or 'Croisière' }}</div>
+    <div class="section-bar-title">Modifier escale</div>
+    <div class="section-bar-right">
+        {{ stopover.departure_location or '' }}{% if stopover.departure_location and stopover.destination_location %} → {% endif %}{{ stopover.destination_location or '' }}
+    </div>
+</div>
+
+<form method="POST" action="/stopovers/{{ stopover.id }}/edit" style="display:grid;gap:14px;max-width:580px">
+
+    <div class="grid">
+        <div>
+            <label>Localité</label>
+            <input type="text" name="locality" value="{{ stopover.locality or '' }}" placeholder="Ajaccio">
+        </div>
+        <div>
+            <label>Nom (port / mouillage)</label>
+            <input type="text" name="name" value="{{ stopover.name or '' }}" placeholder="Port Tino Rossi">
+        </div>
+    </div>
+
+    <div>
+        <label>Type</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+            {% for t in ['Port', 'Mouillage', 'Bouée'] %}
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;background:#f0f4f8;border:1px solid #dde5ee;border-radius:20px;padding:6px 16px;font-size:14px;font-weight:500">
+                <input type="radio" name="type" value="{{ t }}" style="width:auto;accent-color:var(--accent)"
+                       {{ 'checked' if stopover.type == t else '' }}>
+                {{ t }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="grid">
+        <div>
+            <label>Date d'arrivée</label>
+            <input type="date" name="arrival_date" id="arrival_date"
+                   value="{{ stopover.arrival_date or '' }}" oninput="autoCalc()">
+        </div>
+        <div>
+            <label>Date de départ</label>
+            <input type="date" name="departure_date" id="departure_date"
+                   value="{{ stopover.departure_date or '' }}" oninput="autoCalc()">
+        </div>
+    </div>
+
+    <div class="grid">
+        <div>
+            <label>Coût / nuit (€)</label>
+            <input type="number" name="cost_per_night" id="cost_per_night" step="0.01" min="0"
+                   value="{{ stopover.cost_per_night or '' }}" placeholder="0.00" oninput="autoCalc()">
+        </div>
+        <div>
+            <label>Coût total (€) <span class="meta" style="font-weight:400" id="nights-label"></span></label>
+            <input type="number" name="cost" id="cost_total" step="0.01" min="0"
+                   value="{{ stopover.cost or '' }}" placeholder="0.00">
+        </div>
+    </div>
+
+    <div>
+        <label>Notes</label>
+        <textarea name="notes" rows="3" placeholder="Qualité du mouillage, services disponibles...">{{ stopover.notes or '' }}</textarea>
+    </div>
+
+    <div style="display:flex;gap:10px">
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <a href="/routes/{{ stopover.route_id }}" class="btn" style="background:#eee;color:#333">Annuler</a>
+    </div>
+
+</form>
+
+<script>
+function autoCalc() {
+    const arr = document.getElementById('arrival_date').value;
+    const dep = document.getElementById('departure_date').value;
+    const cpn = parseFloat(document.getElementById('cost_per_night').value) || 0;
+    const label = document.getElementById('nights-label');
+    if (arr && dep) {
+        const nights = Math.round((new Date(dep) - new Date(arr)) / 86400000);
+        if (nights > 0) {
+            label.textContent = `(${nights} nuit${nights > 1 ? 's' : ''})`;
+            return;
+        }
+    }
+    label.textContent = '';
+}
+// Show nights on page load
+autoCalc();
+</script>
+
+{% endblock %}

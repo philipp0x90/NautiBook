@@ -12,6 +12,20 @@ DATABASE_URL = "logbook.db"
 templates = Jinja2Templates(directory="templates")
 
 
+def _datefr(value):
+    """Convert YYYY-MM-DD (or ISO datetime) to DD/MM/YYYY for display."""
+    if not value:
+        return "—"
+    s = str(value)
+    # Only convert strings that start with YYYY-MM-DD
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-" and s[:4].isdigit() and s[5:7].isdigit() and s[8:10].isdigit():
+        return f"{s[8:10]}/{s[5:7]}/{s[:4]}"
+    return s
+
+
+templates.env.filters["datefr"] = _datefr
+
+
 async def init_db():
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute("PRAGMA foreign_keys = ON;")
@@ -195,6 +209,8 @@ async def init_db():
                 name TEXT,
                 type TEXT,
                 cost REAL DEFAULT 0,
+                cost_per_night REAL,
+                notes TEXT,
                 arrival_date TEXT,
                 departure_date TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -243,6 +259,8 @@ async def init_db():
             "ALTER TABLE expenses ADD COLUMN ship_id INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE contacts ADD COLUMN ship_id INTEGER NOT NULL DEFAULT 1",
             "ALTER TABLE bosco_entries RENAME TO expenses",
+            "ALTER TABLE stopovers ADD COLUMN cost_per_night REAL",
+            "ALTER TABLE stopovers ADD COLUMN notes TEXT",
         ]:
             try:
                 await db.execute(stmt)
@@ -767,24 +785,39 @@ async def current_cruise(request: Request):
             "SELECT * FROM cruises ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1"
         )
         cruise = await cursor.fetchone()
-        routes = []
-        if cruise:
-            cursor = await db.execute(
-                """SELECT r.*,
-                          (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
-                   FROM routes r
-                   WHERE r.cruise_id = ?
-                   ORDER BY COALESCE(r.start_time, r.created_at) ASC""",
-                (cruise["id"],),
+        if cruise is None:
+            return templates.TemplateResponse(
+                "cruises/detail.html",
+                {"request": request, "active_section": "cruises",
+                 "cruise": None, "routes": [],
+                 "prev_cruise_id": None, "next_cruise_id": None},
             )
-            routes = await cursor.fetchall()
+        cruise_id = cruise["id"]
+        cursor = await db.execute(
+            """SELECT r.*,
+                      (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
+               FROM routes r WHERE r.cruise_id = ?
+               ORDER BY COALESCE(r.start_time, r.created_at) ASC""",
+            (cruise_id,),
+        )
+        routes = await cursor.fetchall()
+        cursor = await db.execute(
+            "SELECT id FROM cruises WHERE id < ? ORDER BY id DESC LIMIT 1", (cruise_id,)
+        )
+        prev_cruise = await cursor.fetchone()
+        cursor = await db.execute(
+            "SELECT id FROM cruises WHERE id > ? ORDER BY id ASC LIMIT 1", (cruise_id,)
+        )
+        next_cruise = await cursor.fetchone()
     return templates.TemplateResponse(
-        "cruises/current.html",
+        "cruises/detail.html",
         {
             "request": request,
             "active_section": "cruises",
-            "cruise": dict(cruise) if cruise else None,
+            "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
+            "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
+            "next_cruise_id": next_cruise["id"] if next_cruise else None,
         },
     )
 
@@ -822,8 +855,12 @@ async def all_stopovers(request: Request):
                           CASE WHEN s.arrival_date IS NOT NULL AND s.departure_date IS NOT NULL
                           THEN julianday(s.departure_date) - julianday(s.arrival_date)
                           ELSE NULL END AS INTEGER
-                      ) AS nights
+                      ) AS nights,
+                      r.departure_location, r.destination_location,
+                      c.name AS cruise_name, c.id AS cruise_id
                FROM stopovers s
+               LEFT JOIN routes r ON s.route_id = r.id
+               LEFT JOIN cruises c ON r.cruise_id = c.id
                ORDER BY s.arrival_date DESC"""
         )
         stopovers = await cursor.fetchall()
@@ -845,6 +882,64 @@ async def new_cruise_form(request: Request):
     )
 
 
+@app.get("/cruises/{cruise_id}", response_class=HTMLResponse)
+async def cruise_detail(request: Request, cruise_id: int):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM cruises WHERE id = ?", (cruise_id,))
+        cruise = await cursor.fetchone()
+        if cruise is None:
+            raise HTTPException(status_code=404, detail="Cruise not found")
+        cursor = await db.execute(
+            """SELECT r.*,
+                      (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
+               FROM routes r
+               WHERE r.cruise_id = ?
+               ORDER BY COALESCE(r.start_time, r.created_at) ASC""",
+            (cruise_id,),
+        )
+        routes = await cursor.fetchall()
+        cursor = await db.execute(
+            "SELECT id FROM cruises WHERE id < ? ORDER BY id DESC LIMIT 1", (cruise_id,)
+        )
+        prev_cruise = await cursor.fetchone()
+        cursor = await db.execute(
+            "SELECT id FROM cruises WHERE id > ? ORDER BY id ASC LIMIT 1", (cruise_id,)
+        )
+        next_cruise = await cursor.fetchone()
+    return templates.TemplateResponse(
+        "cruises/detail.html",
+        {
+            "request": request,
+            "active_section": "cruises",
+            "cruise": dict(cruise),
+            "routes": [dict(r) for r in routes],
+            "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
+            "next_cruise_id": next_cruise["id"] if next_cruise else None,
+        },
+    )
+
+
+@app.post("/cruises/{cruise_id}/arrival")
+async def cruise_arrival(cruise_id: int):
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            "UPDATE cruises SET end_time = ? WHERE id = ?",
+            (now, cruise_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+
+
+@app.post("/cruises/{cruise_id}/delete")
+async def delete_cruise(cruise_id: int):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute("DELETE FROM cruises WHERE id = ?", (cruise_id,))
+        await db.commit()
+    return RedirectResponse(url="/cruises/list", status_code=303)
+
+
 @app.post("/cruises/new")
 async def create_cruise(
     name: str = Form(...),
@@ -860,6 +955,131 @@ async def create_cruise(
         )
         await db.commit()
     return RedirectResponse(url="/cruises/list", status_code=303)
+
+
+# ── Stopovers ────────────────────────────────────────────────────────────────
+
+@app.get("/routes/{route_id}/stopovers/new", response_class=HTMLResponse)
+async def new_stopover_form(request: Request, route_id: int):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT r.*, c.name AS cruise_name
+               FROM routes r LEFT JOIN cruises c ON r.cruise_id = c.id
+               WHERE r.id = ?""",
+            (route_id,),
+        )
+        route = await cursor.fetchone()
+    if route is None:
+        raise HTTPException(status_code=404, detail="Route not found")
+    return templates.TemplateResponse(
+        "routes/stopover_new.html",
+        {"request": request, "active_section": "routes", "route": dict(route)},
+    )
+
+
+@app.post("/routes/{route_id}/stopovers/new")
+async def create_stopover(
+    route_id: int,
+    locality: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
+    type: Optional[str] = Form(None),
+    arrival_date: Optional[str] = Form(None),
+    departure_date: Optional[str] = Form(None),
+    cost_per_night: Optional[float] = Form(None),
+    cost: Optional[float] = Form(None),
+    notes: Optional[str] = Form(None),
+):
+    # Auto-calculate total if only nightly cost and dates are given
+    if cost is None and cost_per_night is not None and arrival_date and departure_date:
+        from datetime import date
+        try:
+            nights = (date.fromisoformat(departure_date) - date.fromisoformat(arrival_date)).days
+            if nights > 0:
+                cost = cost_per_night * nights
+        except ValueError:
+            pass
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            """INSERT INTO stopovers (route_id, locality, name, type, arrival_date, departure_date, cost_per_night, cost, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (route_id, locality or None, name or None, type or None,
+             arrival_date or None, departure_date or None,
+             cost_per_night, cost if cost is not None else 0, notes or None),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+
+
+@app.get("/stopovers/{stopover_id}/edit", response_class=HTMLResponse)
+async def edit_stopover_form(request: Request, stopover_id: int):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT s.*, r.departure_location, r.destination_location, c.name AS cruise_name
+               FROM stopovers s
+               LEFT JOIN routes r ON s.route_id = r.id
+               LEFT JOIN cruises c ON r.cruise_id = c.id
+               WHERE s.id = ?""",
+            (stopover_id,),
+        )
+        stopover = await cursor.fetchone()
+    if stopover is None:
+        raise HTTPException(status_code=404, detail="Stopover not found")
+    return templates.TemplateResponse(
+        "routes/stopover_edit.html",
+        {"request": request, "active_section": "routes", "stopover": dict(stopover)},
+    )
+
+
+@app.post("/stopovers/{stopover_id}/edit")
+async def update_stopover(
+    stopover_id: int,
+    locality: Optional[str] = Form(None),
+    name: Optional[str] = Form(None),
+    type: Optional[str] = Form(None),
+    arrival_date: Optional[str] = Form(None),
+    departure_date: Optional[str] = Form(None),
+    cost_per_night: Optional[float] = Form(None),
+    cost: Optional[float] = Form(None),
+    notes: Optional[str] = Form(None),
+):
+    if cost is None and cost_per_night is not None and arrival_date and departure_date:
+        from datetime import date
+        try:
+            nights = (date.fromisoformat(departure_date) - date.fromisoformat(arrival_date)).days
+            if nights > 0:
+                cost = cost_per_night * nights
+        except ValueError:
+            pass
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("SELECT route_id FROM stopovers WHERE id = ?", (stopover_id,))
+        row = await cursor.fetchone()
+        route_id = row[0] if row else None
+        await db.execute(
+            """UPDATE stopovers SET locality=?, name=?, type=?, arrival_date=?, departure_date=?,
+               cost_per_night=?, cost=?, notes=? WHERE id=?""",
+            (locality or None, name or None, type or None,
+             arrival_date or None, departure_date or None,
+             cost_per_night, cost if cost is not None else 0, notes or None, stopover_id),
+        )
+        await db.commit()
+    if route_id:
+        return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+    return RedirectResponse(url="/cruises/stopovers", status_code=303)
+
+
+@app.post("/stopovers/{stopover_id}/delete")
+async def delete_stopover(stopover_id: int):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("SELECT route_id FROM stopovers WHERE id = ?", (stopover_id,))
+        row = await cursor.fetchone()
+        route_id = row[0] if row else None
+        await db.execute("DELETE FROM stopovers WHERE id = ?", (stopover_id,))
+        await db.commit()
+    if route_id:
+        return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+    return RedirectResponse(url="/cruises/stopovers", status_code=303)
 
 
 # ── Routes (logbook legs) ─────────────────────────────────────────────────────
