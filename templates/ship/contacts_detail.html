@@ -32,6 +32,8 @@
                         <a href="mailto:{{ val }}" style="color:var(--accent)">{{ val }}</a>
                     {% elif label == 'Téléphone' and val %}
                         <a href="tel:{{ val }}" style="color:var(--accent)">{{ val }}</a>
+                    {% elif label == 'Site web' and val %}
+                        <a href="{{ val if val.startswith('http') else 'https://' + val }}" target="_blank" rel="noopener" style="color:var(--accent)">{{ val }}</a>
                     {% else %}
                         {{ val or '—' }}
                     {% endif %}

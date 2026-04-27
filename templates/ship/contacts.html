@@ -32,7 +32,7 @@
                 <td>{{ c.contact_name or '' }}</td>
                 <td>{{ c.category or '' }}</td>
                 <td>{{ c.phone or '' }}</td>
-                <td>{{ c.email or '' }}</td>
+                <td>{% if c.email %}<a href="mailto:{{ c.email }}" style="color:var(--accent)">{{ c.email }}</a>{% endif %}</td>
                 <td>
                     <a href="/ship/contacts/{{ c.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a>
                 </td>

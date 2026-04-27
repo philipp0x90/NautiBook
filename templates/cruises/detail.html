@@ -12,6 +12,10 @@
 </div>
 {% else %}
 
+{% if is_current is defined and is_current %}
+<div style="text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Croisière en cours</div>
+{% endif %}
+
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
     <form method="POST" action="/cruises/{{ cruise.id }}/delete"
           onsubmit="return confirm('Supprimer cette croisière et toutes ses routes ?')">
@@ -30,11 +34,25 @@
         <span style="font-size:14px;color:var(--muted)">Départ :</span>
         <strong style="font-size:16px;margin-left:8px">{{ cruise.start_time | datefr }}</strong>
     </div>
-    <div style="padding:14px 20px;text-align:right">
+    <div style="padding:10px 20px;text-align:right;display:flex;align-items:center;justify-content:flex-end;gap:8px">
         <span style="font-size:14px;color:var(--muted)">Arrivée :</span>
-        <strong style="font-size:16px;margin-left:8px">{{ cruise.end_time | datefr }}</strong>
+        <strong style="font-size:16px">{{ cruise.end_time | datefr }}</strong>
+        <button type="button" onclick="document.getElementById('end-edit').classList.toggle('hidden')"
+                style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 6px">✎</button>
     </div>
 </div>
+<div id="end-edit" class="hidden" style="margin:-8px 0 16px;padding:10px 16px;background:#f7fbfd;border:1px solid #dde5ee;border-radius:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <form method="POST" action="/cruises/{{ cruise.id }}/set-end" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:13px;margin:0">Date d'arrivée :</label>
+        <input type="date" name="end_time" value="{{ cruise.end_time[:10] if cruise.end_time else '' }}" style="width:160px">
+        <button type="submit" class="btn btn-blue" style="padding:4px 12px;font-size:13px">Enregistrer</button>
+    </form>
+    <form method="POST" action="/cruises/{{ cruise.id }}/set-end" onsubmit="return confirm('Effacer la date d\'arrivée ?')">
+        <input type="hidden" name="end_time" value="">
+        <button type="submit" class="btn btn-orange" style="padding:4px 12px;font-size:13px">Effacer</button>
+    </form>
+</div>
+<style>#end-edit.hidden{display:none!important}</style>
 
 {% if routes %}
 <div style="overflow-x:auto;margin-bottom:16px">
@@ -59,7 +77,13 @@
                 <td>{{ r.destination_location or '—' }}</td>
                 <td style="white-space:nowrap">{{ r.end_time | datefr }}</td>
                 <td>{{ r.line_count or 0 }}</td>
-                <td><a href="/routes/{{ r.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a></td>
+                <td style="white-space:nowrap">
+                    <a href="/routes/{{ r.id }}" class="btn btn-blue" style="padding:3px 10px;font-size:12px">Voir</a>
+                    <form method="POST" action="/routes/{{ r.id }}/delete" style="display:inline"
+                          onsubmit="return confirm('Supprimer cette route ?')">
+                        <button type="submit" class="btn btn-orange" style="padding:3px 8px;font-size:12px">✕</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -71,12 +95,46 @@
 </div>
 {% endif %}
 
+{# Escales #}
+{% if stopovers %}
+<div class="card" style="margin-bottom:16px;padding:14px">
+    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Escales</h4>
+    <div style="display:grid;gap:6px">
+        {% for s in stopovers %}
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-bottom:1px solid #edf2f7">
+            <div style="flex:1">
+                <span style="font-weight:600">{{ s.name or s.locality or 'Escale' }}</span>
+                {% if s.type %}
+                <span style="background:{{ '#dbeafe' if s.type == 'Port' else ('#dcfce7' if s.type == 'Mouillage' else '#fef9c3') }};
+                             color:{{ '#1e40af' if s.type == 'Port' else ('#166534' if s.type == 'Mouillage' else '#854d0e') }};
+                             border-radius:8px;padding:1px 7px;font-size:11px;font-weight:600;margin-left:4px">{{ s.type }}</span>
+                {% endif %}
+                <span class="meta" style="margin-left:8px">{{ s.arrival_date | datefr if s.arrival_date else '' }}{% if s.arrival_date and s.departure_date %} → {{ s.departure_date | datefr }}{% endif %}</span>
+            </div>
+            {% if s.cost and s.cost > 0 %}<span style="font-weight:600">{{ '%.2f €'|format(s.cost) }}</span>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% if stopovers | selectattr('cost') | selectattr('cost', 'gt', 0) | list %}
+    <div style="text-align:right;font-size:13px;font-weight:700;margin-top:8px">
+        Total : {{ '%.2f €'|format(stopovers | selectattr('cost', 'ne', none) | selectattr('cost', 'gt', 0) | sum(attribute='cost')) }}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">
     {% if prev_cruise_id %}
     <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
     {% endif %}
-    <div style="flex:1;text-align:center">
+    <div style="flex:1;text-align:center;display:flex;gap:8px;justify-content:center">
         <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
+        {% if not cruise.end_time %}
+        <form method="POST" action="/cruises/{{ cruise.id }}/arrival" style="display:inline"
+              onsubmit="return confirm('Marquer l\'arrivée de cette croisière ?')">
+            <button type="submit" class="btn btn-blue">Arrivée</button>
+        </form>
+        {% endif %}
     </div>
     {% if next_cruise_id %}
     <a href="/cruises/{{ next_cruise_id }}" class="btn btn-blue">Croisière Suiv. →</a>

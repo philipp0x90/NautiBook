@@ -261,6 +261,10 @@ async def init_db():
             "ALTER TABLE bosco_entries RENAME TO expenses",
             "ALTER TABLE stopovers ADD COLUMN cost_per_night REAL",
             "ALTER TABLE stopovers ADD COLUMN notes TEXT",
+            "ALTER TABLE routes ADD COLUMN motor_hours_start REAL",
+            "ALTER TABLE routes ADD COLUMN motor_hours_end REAL",
+            "ALTER TABLE todo_items ADD COLUMN title TEXT",
+            "ALTER TABLE todo_items ADD COLUMN photo_path TEXT",
         ]:
             try:
                 await db.execute(stmt)
@@ -601,16 +605,18 @@ async def new_todo_form(request: Request):
 @app.post("/ship/todo/new")
 async def create_todo_item(
     request: Request,
-    task: str = Form(...),
+    title: str = Form(...),
+    task: Optional[str] = Form(None),
     urgent: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    photo_path: Optional[str] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
-            "INSERT INTO todo_items (ship_id, task, urgent, due_date, tags) VALUES (?, ?, ?, ?, ?)",
-            (ship_id, task, 1 if urgent else 0, due_date or None, tags or None),
+            "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, tags, photo_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ship_id, title, task or None, 1 if urgent else 0, due_date or None, tags or None, photo_path or None),
         )
         await db.commit()
     return RedirectResponse(url="/ship/todo", status_code=303)
@@ -638,26 +644,28 @@ async def edit_todo_form(request: Request, item_id: int):
 @app.post("/ship/todo/{item_id}/edit")
 async def update_todo_item(
     item_id: int,
-    task: str = Form(...),
+    title: Optional[str] = Form(None),
+    task: Optional[str] = Form(None),
     urgent: Optional[str] = Form(None),
     status: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
     completed_at: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    photo_path: Optional[str] = Form(None),
 ):
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
-            """UPDATE todo_items SET task=?, urgent=?, status=?, due_date=?, completed_at=?, tags=?
+            """UPDATE todo_items SET title=?, task=?, urgent=?, status=?, due_date=?, completed_at=?, tags=?, photo_path=?
                WHERE id=?""",
-            (task, 1 if urgent else 0, status or 'A faire', due_date or None,
-             completed_at or None, tags or None, item_id),
+            (title or None, task or None, 1 if urgent else 0, status or 'A faire', due_date or None,
+             completed_at or None, tags or None, photo_path or None, item_id),
         )
         await db.commit()
     return RedirectResponse(url="/ship/todo", status_code=303)
 
 
 @app.post("/ship/todo/{item_id}/done")
-async def mark_todo_done(item_id: int):
+async def mark_todo_done(item_id: int, next: Optional[str] = Form(None)):
     today = datetime.utcnow().strftime("%Y-%m-%d")
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
@@ -665,7 +673,18 @@ async def mark_todo_done(item_id: int):
             (today, item_id),
         )
         await db.commit()
-    return RedirectResponse(url="/ship/todo", status_code=303)
+    return RedirectResponse(url=next or "/ship/todo", status_code=303)
+
+
+@app.post("/ship/todo/{item_id}/undo")
+async def undo_todo_item(item_id: int, next: Optional[str] = Form(None)):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            "UPDATE todo_items SET status='A faire', completed_at=NULL WHERE id=?",
+            (item_id,),
+        )
+        await db.commit()
+    return RedirectResponse(url=next or "/ship/todo", status_code=303)
 
 
 @app.post("/ship/todo/{item_id}/delete")
@@ -797,7 +816,7 @@ async def current_cruise(request: Request):
             """SELECT r.*,
                       (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
                FROM routes r WHERE r.cruise_id = ?
-               ORDER BY COALESCE(r.start_time, r.created_at) ASC""",
+               ORDER BY r.id ASC""",
             (cruise_id,),
         )
         routes = await cursor.fetchall()
@@ -809,13 +828,23 @@ async def current_cruise(request: Request):
             "SELECT id FROM cruises WHERE id > ? ORDER BY id ASC LIMIT 1", (cruise_id,)
         )
         next_cruise = await cursor.fetchone()
+        cursor = await db.execute(
+            """SELECT s.* FROM stopovers s
+               JOIN routes r ON s.route_id = r.id
+               WHERE r.cruise_id = ?
+               ORDER BY COALESCE(s.arrival_date, '') ASC""",
+            (cruise_id,),
+        )
+        stopovers = await cursor.fetchall()
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
             "request": request,
             "active_section": "cruises",
+            "is_current": True,
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
+            "stopovers": [dict(s) for s in stopovers],
             "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
             "next_cruise_id": next_cruise["id"] if next_cruise else None,
         },
@@ -827,7 +856,7 @@ async def cruise_list(request: Request):
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM cruises ORDER BY COALESCE(start_time, created_at) DESC"
+            "SELECT * FROM cruises ORDER BY id ASC"
         )
         cruises = await cursor.fetchall()
         current_cursor = await db.execute(
@@ -895,7 +924,7 @@ async def cruise_detail(request: Request, cruise_id: int):
                       (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
                FROM routes r
                WHERE r.cruise_id = ?
-               ORDER BY COALESCE(r.start_time, r.created_at) ASC""",
+               ORDER BY r.id ASC""",
             (cruise_id,),
         )
         routes = await cursor.fetchall()
@@ -907,6 +936,14 @@ async def cruise_detail(request: Request, cruise_id: int):
             "SELECT id FROM cruises WHERE id > ? ORDER BY id ASC LIMIT 1", (cruise_id,)
         )
         next_cruise = await cursor.fetchone()
+        cursor = await db.execute(
+            """SELECT s.* FROM stopovers s
+               JOIN routes r ON s.route_id = r.id
+               WHERE r.cruise_id = ?
+               ORDER BY COALESCE(s.arrival_date, '') ASC""",
+            (cruise_id,),
+        )
+        stopovers = await cursor.fetchall()
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
@@ -914,6 +951,7 @@ async def cruise_detail(request: Request, cruise_id: int):
             "active_section": "cruises",
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
+            "stopovers": [dict(s) for s in stopovers],
             "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
             "next_cruise_id": next_cruise["id"] if next_cruise else None,
         },
@@ -927,6 +965,17 @@ async def cruise_arrival(cruise_id: int):
         await db.execute(
             "UPDATE cruises SET end_time = ? WHERE id = ?",
             (now, cruise_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+
+
+@app.post("/cruises/{cruise_id}/set-end")
+async def cruise_set_end(cruise_id: int, end_time: Optional[str] = Form(None)):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            "UPDATE cruises SET end_time = ? WHERE id = ?",
+            (end_time or None, cruise_id),
         )
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
@@ -1084,6 +1133,61 @@ async def delete_stopover(stopover_id: int):
 
 # ── Routes (logbook legs) ─────────────────────────────────────────────────────
 
+@app.get("/routes/current", response_class=HTMLResponse)
+async def current_route(request: Request):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT r.id FROM routes r
+               WHERE r.cruise_id = (
+                   SELECT id FROM cruises ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1
+               )
+               ORDER BY r.id DESC LIMIT 1"""
+        )
+        latest = await cursor.fetchone()
+    if latest:
+        return RedirectResponse(url=f"/routes/{latest['id']}", status_code=302)
+    return RedirectResponse(url="/cruises/current", status_code=302)
+
+
+@app.post("/routes/{route_id}/arrivee")
+async def route_arrivee(
+    route_id: int,
+    destination_location: Optional[str] = Form(None),
+    motor_hours_end: Optional[float] = Form(None),
+):
+    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT cruise_id, destination_location FROM routes WHERE id = ?", (route_id,)
+        )
+        route = await cursor.fetchone()
+        dest = destination_location or None
+        if route and route["destination_location"]:
+            dest = route["destination_location"]
+        await db.execute(
+            "UPDATE routes SET end_time=?, finished=1, destination_location=COALESCE(?, destination_location), motor_hours_end=? WHERE id=?",
+            (now, dest, motor_hours_end, route_id),
+        )
+        await db.commit()
+    return RedirectResponse(url="/cruises/current", status_code=303)
+
+
+@app.post("/routes/{route_id}/delete")
+async def delete_route(route_id: int):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT cruise_id FROM routes WHERE id = ?", (route_id,))
+        row = await cursor.fetchone()
+        cruise_id = row["cruise_id"] if row else None
+        await db.execute("DELETE FROM routes WHERE id = ?", (route_id,))
+        await db.commit()
+    if cruise_id:
+        return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+    return RedirectResponse(url="/cruises/current", status_code=303)
+
+
 @app.get("/routes", response_class=HTMLResponse)
 async def routes_index(request: Request):
     async with aiosqlite.connect(DATABASE_URL) as db:
@@ -1122,13 +1226,14 @@ async def create_route(
     name: Optional[str] = Form(None),
     start_time: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    motor_hours_start: Optional[float] = Form(None),
 ):
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
-            """INSERT INTO routes (cruise_id, name, departure_location, destination_location, start_time, notes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO routes (cruise_id, name, departure_location, destination_location, start_time, notes, motor_hours_start)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (cruise_id, name or None, departure_location or None, destination_location or None,
-             start_time or None, notes or None),
+             start_time or None, notes or None, motor_hours_start),
         )
         await db.commit()
     return RedirectResponse(url="/cruises/current", status_code=303)
@@ -1175,6 +1280,13 @@ async def route_detail(request: Request, route_id: int):
             )
             next_route = await cursor.fetchone()
 
+        ship_id = get_current_ship_id(request)
+        cursor = await db.execute(
+            "SELECT * FROM todo_items WHERE ship_id = ? AND status != 'Terminé' ORDER BY urgent DESC, id ASC",
+            (ship_id,),
+        )
+        todos = await cursor.fetchall()
+
     return templates.TemplateResponse(
         "routes/detail.html",
         {
@@ -1185,6 +1297,7 @@ async def route_detail(request: Request, route_id: int):
             "stopovers": [dict(s) for s in stopovers],
             "prev_route": dict(prev_route) if prev_route else None,
             "next_route": dict(next_route) if next_route else None,
+            "todos": [dict(t) for t in todos],
         },
     )
 

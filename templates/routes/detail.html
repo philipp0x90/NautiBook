@@ -27,9 +27,14 @@
     .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #edf2f7; }
     .stat-row:last-child { border-bottom: none; }
 
-    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 16px; }
+    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
     .bottom-panel { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px; }
     .bottom-panel h4 { margin: 0 0 10px; font-size: 13px; font-weight: 700; text-align: center; border-bottom: 1px solid #dde5ee; padding-bottom: 6px; }
+
+    /* Arrivée modal */
+    #arrivee-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:200; align-items:center; justify-content:center; }
+    #arrivee-modal.open { display:flex; }
+    #arrivee-box { background:#fff; border-radius:10px; padding:24px; max-width:380px; width:90%; display:grid; gap:14px; }
 
     @media (max-width: 900px) {
         .route-layout { grid-template-columns: 1fr; }
@@ -40,9 +45,14 @@
 
 {% block content %}
 
+{# ── Top nav bar ── #}
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-    <a href="/routes/{{ route.id }}/supprimer" class="btn btn-orange"
-       onclick="return confirm('Supprimer cette route ?')">— Supprimer route</a>
+    {% if prev_route %}
+    <a href="/routes/{{ prev_route.id }}" class="btn btn-blue">← Route Préc.</a>
+    {% else %}
+    <div style="width:110px"></div>
+    {% endif %}
+
     <div style="flex:1;text-align:center">
         <div style="font-size:18px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:8px 20px;display:inline-block">
             {% if route.departure_location and route.destination_location %}
@@ -55,20 +65,34 @@
             {% endif %}
         </div>
     </div>
-    <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow">+ Nouvelle Ligne</a>
+
+    {% if next_route %}
+    <a href="/routes/{{ next_route.id }}" class="btn btn-blue">Route Suiv. →</a>
+    {% else %}
+    <a href="/routes/new?cruise_id={{ route.cruise_id }}" class="btn btn-yellow">+ Nouvelle route</a>
+    {% endif %}
 </div>
 
+{# ── Départ / Arrivée info bar ── #}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid #dde5ee;border-radius:8px;overflow:hidden;margin-bottom:12px">
     <div style="padding:10px 18px;border-right:1px solid #dde5ee">
         <span class="meta">Départ :</span>
-        <strong style="margin-left:8px">{{ route.start_time.split('.')[0] if route.start_time else '—' }}</strong>
+        <strong style="margin-left:8px">
+            {% if route.start_time %}
+                {{ route.start_time[:10] | datefr }} {{ route.start_time[11:16] if route.start_time|length > 10 else '' }}
+            {% else %}—{% endif %}
+        </strong>
         {% if route.departure_location %}
         <span class="meta"> — de : {{ route.departure_location }}</span>
         {% endif %}
     </div>
     <div style="padding:10px 18px;text-align:right">
         <span class="meta">Arrivée :</span>
-        <strong style="margin-left:8px">{{ route.end_time.split('.')[0] if route.end_time else '—' }}</strong>
+        <strong style="margin-left:8px">
+            {% if route.end_time %}
+                {{ route.end_time[:10] | datefr }} {{ route.end_time[11:16] if route.end_time|length > 10 else '' }}
+            {% else %}—{% endif %}
+        </strong>
         {% if route.destination_location %}
         <span class="meta"> — à : {{ route.destination_location }}</span>
         {% endif %}
@@ -79,9 +103,9 @@
 
     {# ── Log table ── #}
     <div>
-        <div style="overflow-x:auto">
+        <div style="overflow-x:auto;max-height:420px;overflow-y:auto;border:1px solid #dde5ee;border-radius:6px">
             <table class="log-table">
-                <thead>
+                <thead style="position:sticky;top:0;z-index:1">
                     <tr>
                         <th rowspan="2">Heure</th>
                         <th>AWS</th><th>TWS</th><th>Mer</th><th>T°mer</th>
@@ -96,13 +120,6 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {# Add new line row #}
-                    <tr class="add-row">
-                        <td colspan="12" style="text-align:center;padding:6px">
-                            <a href="/routes/{{ route.id }}/new-line">+ Nouvelle ligne</a>
-                        </td>
-                    </tr>
-
                     {% for ln in lines %}
                     <tr class="row-top">
                         <td class="time-cell" rowspan="2">
@@ -148,31 +165,38 @@
             </table>
         </div>
 
-        {# Navigation buttons #}
-        <div style="display:flex;gap:10px;margin-top:12px">
-            {% if prev_route %}
-            <a href="/routes/{{ prev_route.id }}" class="btn btn-blue">← Route Préc.</a>
+        {# Nouvelle ligne + Arrivée ── below table #}
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+            <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow">+ Nouvelle ligne</a>
+            <div style="flex:1"></div>
+            {% if not route.finished %}
+            <button type="button" class="btn btn-blue" onclick="document.getElementById('arrivee-modal').classList.add('open')">Arrivée ⚓</button>
             {% endif %}
-            <div style="flex:1;text-align:center">
-                <a href="/routes/{{ route.id }}/arrivee" class="btn btn-blue">Arrivée</a>
-            </div>
-            {% if next_route %}
-            <a href="/routes/{{ next_route.id }}" class="btn btn-blue">Route Suiv. →</a>
-            {% endif %}
+            <form method="POST" action="/routes/{{ route.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Supprimer cette route ?')">
+                <button type="submit" class="btn btn-orange">— Supprimer route</button>
+            </form>
         </div>
     </div>
 
     {# ── Journal / Notes panel ── #}
     <div class="info-panel">
         <h4>✏ Journal / Notes</h4>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">
-            {% if lines %}{{ lines[-1].timestamp.split('.')[0] if lines[-1].timestamp else '' }}{% endif %}
+        {% set notes_lines = lines | selectattr('notes') | list %}
+        {% if notes_lines %}
+        <div style="max-height:260px;overflow-y:auto;display:grid;gap:8px">
+            {% for ln in notes_lines %}
+            <div style="font-size:12px">
+                <div style="color:var(--muted);font-size:11px;margin-bottom:2px">{{ ln.timestamp[11:16] if ln.timestamp else '' }}</div>
+                <div style="color:#333;white-space:pre-wrap;line-height:1.5">{{ ln.notes }}</div>
+            </div>
+            {% endfor %}
         </div>
-        <div style="font-size:13px;line-height:1.6;color:#333;white-space:pre-wrap">{{ route.notes or '' }}</div>
-        {% if lines and lines[-1].notes %}
-        <div style="margin-top:12px;padding-top:10px;border-top:1px solid #edf2f7;font-size:13px;color:#333;white-space:pre-wrap">
-            {{ lines[-1].notes }}
-        </div>
+        {% else %}
+        <div style="color:var(--muted);font-size:13px">Aucune note.</div>
+        {% endif %}
+        {% if route.notes %}
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #edf2f7;font-size:13px;color:#333;white-space:pre-wrap">{{ route.notes }}</div>
         {% endif %}
     </div>
 
@@ -185,71 +209,76 @@
     <div class="bottom-panel">
         <h4>Informations</h4>
         <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;text-align:center">— STATISTIQUES —</div>
-        <div class="stat-row"><span>Durée de la route</span><span>—</span></div>
         <div class="stat-row"><span>Trip route</span><span>{% if lines %}{{ lines[-1].trip or '—' }} NM{% else %}—{% endif %}</span></div>
-        <div class="stat-row"><span>Moyenne</span><span>—</span></div>
 
         <div style="font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 6px;text-align:center">— HORAMETRE —</div>
-        <div class="stat-row"><span>Départ</span><span>—</span></div>
-        <div class="stat-row"><span>Arrivée</span><span>—</span></div>
-        <div class="stat-row"><span>Durée</span><span>—</span></div>
-
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 6px;text-align:center">— CONSOMMATION —</div>
-        <div class="stat-row"><span>Estimée (route)</span><span>—</span></div>
-        <div class="stat-row"><span>Cumul croisière</span><span>—</span></div>
-        <div class="stat-row"><span>Reste</span><span>—</span></div>
+        <div class="stat-row"><span>Départ</span><span>{{ route.motor_hours_start or '—' }}</span></div>
+        <div class="stat-row"><span>Arrivée</span><span>{{ route.motor_hours_end or '—' }}</span></div>
+        <div class="stat-row">
+            <span>Durée moteur</span>
+            <span>{% if route.motor_hours_start and route.motor_hours_end %}{{ '%.1f h'|format(route.motor_hours_end - route.motor_hours_start) }}{% else %}—{% endif %}</span>
+        </div>
     </div>
 
     {# To Do List #}
     <div class="bottom-panel">
         <h4>To Do List</h4>
-        <div class="stub" style="padding:20px 0">
-            <a href="/ship/todo" style="font-size:13px;color:var(--accent)">Voir la liste complète →</a>
-        </div>
-    </div>
-
-    {# Escales #}
-    <div class="bottom-panel">
-        <h4>Escales</h4>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-            <a href="/routes/{{ route.id }}/stopovers/new" class="btn btn-yellow" style="padding:5px 14px;font-size:12px">+ Nouvelle escale</a>
-            <a href="/cruises/stopovers" class="btn btn-blue" style="padding:5px 14px;font-size:12px">Toutes les escales</a>
-        </div>
-        {% if stopovers %}
-        {% for s in stopovers %}
-        <div style="font-size:13px;border-bottom:1px solid #edf2f7;padding:8px 0;display:flex;align-items:flex-start;gap:8px">
-            <div style="flex:1;min-width:0">
-                <div style="font-weight:600">
-                    {{ s.name or s.locality or 'Escale' }}
-                    {% if s.type %}
-                    <span style="background:{{ '#dbeafe' if s.type == 'Port' else ('#dcfce7' if s.type == 'Mouillage' else '#fef9c3') }};
-                                 color:{{ '#1e40af' if s.type == 'Port' else ('#166534' if s.type == 'Mouillage' else '#854d0e') }};
-                                 border-radius:8px;padding:1px 7px;font-size:11px;font-weight:600;margin-left:4px">
-                        {{ s.type }}
-                    </span>
+        {% if todos %}
+        <div style="max-height:220px;overflow-y:auto;display:grid;gap:2px">
+            {% for item in todos %}
+            {% set tags = (item.tags or '').split(',') | select | list %}
+            <div style="font-size:12px;padding:5px 0;border-bottom:1px solid #edf2f7;display:flex;align-items:flex-start;gap:6px">
+                <div style="flex:1;min-width:0">
+                    <div style="{{ 'font-weight:700;color:#dc2626' if item.urgent else 'font-weight:600' }}">
+                        {% if item.urgent %}<span style="font-size:10px;margin-right:3px">!</span>{% endif %}{{ item.title or item.task }}
+                    </div>
+                    {% if tags %}
+                    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px">
+                        {% for tag in tags %}
+                        <span style="background:#f0f4f8;border:1px solid #dde5ee;border-radius:8px;padding:0 6px;font-size:10px;color:#666">{{ tag }}</span>
+                        {% endfor %}
+                    </div>
                     {% endif %}
                 </div>
-                {% if s.locality and s.name %}<div class="meta">{{ s.locality }}</div>{% endif %}
-                <div class="meta">
-                    {{ s.arrival_date | datefr if s.arrival_date else '' }}{% if s.arrival_date and s.departure_date %} → {{ s.departure_date | datefr }}{% endif %}
-                    {% if s.cost and s.cost > 0 %} — {{ '%.2f €'|format(s.cost) }}{% endif %}
-                </div>
-                {% if s.notes %}<div class="meta" style="font-style:italic;margin-top:2px">{{ s.notes }}</div>{% endif %}
-            </div>
-            <div style="display:flex;gap:4px;flex-shrink:0">
-                <a href="/stopovers/{{ s.id }}/edit" class="btn" style="background:#e0f2fe;color:#0369a1;padding:2px 8px;font-size:11px">✎</a>
-                <form method="POST" action="/stopovers/{{ s.id }}/delete"
-                      onsubmit="return confirm('Supprimer cette escale ?')">
-                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:2px 8px;font-size:11px">✕</button>
+                <form method="POST" action="/ship/todo/{{ item.id }}/done" style="flex-shrink:0">
+                    <input type="hidden" name="next" value="/routes/{{ route.id }}">
+                    <button type="submit" class="btn" style="background:#dcfce7;color:#166534;padding:2px 7px;font-size:10px">✓</button>
                 </form>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
+        <div style="margin-top:6px;text-align:right">
+            <a href="/ship/todo" style="font-size:11px;color:var(--accent)">Voir tout →</a>
+        </div>
         {% else %}
-        <div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0">Aucune escale</div>
+        <div style="color:var(--muted);font-size:13px;text-align:center;padding:12px 0">Aucune tâche en cours.</div>
         {% endif %}
     </div>
 
+</div>
+
+{# ── Arrivée modal ── #}
+<div id="arrivee-modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div id="arrivee-box">
+        <h3 style="margin:0;font-size:17px">Arrivée ⚓</h3>
+        <form method="POST" action="/routes/{{ route.id }}/arrivee" style="display:grid;gap:12px">
+            {% if not route.destination_location %}
+            <div>
+                <label>Destination</label>
+                <input type="text" name="destination_location" placeholder="Port d'arrivée">
+            </div>
+            {% endif %}
+            <div>
+                <label>Horamètre à l'arrivée (h)</label>
+                <input type="number" name="motor_hours_end" step="0.1" placeholder="{{ route.motor_hours_start or '0.0' }}">
+            </div>
+            <div style="display:flex;gap:10px">
+                <button type="submit" class="btn btn-blue">Confirmer l'arrivée</button>
+                <button type="button" class="btn" style="background:#eee;color:#333"
+                        onclick="document.getElementById('arrivee-modal').classList.remove('open')">Annuler</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 {% endblock %}

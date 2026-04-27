@@ -13,8 +13,13 @@
 <form method="POST" action="/ship/todo/{{ item.id }}/edit" style="display:grid;gap:14px;max-width:560px">
 
     <div>
-        <label>Tâche <span style="color:#e05">*</span></label>
-        <textarea name="task" rows="3" required>{{ item.task }}</textarea>
+        <label>Titre <span style="color:#e05">*</span></label>
+        <input type="text" name="title" value="{{ item.title or item.task or '' }}" required>
+    </div>
+
+    <div>
+        <label>Description</label>
+        <textarea name="task" rows="3">{{ item.task or '' }}</textarea>
     </div>
 
     <div class="grid">
@@ -60,6 +65,11 @@
             {% endfor %}
         </div>
         <input type="hidden" name="tags" id="tags-hidden" value="{{ item.tags or '' }}">
+    </div>
+
+    <div>
+        <label>Photo <span class="meta" style="font-weight:400">(chemin ou URL)</span></label>
+        <input type="text" name="photo_path" value="{{ item.photo_path or '' }}" placeholder="/static/photos/exemple.jpg">
     </div>
 
     <div style="display:flex;gap:10px">

@@ -3,9 +3,6 @@
 {% block content %}
 
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-    <a href="/cruises/{{ current_cruise_id }}/delete"
-       class="btn btn-orange"
-       onclick="return confirm('Supprimer la croisière sélectionnée ?')">— Supprimer croisière sélectionnée</a>
     <div style="flex:1;text-align:center">
         <a href="/cruises/current" class="btn btn-blue">Afficher croisière en cours</a>
     </div>
@@ -41,7 +38,13 @@
                 <td style="text-align:right">{{ c.loch_start or '—' }}</td>
                 <td style="text-align:right">{{ c.loch_end or '—' }}</td>
                 <td style="text-align:right">{{ c.distance or '—' }}</td>
-                <td><a href="/cruises/{{ c.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a></td>
+                <td style="white-space:nowrap">
+                    <a href="/cruises/{{ c.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a>
+                    <form method="POST" action="/cruises/{{ c.id }}/delete" style="display:inline"
+                          onsubmit="return confirm('Supprimer cette croisière ?')">
+                        <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

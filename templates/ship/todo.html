@@ -25,10 +25,16 @@
     <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;
         {{ 'border-left:4px solid #dc2626' if item.urgent else 'border-left:4px solid #dde5ee' }}">
         <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:15px;margin-bottom:4px">
+            <div style="font-weight:600;font-size:15px;margin-bottom:2px">
                 {% if item.urgent %}<span style="color:#dc2626;font-size:12px;font-weight:700;margin-right:6px">URGENT</span>{% endif %}
-                {{ item.task }}
+                {{ item.title or item.task }}
             </div>
+            {% if item.title and item.task %}
+            <div style="font-size:13px;color:#555;margin-bottom:4px;white-space:pre-wrap">{{ item.task }}</div>
+            {% endif %}
+            {% if item.photo_path %}
+            <div style="margin:6px 0"><img src="{{ item.photo_path }}" alt="" style="max-height:120px;border-radius:6px;border:1px solid #dde5ee"></div>
+            {% endif %}
             <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
                 {% if item.due_date %}
                 <span style="font-size:12px;color:var(--muted)">Échéance : <strong>{{ item.due_date | datefr }}</strong></span>
@@ -66,7 +72,7 @@
         {% set tags = (item.tags or '').split(',') | select | list %}
         <div class="card" style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;opacity:.7;border-left:4px solid #86efac">
             <div style="flex:1;min-width:0">
-                <div style="font-weight:500;font-size:14px;text-decoration:line-through;margin-bottom:3px">{{ item.task }}</div>
+                <div style="font-weight:500;font-size:14px;text-decoration:line-through;margin-bottom:3px">{{ item.title or item.task }}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
                     {% if item.completed_at %}
                     <span style="font-size:12px;color:var(--muted)">Terminé le : <strong>{{ item.completed_at | datefr }}</strong></span>
@@ -77,6 +83,9 @@
                 </div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
+                <form method="POST" action="/ship/todo/{{ item.id }}/undo">
+                    <button type="submit" class="btn" style="background:#fef9c3;color:#854d0e;padding:3px 9px;font-size:11px" title="Remettre en cours">↩ Annuler</button>
+                </form>
                 <a href="/ship/todo/{{ item.id }}/edit" class="btn" style="background:#e0f2fe;color:#0369a1;padding:3px 9px;font-size:11px">Modifier</a>
                 <form method="POST" action="/ship/todo/{{ item.id }}/delete"
                       onsubmit="return confirm('Supprimer cette tâche ?')">
