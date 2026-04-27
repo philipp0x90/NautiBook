@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>NautiBook — Configuration initiale</title>
+    <style>
+        :root {
+            --accent: #2b79c6;
+            --accent-dark: #1b5fa3;
+            --muted: #6b7280;
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: linear-gradient(160deg, #e8f4f9 0%, #f0f4f8 60%, #dde8f5 100%);
+            color: #111;
+        }
+        .page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 12px 48px rgba(18,52,84,0.13);
+            padding: 52px 48px 44px;
+            max-width: 480px;
+            width: 100%;
+            text-align: center;
+        }
+        .anchor {
+            font-size: 64px;
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+        .brand {
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--accent-dark);
+            letter-spacing: 5px;
+            margin-bottom: 6px;
+        }
+        .tagline {
+            font-size: 13px;
+            color: var(--muted);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 36px;
+        }
+        .divider {
+            border: none;
+            border-top: 1px solid #e8edf3;
+            margin: 0 0 32px;
+        }
+        .setup-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+        .setup-desc {
+            font-size: 14px;
+            color: var(--muted);
+            line-height: 1.6;
+            margin-bottom: 28px;
+        }
+        label {
+            display: block;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 6px;
+        }
+        input[type="url"], input[type="text"] {
+            width: 100%;
+            padding: 11px 14px;
+            border: 1.5px solid #dde5ee;
+            border-radius: 10px;
+            font-size: 14px;
+            background: #f8fafc;
+            color: #111;
+            transition: border-color 0.15s, background 0.15s;
+            margin-bottom: 24px;
+        }
+        input[type="url"]:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: #fff;
+        }
+        .hint {
+            text-align: left;
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: -18px;
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+        button[type="submit"] {
+            width: 100%;
+            padding: 13px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 700;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            letter-spacing: 0.5px;
+            transition: background 0.15s;
+        }
+        button[type="submit"]:hover { background: var(--accent-dark); }
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="card">
+        <div class="anchor">⚓</div>
+        <div class="brand">NAUTIBOOK</div>
+        <div class="tagline">Journal de bord numérique</div>
+        <hr class="divider">
+        <div class="setup-title">Bienvenue à bord</div>
+        <div class="setup-desc">
+            Avant de commencer, indiquez l'adresse de votre serveur iKommunicate.
+            C'est lui qui fournit les données capteurs (vent, position, vitesse…).
+        </div>
+        <form method="post" action="/setup">
+            <label for="url">URL du serveur iKommunicate</label>
+            <input
+                type="text"
+                id="url"
+                name="ikommunicate_url"
+                placeholder="http://192.168.1.x:3000/signalk"
+                required
+                autofocus
+            >
+            <p class="hint">
+                Exemple&nbsp;: <code>http://192.168.1.1:3000/signalk</code><br>
+                Pour tester, utilisez <code>https://demo.signalk.org/signalk</code>
+            </p>
+            <button type="submit">Enregistrer et continuer →</button>
+        </form>
+    </div>
+</div>
+</body>
+</html>

@@ -7,6 +7,7 @@ import aiosqlite
 from contextlib import asynccontextmanager
 from typing import Optional
 from utils import get_sensor_data
+from config import get_ikommunicate_url, save_config, is_configured
 
 DATABASE_URL = "logbook.db"
 templates = Jinja2Templates(directory="templates")
@@ -307,6 +308,8 @@ async def _fetch_ship(db, ship_id: int):
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
+    if not is_configured():
+        return RedirectResponse(url="/setup", status_code=302)
     return templates.TemplateResponse("home.html", {"request": request})
 
 
@@ -1462,6 +1465,46 @@ async def add_photo(
         )
         await db.commit()
     return RedirectResponse(url=f"/logbook/{line_id}", status_code=303)
+
+
+# ── Setup (first run) ─────────────────────────────────────────────────────────
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_form(request: Request):
+    return templates.TemplateResponse("setup.html", {"request": request})
+
+
+@app.post("/setup")
+async def setup_save(ikommunicate_url: str = Form(...)):
+    save_config({"ikommunicate_url": ikommunicate_url.strip()})
+    return RedirectResponse(url="/", status_code=303)
+
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_form(request: Request):
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "active_section": "settings",
+            "current_ship": dict(ship) if ship else None,
+            "ikommunicate_url": get_ikommunicate_url() or "",
+        },
+    )
+
+
+@app.post("/settings")
+async def settings_save(
+    request: Request,
+    ikommunicate_url: Optional[str] = Form(None),
+):
+    save_config({"ikommunicate_url": (ikommunicate_url or "").strip()})
+    return RedirectResponse(url="/settings", status_code=303)
 
 
 # Run with: uvicorn main:app --reload --host 0.0.0.0 --port 8000

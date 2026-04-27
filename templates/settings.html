@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block title %}Paramètres — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    .settings-wrap {
+        max-width: 640px;
+        margin: 32px auto;
+    }
+    .settings-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: #1a1a2e;
+        margin-bottom: 6px;
+    }
+    .settings-subtitle {
+        font-size: 14px;
+        color: var(--muted);
+        margin-bottom: 32px;
+    }
+    .settings-section {
+        background: var(--card);
+        border: 1px solid #dde5ee;
+        border-radius: 14px;
+        padding: 28px 28px 24px;
+        margin-bottom: 24px;
+    }
+    .settings-section-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin-bottom: 4px;
+    }
+    .settings-section-desc {
+        font-size: 13px;
+        color: var(--muted);
+        margin-bottom: 22px;
+        line-height: 1.5;
+    }
+    .field { margin-bottom: 20px; }
+    .field label {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+        margin-bottom: 6px;
+    }
+    .field input {
+        width: 100%;
+        padding: 10px 13px;
+        border: 1.5px solid #dde5ee;
+        border-radius: 9px;
+        font-size: 14px;
+        background: #f8fafc;
+    }
+    .field input:focus {
+        outline: none;
+        border-color: var(--accent);
+        background: #fff;
+    }
+    .field-hint {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 5px;
+        line-height: 1.5;
+    }
+    .settings-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 4px;
+    }
+    .btn-save {
+        padding: 10px 26px;
+        background: var(--accent);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .btn-save:hover { background: var(--accent-dark); }
+    .badge-ok {
+        font-size: 12px;
+        color: #16a34a;
+        font-weight: 600;
+    }
+    .badge-missing {
+        font-size: 12px;
+        color: #dc2626;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-wrap">
+    <div class="settings-title">⚙ Paramètres</div>
+    <div class="settings-subtitle">Configuration de NautiBook</div>
+
+    <div class="settings-section">
+        <div class="settings-section-title">Capteurs &amp; SignalK</div>
+        <div class="settings-section-desc">
+            L'URL de base du serveur iKommunicate/SignalK. Elle est utilisée pour
+            pré-remplir automatiquement les données capteurs lors de la saisie d'une
+            ligne de journal.
+        </div>
+        <form method="post" action="/settings">
+            <div class="field">
+                <label for="ik_url">URL iKommunicate</label>
+                <input
+                    type="text"
+                    id="ik_url"
+                    name="ikommunicate_url"
+                    value="{{ ikommunicate_url }}"
+                    placeholder="http://192.168.1.1:3000/signalk"
+                >
+                <div class="field-hint">
+                    Exemple&nbsp;: <code>http://192.168.1.1:3000/signalk</code>
+                    &nbsp;·&nbsp;
+                    {% if ikommunicate_url %}
+                    <span class="badge-ok">✓ configuré</span>
+                    {% else %}
+                    <span class="badge-missing">non configuré</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="settings-actions">
+                <button type="submit" class="btn-save">Enregistrer</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
