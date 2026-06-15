@@ -111,22 +111,24 @@
         </div>
         <form method="post" action="/settings">
             <div class="field">
-                <label for="ik_url">URL iKommunicate</label>
+                <label for="ik_url">Adresse iKommunicate / SignalK</label>
                 <input
                     type="text"
                     id="ik_url"
                     name="ikommunicate_url"
-                    value="{{ ikommunicate_url }}"
-                    placeholder="http://192.168.1.1:3000/signalk"
+                    value="{{ ikommunicate_host }}"
+                    placeholder="192.168.1.1:3000"
                 >
                 <div class="field-hint">
-                    Exemple&nbsp;: <code>http://192.168.1.1:3000/signalk</code>
+                    Adresse IP ou nom d'hôte uniquement — ex.&nbsp;: <code>192.168.1.1:3000</code>
                     &nbsp;·&nbsp;
-                    {% if ikommunicate_url %}
+                    {% if ikommunicate_host %}
                     <span class="badge-ok">✓ configuré</span>
                     {% else %}
                     <span class="badge-missing">non configuré</span>
                     {% endif %}
+                    <br>
+                    <span style="color: var(--text-muted, #888);">Pour tester sans capteurs&nbsp;: <code>demo.signalk.org</code></span>
                 </div>
             </div>
             <div class="settings-actions">

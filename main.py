@@ -7,7 +7,7 @@ import aiosqlite
 from contextlib import asynccontextmanager
 from typing import Optional
 from utils import get_sensor_data
-from config import get_ikommunicate_url, save_config, is_configured
+from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
 
 DATABASE_URL = "logbook.db"
 templates = Jinja2Templates(directory="templates")
@@ -1493,7 +1493,7 @@ async def settings_form(request: Request):
             "request": request,
             "active_section": "settings",
             "current_ship": dict(ship) if ship else None,
-            "ikommunicate_url": get_ikommunicate_url() or "",
+            "ikommunicate_host": get_ikommunicate_host() or "",
         },
     )
 

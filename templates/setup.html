@@ -133,18 +133,18 @@
             C'est lui qui fournit les données capteurs (vent, position, vitesse…).
         </div>
         <form method="post" action="/setup">
-            <label for="url">URL du serveur iKommunicate</label>
+            <label for="url">Adresse iKommunicate / SignalK</label>
             <input
                 type="text"
                 id="url"
                 name="ikommunicate_url"
-                placeholder="http://192.168.1.x:3000/signalk"
+                placeholder="192.168.1.x:3000"
                 required
                 autofocus
             >
             <p class="hint">
-                Exemple&nbsp;: <code>http://192.168.1.1:3000/signalk</code><br>
-                Pour tester, utilisez <code>https://demo.signalk.org/signalk</code>
+                Adresse IP ou nom d'hôte uniquement — ex.&nbsp;: <code>192.168.1.1:3000</code><br>
+                <span style="color: #999;">Pour tester sans capteurs&nbsp;: <code>demo.signalk.org</code></span>
             </p>
             <button type="submit">Enregistrer et continuer →</button>
         </form>
