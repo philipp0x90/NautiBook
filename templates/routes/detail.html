@@ -2,6 +2,8 @@
 {% block title %}{{ route.departure_location or 'Route' }} → {{ route.destination_location or '' }} — NautiBook{% endblock %}
 
 {% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
     .route-layout { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
     .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -256,6 +258,71 @@
     </div>
 
 </div>
+
+{# ── Route Map ── #}
+<div style="margin-top:16px;background:var(--card);border:1px solid #dde5ee;border-radius:8px;overflow:hidden">
+    <div style="padding:10px 16px;background:#f7fbfd;border-bottom:1px solid #dde5ee;display:flex;align-items:center;justify-content:space-between;cursor:pointer"
+         onclick="toggleMap()">
+        <span style="font-weight:700;font-size:14px">🗺 Carte de route</span>
+        <span id="map-toggle-label" style="font-size:12px;color:var(--muted)">Afficher ▼</span>
+    </div>
+    <div id="map-wrap" style="display:none">
+        <div id="route-map" style="height:420px"></div>
+    </div>
+</div>
+
+<script>
+let mapReady = false;
+
+function toggleMap() {
+    const wrap  = document.getElementById('map-wrap');
+    const label = document.getElementById('map-toggle-label');
+    const show  = wrap.style.display === 'none';
+    wrap.style.display = show ? 'block' : 'none';
+    label.textContent  = show ? 'Masquer ▲' : 'Afficher ▼';
+    if (show && !mapReady) { buildMap(); mapReady = true; }
+}
+
+function buildMap() {
+    const map = L.map('route-map');
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 18
+    }).addTo(map);
+
+    L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>',
+        maxZoom: 18, opacity: 0.9
+    }).addTo(map);
+
+    fetch('/api/routes/{{ route.id }}/map-data')
+        .then(r => r.json())
+        .then(data => {
+            const allCoords = [];
+
+            if (data.track_points.length > 0) {
+                const coords = data.track_points.map(p => [p.lat, p.lon]);
+                L.polyline(coords, {color: '#2b79c6', weight: 3, opacity: 0.85}).addTo(map);
+                allCoords.push(...coords);
+            }
+
+            data.logbook_points.forEach(p => {
+                const c = [p.lat, p.lon];
+                L.circleMarker(c, {radius: 5, color: '#e67e22', fillColor: '#e67e22', fillOpacity: 1, weight: 2})
+                    .addTo(map)
+                    .bindPopup('<strong>' + (p.timestamp || '').slice(11, 16) + '</strong>');
+                allCoords.push(c);
+            });
+
+            if (allCoords.length > 0) {
+                map.fitBounds(allCoords, {padding: [30, 30]});
+            } else {
+                map.setView([43.3, 5.4], 7);
+            }
+        });
+}
+</script>
 
 {# ── Arrivée modal ── #}
 <div id="arrivee-modal" onclick="if(event.target===this)this.classList.remove('open')">

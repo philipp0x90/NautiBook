@@ -46,6 +46,18 @@ def get_data_at_endpoint(signalk_url: str, endpoint: str):
         return None
 
 
+def get_position() -> tuple[float, float] | None:
+    """Return (lat, lon) from SignalK, or None if unavailable."""
+    signalk_url = _get_signalk_http_url()
+    if not signalk_url:
+        return None
+    r = get_data_at_endpoint(signalk_url, endpoints["position"])
+    if not r:
+        return None
+    coord = r["value"]
+    return coord["latitude"], coord["longitude"]
+
+
 def get_sensor_data() -> dict:
     signalk_url = _get_signalk_http_url()
     if not signalk_url:

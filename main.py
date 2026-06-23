@@ -3,10 +3,11 @@ from fastapi import FastAPI, HTTPException, Request, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
+import asyncio
 import aiosqlite
 from contextlib import asynccontextmanager
 from typing import Optional
-from utils import get_sensor_data
+from utils import get_sensor_data, get_position
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
 
 DATABASE_URL = "logbook.db"
@@ -276,11 +277,51 @@ async def init_db():
         await db.commit()
 
 
+TRACK_INTERVAL = 30  # seconds between automatic GPS recordings
+
+
+async def track_recorder_loop():
+    """Records GPS position from SignalK every TRACK_INTERVAL seconds into track_points."""
+    while True:
+        await asyncio.sleep(TRACK_INTERVAL)
+        try:
+            async with aiosqlite.connect(DATABASE_URL) as db:
+                cursor = await db.execute(
+                    "SELECT id FROM routes WHERE finished IS NOT 1 ORDER BY id DESC LIMIT 1"
+                )
+                row = await cursor.fetchone()
+            if row is None:
+                continue
+            route_id = row[0]
+
+            position = await asyncio.to_thread(get_position)
+            if position is None:
+                continue
+            lat, lon = position
+
+            async with aiosqlite.connect(DATABASE_URL) as db:
+                now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+                await db.execute(
+                    "INSERT INTO track_points (route_id, timestamp, lat, lon) VALUES (?, ?, ?, ?)",
+                    (route_id, now, lat, lon),
+                )
+                await db.commit()
+            print(f"Track point: route {route_id}  {lat:.5f}, {lon:.5f}")
+        except Exception as e:
+            print(f"Track recorder error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     print("Database initialized")
+    recorder = asyncio.create_task(track_recorder_loop())
     yield
+    recorder.cancel()
+    try:
+        await recorder
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(lifespan=lifespan)
@@ -1367,6 +1408,82 @@ async def create_line(
         )
         await db.commit()
     return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+
+
+# ── Map API ───────────────────────────────────────────────────────────────────
+
+ROUTE_COLORS = ["#2b79c6", "#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#c0392b", "#2980b9"]
+
+
+@app.get("/api/cruises/{cruise_id}/map-data")
+async def cruise_map_data(cruise_id: int):
+    from fastapi.responses import JSONResponse
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT id FROM cruises WHERE id = ?", (cruise_id,)
+        )
+        if await cursor.fetchone() is None:
+            raise HTTPException(status_code=404, detail="Cruise not found")
+
+        cursor = await db.execute(
+            "SELECT id, departure_location, destination_location FROM routes WHERE cruise_id = ? ORDER BY id ASC",
+            (cruise_id,),
+        )
+        routes_meta = await cursor.fetchall()
+
+        routes = []
+        for i, r in enumerate(routes_meta):
+            cursor = await db.execute(
+                "SELECT lat, lon, timestamp FROM track_points WHERE route_id = ? ORDER BY timestamp ASC",
+                (r["id"],),
+            )
+            track_pts = [{"lat": p["lat"], "lon": p["lon"]} for p in await cursor.fetchall()]
+
+            cursor = await db.execute(
+                """SELECT position_lat AS lat, position_lon AS lon, timestamp
+                   FROM logbook_lines
+                   WHERE route_id = ? AND position_lat IS NOT NULL AND position_lon IS NOT NULL
+                   ORDER BY timestamp ASC""",
+                (r["id"],),
+            )
+            log_pts = [{"lat": p["lat"], "lon": p["lon"]} for p in await cursor.fetchall()]
+
+            name = f"{r['departure_location'] or '?'} → {r['destination_location'] or '?'}"
+            routes.append({
+                "id": r["id"],
+                "name": name,
+                "color": ROUTE_COLORS[i % len(ROUTE_COLORS)],
+                "track_points": track_pts,
+                "logbook_points": log_pts,
+            })
+
+    return JSONResponse({"routes": routes})
+
+
+@app.get("/api/routes/{route_id}/map-data")
+async def route_map_data(route_id: int):
+    from fastapi.responses import JSONResponse
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT lat, lon, timestamp FROM track_points WHERE route_id = ? ORDER BY timestamp ASC",
+            (route_id,),
+        )
+        track_points = [{"lat": r["lat"], "lon": r["lon"], "timestamp": r["timestamp"]} for r in await cursor.fetchall()]
+
+        cursor = await db.execute(
+            """SELECT position_lat AS lat, position_lon AS lon, timestamp
+               FROM logbook_lines
+               WHERE route_id = ? AND position_lat IS NOT NULL AND position_lon IS NOT NULL
+               ORDER BY timestamp ASC""",
+            (route_id,),
+        )
+        logbook_points = [{"lat": r["lat"], "lon": r["lon"], "timestamp": r["timestamp"]} for r in await cursor.fetchall()]
+
+    return JSONResponse({"track_points": track_points, "logbook_points": logbook_points})
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
