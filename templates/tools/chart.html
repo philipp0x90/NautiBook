@@ -1,11 +1,87 @@
 {% extends "base.html" %}
-{% block title %}Carte — NautiBook{% endblock %}
+{% block title %}Carte nautique — NautiBook{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+    #global-map { height: calc(100vh - 160px); min-height: 400px; border-radius: 8px; border: 1px solid #dde5ee; }
+    .map-legend { background: #fff; padding: 8px 12px; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,.2); font-size: 12px; line-height: 1.9; }
+    .map-legend-row { display: flex; align-items: center; gap: 7px; }
+    .map-legend-swatch { width: 20px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+</style>
+{% endblock %}
+
 {% block content %}
 
-<div class="stub">
-    <div style="font-size:36px;margin-bottom:12px">🗺️</div>
-    <div style="font-size:18px;font-weight:700;margin-bottom:8px">Carte nautique</div>
-    <div style="font-size:14px;color:var(--muted)">Intégration Navionics — à venir</div>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <span style="font-size:18px;font-weight:700">🗺 Carte nautique</span>
+    <a href="/cruises/list" class="btn btn-blue" style="font-size:13px">Voir les croisières →</a>
 </div>
+
+<div id="global-map"></div>
+
+<script>
+const map = L.map('global-map');
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 18
+}).addTo(map);
+
+L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>',
+    maxZoom: 18, opacity: 0.9
+}).addTo(map);
+
+fetch('/api/all-cruises/map-data')
+    .then(r => r.json())
+    .then(data => {
+        const allCoords = [];
+        const legendItems = [];
+
+        data.cruises.forEach(cruise => {
+            const trackCoords = cruise.track_points.map(p => [p.lat, p.lon]);
+            if (trackCoords.length > 1) {
+                L.polyline(trackCoords, {color: cruise.color, weight: 3, opacity: 0.85})
+                    .addTo(map)
+                    .bindPopup('<strong>' + cruise.name + '</strong>');
+            }
+
+            cruise.logbook_points.forEach(p => {
+                L.circleMarker([p.lat, p.lon], {
+                    radius: 4, color: cruise.color, fillColor: cruise.color, fillOpacity: 1, weight: 2
+                }).addTo(map);
+            });
+
+            allCoords.push(...trackCoords, ...cruise.logbook_points.map(p => [p.lat, p.lon]));
+
+            if (trackCoords.length > 0 || cruise.logbook_points.length > 0) {
+                legendItems.push({color: cruise.color, name: cruise.name});
+            }
+        });
+
+        if (allCoords.length > 0) {
+            map.fitBounds(allCoords, {padding: [30, 30]});
+        } else {
+            map.setView([43.3, 5.4], 6);
+        }
+
+        if (legendItems.length > 0) {
+            const legend = L.control({position: 'bottomright'});
+            legend.onAdd = () => {
+                const div = L.DomUtil.create('div', 'map-legend');
+                div.innerHTML = legendItems.map(item =>
+                    `<div class="map-legend-row">
+                        <div class="map-legend-swatch" style="background:${item.color}"></div>
+                        <span>${item.name}</span>
+                    </div>`
+                ).join('');
+                return div;
+            };
+            legend.addTo(map);
+        }
+    });
+</script>
 
 {% endblock %}

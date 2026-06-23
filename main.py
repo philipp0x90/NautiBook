@@ -1412,7 +1412,52 @@ async def create_line(
 
 # ── Map API ───────────────────────────────────────────────────────────────────
 
-ROUTE_COLORS = ["#2b79c6", "#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#c0392b", "#2980b9"]
+ROUTE_COLORS  = ["#2b79c6", "#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#c0392b", "#2980b9"]
+CRUISE_COLORS = ["#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#2b79c6", "#c0392b", "#f39c12"]
+
+
+@app.get("/api/all-cruises/map-data")
+async def all_cruises_map_data():
+    from fastapi.responses import JSONResponse
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute(
+            "SELECT id, name FROM cruises ORDER BY COALESCE(start_time, created_at) ASC"
+        )
+        cruises_meta = await cursor.fetchall()
+
+        cruises = []
+        for i, c in enumerate(cruises_meta):
+            cursor = await db.execute(
+                """SELECT tp.lat, tp.lon
+                   FROM track_points tp
+                   JOIN routes r ON tp.route_id = r.id
+                   WHERE r.cruise_id = ?
+                   ORDER BY tp.timestamp ASC""",
+                (c["id"],),
+            )
+            track_pts = [{"lat": p["lat"], "lon": p["lon"]} for p in await cursor.fetchall()]
+
+            cursor = await db.execute(
+                """SELECT l.position_lat AS lat, l.position_lon AS lon
+                   FROM logbook_lines l
+                   JOIN routes r ON l.route_id = r.id
+                   WHERE r.cruise_id = ? AND l.position_lat IS NOT NULL AND l.position_lon IS NOT NULL
+                   ORDER BY l.timestamp ASC""",
+                (c["id"],),
+            )
+            log_pts = [{"lat": p["lat"], "lon": p["lon"]} for p in await cursor.fetchall()]
+
+            cruises.append({
+                "id": c["id"],
+                "name": c["name"] or f"Croisière #{c['id']}",
+                "color": CRUISE_COLORS[i % len(CRUISE_COLORS)],
+                "track_points": track_pts,
+                "logbook_points": log_pts,
+            })
+
+    return JSONResponse({"cruises": cruises})
 
 
 @app.get("/api/cruises/{cruise_id}/map-data")
