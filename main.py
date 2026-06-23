@@ -58,6 +58,8 @@ async def init_db():
                 notes TEXT,
                 finished BOOLEAN,
                 cruise_id INTEGER,
+                motor_hours_start REAL,
+                motor_hours_end REAL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(cruise_id) REFERENCES cruises(id) ON DELETE CASCADE
             )
@@ -97,12 +99,16 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS trip_photos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 trip_id INTEGER,
+                route_id INTEGER,
                 photo_path TEXT NOT NULL,
                 comment TEXT,
                 added_by TEXT,
+                lat REAL,
+                lon REAL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 cruise_id INTEGER,
-                FOREIGN KEY (cruise_id) REFERENCES cruises(id)
+                FOREIGN KEY (cruise_id) REFERENCES cruises(id),
+                FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
             )
         """)
 
@@ -158,12 +164,14 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS todo_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ship_id INTEGER NOT NULL DEFAULT 1,
-                task TEXT NOT NULL,
+                title TEXT,
+                task TEXT,
                 urgent BOOLEAN DEFAULT 0,
                 status TEXT DEFAULT 'A faire',
                 due_date TEXT,
                 completed_at TEXT,
                 tags TEXT,
+                photo_path TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -253,24 +261,17 @@ async def init_db():
             )
         """)
 
-        # ── Migrations ────────────────────────────────────────────────────
-        for stmt in [
-            "ALTER TABLE todo_items ADD COLUMN tags TEXT",
-            "ALTER TABLE todo_items ADD COLUMN ship_id INTEGER NOT NULL DEFAULT 1",
-            "ALTER TABLE expenses ADD COLUMN ship_id INTEGER NOT NULL DEFAULT 1",
-            "ALTER TABLE contacts ADD COLUMN ship_id INTEGER NOT NULL DEFAULT 1",
-            "ALTER TABLE bosco_entries RENAME TO expenses",
-            "ALTER TABLE stopovers ADD COLUMN cost_per_night REAL",
-            "ALTER TABLE stopovers ADD COLUMN notes TEXT",
-            "ALTER TABLE routes ADD COLUMN motor_hours_start REAL",
-            "ALTER TABLE routes ADD COLUMN motor_hours_end REAL",
-            "ALTER TABLE todo_items ADD COLUMN title TEXT",
-            "ALTER TABLE todo_items ADD COLUMN photo_path TEXT",
-        ]:
-            try:
-                await db.execute(stmt)
-            except Exception:
-                pass
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS track_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                route_id INTEGER,
+                timestamp DATETIME NOT NULL,
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                photo_path TEXT,
+                FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
+            )
+        """)
 
         await db.commit()
 
