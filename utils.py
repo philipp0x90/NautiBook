@@ -36,7 +36,7 @@ def _get_signalk_http_url() -> str | None:
 
 def get_data_at_endpoint(signalk_url: str, endpoint: str):
     try:
-        resp = requests.get(f"{signalk_url}{endpoint}", timeout=5)
+        resp = requests.get(f"{signalk_url}{endpoint}/", timeout=5)
         if not resp.ok:
             print(f"Error retrieving signalk data: {endpoint}")
             return None
