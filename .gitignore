@@ -5,3 +5,4 @@ logbook.db
 claude_todo.md
 config.yaml
 *.pdf
+logbook.db.backup-*

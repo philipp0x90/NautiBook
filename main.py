@@ -77,15 +77,29 @@ templates.env.filters["lat"] = _lat
 templates.env.filters["lon"] = _lon
 
 
-async def init_db():
+@asynccontextmanager
+async def connect():
+    """Open the database with foreign keys enforced.
+
+    SQLite defaults the pragma to OFF *per connection*, so a plain
+    aiosqlite.connect() makes every ON DELETE CASCADE in the schema a no-op:
+    deleting a cruise used to leave its routes, lines and track points behind
+    as invisible orphans. Always go through this helper.
+    """
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute("PRAGMA foreign_keys = ON;")
+        yield db
+
+
+async def init_db():
+    async with connect() as db:
 
         # ── Core tables ──────────────────────────────────────────────────
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS cruises (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ship_id INTEGER,
                 name TEXT,
                 departure TEXT,
                 destination TEXT,
@@ -93,7 +107,8 @@ async def init_db():
                 end_time DATETIME,
                 loch_start REAL,
                 loch_end REAL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (ship_id) REFERENCES ship_info(id) ON DELETE CASCADE
             )
         """)
 
@@ -323,10 +338,36 @@ async def init_db():
             )
         """)
 
+        await _migrate(db)
         await db.commit()
 
 
+async def _migrate(db):
+    """Bring an existing logbook.db up to the schema above.
+
+    CREATE TABLE IF NOT EXISTS silently skips tables that already exist, so a
+    new column never reaches a database created before it was added. Each step
+    must be idempotent — this runs on every startup.
+    """
+    cursor = await db.execute("PRAGMA table_info(cruises)")
+    if "ship_id" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute(
+            "ALTER TABLE cruises ADD COLUMN ship_id INTEGER "
+            "REFERENCES ship_info(id) ON DELETE CASCADE"
+        )
+        # Cruises recorded before ships were linked belong to the first ship.
+        await db.execute(
+            "UPDATE cruises SET ship_id = (SELECT MIN(id) FROM ship_info) WHERE ship_id IS NULL"
+        )
+        print("Migration: cruises.ship_id added")
+
+
 TRACK_INTERVAL = 30  # seconds between automatic GPS recordings
+
+# Automatic GPS recording is off. It appended a point every TRACK_INTERVAL to
+# whichever route was open, which piled up tens of thousands of rows — and any
+# route deleted along the way left its points behind. Flip to True to resume.
+TRACK_RECORDING = False
 
 
 async def track_recorder_loop():
@@ -334,7 +375,7 @@ async def track_recorder_loop():
     while True:
         await asyncio.sleep(TRACK_INTERVAL)
         try:
-            async with aiosqlite.connect(DATABASE_URL) as db:
+            async with connect() as db:
                 cursor = await db.execute(
                     "SELECT id FROM routes WHERE finished IS NOT 1 ORDER BY id DESC LIMIT 1"
                 )
@@ -348,7 +389,7 @@ async def track_recorder_loop():
                 continue
             lat, lon = position
 
-            async with aiosqlite.connect(DATABASE_URL) as db:
+            async with connect() as db:
                 now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
                 await db.execute(
                     "INSERT INTO track_points (route_id, timestamp, lat, lon) VALUES (?, ?, ?, ?)",
@@ -364,6 +405,10 @@ async def track_recorder_loop():
 async def lifespan(app: FastAPI):
     await init_db()
     print("Database initialized")
+    if not TRACK_RECORDING:
+        print("Automatic GPS recording disabled")
+        yield
+        return
     recorder = asyncio.create_task(track_recorder_loop())
     yield
     recorder.cancel()
@@ -413,7 +458,7 @@ async def ship_index(request: Request):
 
 @app.get("/ship/select", response_class=HTMLResponse)
 async def ship_select(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM ship_info ORDER BY id")
         ships = await cursor.fetchall()
@@ -445,7 +490,7 @@ async def new_ship_form(request: Request):
 
 @app.post("/ship/new")
 async def create_ship(name: str = Form(...)):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         cursor = await db.execute("INSERT INTO ship_info (name) VALUES (?)", (name,))
         ship_id = cursor.lastrowid
         await db.commit()
@@ -456,7 +501,7 @@ async def create_ship(name: str = Form(...)):
 
 @app.get("/ship/info", response_class=HTMLResponse)
 async def ship_info(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
         ship = dict(ship) if ship else None
@@ -468,7 +513,7 @@ async def ship_info(request: Request):
 
 @app.get("/ship/info/edit", response_class=HTMLResponse)
 async def edit_ship_info_form(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
         ship = dict(ship) if ship else None
@@ -537,7 +582,7 @@ async def save_ship_info(
         insurance_start or None, insurance_end or None,
         misc_notes or None,
     )
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         cursor = await db.execute("SELECT id FROM ship_info WHERE id = ?", (ship_id,))
         existing = await cursor.fetchone()
         if existing:
@@ -582,7 +627,7 @@ async def save_ship_info(
 @app.get("/ship/expenses", response_class=HTMLResponse)
 async def ship_expenses(request: Request):
     ship_id = get_current_ship_id(request)
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, ship_id)
         cursor = await db.execute(
@@ -602,7 +647,7 @@ async def ship_expenses(request: Request):
 @app.get("/ship/expenses/new", response_class=HTMLResponse)
 async def new_expense_form(request: Request):
     ship_id = get_current_ship_id(request)
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, ship_id)
         cursor = await db.execute(
@@ -639,7 +684,7 @@ async def create_expense(
         if paid is None:
             paid = 0
         balance = unit_price - paid
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO expenses (ship_id, date, designation, unit_type, unit_price, paid, balance, expense_type, category, payment, supplier)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -652,7 +697,7 @@ async def create_expense(
 
 @app.post("/ship/expenses/{entry_id}/delete")
 async def delete_expense(entry_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute("DELETE FROM expenses WHERE id = ?", (entry_id,))
         await db.commit()
     return RedirectResponse(url="/ship/expenses", status_code=303)
@@ -661,7 +706,7 @@ async def delete_expense(entry_id: int):
 @app.get("/ship/todo", response_class=HTMLResponse)
 async def ship_todo(request: Request):
     ship_id = get_current_ship_id(request)
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, ship_id)
         cursor = await db.execute(
@@ -687,7 +732,7 @@ async def ship_todo(request: Request):
 
 @app.get("/ship/todo/new", response_class=HTMLResponse)
 async def new_todo_form(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
     return templates.TemplateResponse(
@@ -707,7 +752,7 @@ async def create_todo_item(
     photo_path: Optional[str] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, tags, photo_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ship_id, title, task or None, 1 if urgent else 0, due_date or None, tags or None, photo_path or None),
@@ -718,7 +763,7 @@ async def create_todo_item(
 
 @app.get("/ship/todo/{item_id}/edit", response_class=HTMLResponse)
 async def edit_todo_form(request: Request, item_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
         cursor = await db.execute("SELECT * FROM todo_items WHERE id = ?", (item_id,))
@@ -747,7 +792,7 @@ async def update_todo_item(
     tags: Optional[str] = Form(None),
     photo_path: Optional[str] = Form(None),
 ):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             """UPDATE todo_items SET title=?, task=?, urgent=?, status=?, due_date=?, completed_at=?, tags=?, photo_path=?
                WHERE id=?""",
@@ -761,7 +806,7 @@ async def update_todo_item(
 @app.post("/ship/todo/{item_id}/done")
 async def mark_todo_done(item_id: int, next: Optional[str] = Form(None)):
     today = datetime.now().strftime("%Y-%m-%d")
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             "UPDATE todo_items SET status='Terminé', completed_at=? WHERE id=? AND status != 'Terminé'",
             (today, item_id),
@@ -772,7 +817,7 @@ async def mark_todo_done(item_id: int, next: Optional[str] = Form(None)):
 
 @app.post("/ship/todo/{item_id}/undo")
 async def undo_todo_item(item_id: int, next: Optional[str] = Form(None)):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             "UPDATE todo_items SET status='A faire', completed_at=NULL WHERE id=?",
             (item_id,),
@@ -783,7 +828,7 @@ async def undo_todo_item(item_id: int, next: Optional[str] = Form(None)):
 
 @app.post("/ship/todo/{item_id}/delete")
 async def delete_todo_item(item_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute("DELETE FROM todo_items WHERE id = ?", (item_id,))
         await db.commit()
     return RedirectResponse(url="/ship/todo", status_code=303)
@@ -791,7 +836,7 @@ async def delete_todo_item(item_id: int):
 
 @app.get("/ship/fuel", response_class=HTMLResponse)
 async def ship_fuel(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
     return templates.TemplateResponse(
@@ -803,7 +848,7 @@ async def ship_fuel(request: Request):
 @app.get("/ship/contacts", response_class=HTMLResponse)
 async def ship_contacts(request: Request):
     ship_id = get_current_ship_id(request)
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, ship_id)
         cursor = await db.execute(
@@ -822,7 +867,7 @@ async def ship_contacts(request: Request):
 
 @app.get("/ship/contacts/new", response_class=HTMLResponse)
 async def new_contact_form(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
     return templates.TemplateResponse(
@@ -844,7 +889,7 @@ async def create_contact(
     notes: Optional[str] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO contacts (ship_id, company, contact_name, category, phone, email, website, address, notes)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -858,7 +903,7 @@ async def create_contact(
 @app.get("/ship/contacts/{contact_id}", response_class=HTMLResponse)
 async def contact_detail(request: Request, contact_id: int):
     ship_id = get_current_ship_id(request)
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, ship_id)
         cursor = await db.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,))
@@ -892,10 +937,13 @@ async def cruises_index(request: Request):
 
 @app.get("/cruises/current", response_class=HTMLResponse)
 async def current_cruise(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM cruises ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1"
+            "SELECT * FROM cruises WHERE ship_id = ? "
+            "ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1",
+            (ship_id,),
         )
         cruise = await cursor.fetchone()
         if cruise is None:
@@ -915,11 +963,13 @@ async def current_cruise(request: Request):
         )
         routes = await cursor.fetchall()
         cursor = await db.execute(
-            "SELECT id FROM cruises WHERE id < ? ORDER BY id DESC LIMIT 1", (cruise_id,)
+            "SELECT id FROM cruises WHERE ship_id = ? AND id < ? ORDER BY id DESC LIMIT 1",
+            (ship_id, cruise_id),
         )
         prev_cruise = await cursor.fetchone()
         cursor = await db.execute(
-            "SELECT id FROM cruises WHERE id > ? ORDER BY id ASC LIMIT 1", (cruise_id,)
+            "SELECT id FROM cruises WHERE ship_id = ? AND id > ? ORDER BY id ASC LIMIT 1",
+            (ship_id, cruise_id),
         )
         next_cruise = await cursor.fetchone()
         cursor = await db.execute(
@@ -947,14 +997,17 @@ async def current_cruise(request: Request):
 
 @app.get("/cruises/list", response_class=HTMLResponse)
 async def cruise_list(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM cruises ORDER BY id ASC"
+            "SELECT * FROM cruises WHERE ship_id = ? ORDER BY id ASC", (ship_id,)
         )
         cruises = await cursor.fetchall()
         current_cursor = await db.execute(
-            "SELECT id FROM cruises ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1"
+            "SELECT id FROM cruises WHERE ship_id = ? "
+            "ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1",
+            (ship_id,),
         )
         latest = await current_cursor.fetchone()
     return templates.TemplateResponse(
@@ -970,7 +1023,8 @@ async def cruise_list(request: Request):
 
 @app.get("/cruises/stopovers", response_class=HTMLResponse)
 async def all_stopovers(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT s.*,
@@ -982,9 +1036,11 @@ async def all_stopovers(request: Request):
                       r.departure_location, r.destination_location,
                       c.name AS cruise_name, c.id AS cruise_id
                FROM stopovers s
-               LEFT JOIN routes r ON s.route_id = r.id
-               LEFT JOIN cruises c ON r.cruise_id = c.id
-               ORDER BY s.arrival_date DESC"""
+               JOIN routes r ON s.route_id = r.id
+               JOIN cruises c ON r.cruise_id = c.id
+               WHERE c.ship_id = ?
+               ORDER BY s.arrival_date DESC""",
+            (ship_id,),
         )
         stopovers = await cursor.fetchall()
     return templates.TemplateResponse(
@@ -1007,12 +1063,15 @@ async def new_cruise_form(request: Request):
 
 @app.get("/cruises/{cruise_id}", response_class=HTMLResponse)
 async def cruise_detail(request: Request, cruise_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM cruises WHERE id = ?", (cruise_id,))
         cruise = await cursor.fetchone()
         if cruise is None:
             raise HTTPException(status_code=404, detail="Cruise not found")
+        # Navigate within this cruise's own ship, so a direct link stays coherent
+        # even when another ship is selected.
+        ship_id = cruise["ship_id"]
         cursor = await db.execute(
             """SELECT r.*,
                       (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
@@ -1023,11 +1082,13 @@ async def cruise_detail(request: Request, cruise_id: int):
         )
         routes = await cursor.fetchall()
         cursor = await db.execute(
-            "SELECT id FROM cruises WHERE id < ? ORDER BY id DESC LIMIT 1", (cruise_id,)
+            "SELECT id FROM cruises WHERE ship_id = ? AND id < ? ORDER BY id DESC LIMIT 1",
+            (ship_id, cruise_id),
         )
         prev_cruise = await cursor.fetchone()
         cursor = await db.execute(
-            "SELECT id FROM cruises WHERE id > ? ORDER BY id ASC LIMIT 1", (cruise_id,)
+            "SELECT id FROM cruises WHERE ship_id = ? AND id > ? ORDER BY id ASC LIMIT 1",
+            (ship_id, cruise_id),
         )
         next_cruise = await cursor.fetchone()
         cursor = await db.execute(
@@ -1055,7 +1116,7 @@ async def cruise_detail(request: Request, cruise_id: int):
 @app.post("/cruises/{cruise_id}/arrival")
 async def cruise_arrival(cruise_id: int):
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             "UPDATE cruises SET end_time = ? WHERE id = ?",
             (now, cruise_id),
@@ -1066,7 +1127,7 @@ async def cruise_arrival(cruise_id: int):
 
 @app.post("/cruises/{cruise_id}/set-end")
 async def cruise_set_end(cruise_id: int, end_time: Optional[str] = Form(None)):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             "UPDATE cruises SET end_time = ? WHERE id = ?",
             (end_time or None, cruise_id),
@@ -1077,7 +1138,7 @@ async def cruise_set_end(cruise_id: int, end_time: Optional[str] = Form(None)):
 
 @app.post("/cruises/{cruise_id}/delete")
 async def delete_cruise(cruise_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute("DELETE FROM cruises WHERE id = ?", (cruise_id,))
         await db.commit()
     return RedirectResponse(url="/cruises/list", status_code=303)
@@ -1085,16 +1146,19 @@ async def delete_cruise(cruise_id: int):
 
 @app.post("/cruises/new")
 async def create_cruise(
+    request: Request,
     name: str = Form(...),
     departure: Optional[str] = Form(None),
     destination: Optional[str] = Form(None),
     start_time: Optional[str] = Form(None),
     end_time: Optional[str] = Form(None),
 ):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
-            "INSERT INTO cruises (name, departure, destination, start_time, end_time) VALUES (?, ?, ?, ?, ?)",
-            (name, departure or None, destination or None, start_time or None, end_time or None),
+            "INSERT INTO cruises (ship_id, name, departure, destination, start_time, end_time)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (get_current_ship_id(request), name, departure or None, destination or None,
+             start_time or None, end_time or None),
         )
         await db.commit()
     return RedirectResponse(url="/cruises/list", status_code=303)
@@ -1104,7 +1168,7 @@ async def create_cruise(
 
 @app.get("/routes/{route_id}/stopovers/new", response_class=HTMLResponse)
 async def new_stopover_form(request: Request, route_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT r.*, c.name AS cruise_name
@@ -1142,7 +1206,7 @@ async def create_stopover(
                 cost = cost_per_night * nights
         except ValueError:
             pass
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO stopovers (route_id, locality, name, type, arrival_date, departure_date, cost_per_night, cost, notes)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -1156,7 +1220,7 @@ async def create_stopover(
 
 @app.get("/stopovers/{stopover_id}/edit", response_class=HTMLResponse)
 async def edit_stopover_form(request: Request, stopover_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT s.*, r.departure_location, r.destination_location, c.name AS cruise_name
@@ -1195,7 +1259,7 @@ async def update_stopover(
                 cost = cost_per_night * nights
         except ValueError:
             pass
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         cursor = await db.execute("SELECT route_id FROM stopovers WHERE id = ?", (stopover_id,))
         row = await cursor.fetchone()
         route_id = row[0] if row else None
@@ -1214,7 +1278,7 @@ async def update_stopover(
 
 @app.post("/stopovers/{stopover_id}/delete")
 async def delete_stopover(stopover_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         cursor = await db.execute("SELECT route_id FROM stopovers WHERE id = ?", (stopover_id,))
         row = await cursor.fetchone()
         route_id = row[0] if row else None
@@ -1229,14 +1293,17 @@ async def delete_stopover(stopover_id: int):
 
 @app.get("/routes/current", response_class=HTMLResponse)
 async def current_route(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT r.id FROM routes r
                WHERE r.cruise_id = (
-                   SELECT id FROM cruises ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1
+                   SELECT id FROM cruises WHERE ship_id = ?
+                   ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1
                )
-               ORDER BY r.id DESC LIMIT 1"""
+               ORDER BY r.id DESC LIMIT 1""",
+            (ship_id,),
         )
         latest = await cursor.fetchone()
     if latest:
@@ -1251,7 +1318,7 @@ async def route_arrivee(
     motor_hours_end: Optional[float] = Form(None),
 ):
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             "SELECT cruise_id, destination_location FROM routes WHERE id = ?", (route_id,)
@@ -1270,7 +1337,7 @@ async def route_arrivee(
 
 @app.post("/routes/{route_id}/delete")
 async def delete_route(route_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT cruise_id FROM routes WHERE id = ?", (route_id,))
         row = await cursor.fetchone()
@@ -1284,10 +1351,15 @@ async def delete_route(route_id: int):
 
 @app.get("/routes", response_class=HTMLResponse)
 async def routes_index(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT id FROM routes ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1"
+            """SELECT r.id FROM routes r
+               JOIN cruises c ON r.cruise_id = c.id
+               WHERE c.ship_id = ?
+               ORDER BY COALESCE(r.start_time, r.created_at) DESC LIMIT 1""",
+            (ship_id,),
         )
         latest = await cursor.fetchone()
     if latest:
@@ -1300,7 +1372,7 @@ async def routes_index(request: Request):
 
 @app.get("/routes/new", response_class=HTMLResponse)
 async def new_route_form(request: Request, cruise_id: int = Query(...)):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM cruises WHERE id = ?", (cruise_id,))
         cruise = await cursor.fetchone()
@@ -1322,7 +1394,7 @@ async def create_route(
     notes: Optional[str] = Form(None),
     motor_hours_start: Optional[float] = Form(None),
 ):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO routes (cruise_id, name, departure_location, destination_location, start_time, notes, motor_hours_start)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -1335,7 +1407,7 @@ async def create_route(
 
 @app.get("/routes/{route_id}", response_class=HTMLResponse)
 async def route_detail(request: Request, route_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -1398,7 +1470,7 @@ async def route_detail(request: Request, route_id: int):
 
 @app.get("/routes/{route_id}/new-line", response_class=HTMLResponse)
 async def new_line_form(request: Request, route_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT r.*, c.name AS cruise_name
@@ -1449,7 +1521,7 @@ async def create_line(
     twa = round(twa) if twa is not None else None
     heading = round(heading) if heading is not None else None
     cog = round(cog) if cog is not None else None
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         await db.execute(
             """INSERT INTO logbook_lines
                (timestamp, route_id, aws, awa, water_temp, heading, cog, log, trip, depth,
@@ -1473,13 +1545,16 @@ CRUISE_COLORS = ["#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#2b79c6
 
 
 @app.get("/api/all-cruises/map-data")
-async def all_cruises_map_data():
+async def all_cruises_map_data(request: Request):
     from fastapi.responses import JSONResponse
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            "SELECT id, name FROM cruises ORDER BY COALESCE(start_time, created_at) ASC"
+            "SELECT id, name FROM cruises WHERE ship_id = ? "
+            "ORDER BY COALESCE(start_time, created_at) ASC",
+            (ship_id,),
         )
         cruises_meta = await cursor.fetchall()
 
@@ -1519,7 +1594,7 @@ async def all_cruises_map_data():
 @app.get("/api/cruises/{cruise_id}/map-data")
 async def cruise_map_data(cruise_id: int):
     from fastapi.responses import JSONResponse
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -1566,7 +1641,7 @@ async def cruise_map_data(cruise_id: int):
 @app.get("/api/routes/{route_id}/map-data")
 async def route_map_data(route_id: int):
     from fastapi.responses import JSONResponse
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -1596,7 +1671,7 @@ async def tools_index(request: Request):
 
 @app.get("/tools/weather", response_class=HTMLResponse)
 async def tools_weather(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """SELECT position_lat, position_lon FROM logbook_lines
@@ -1624,7 +1699,7 @@ async def tools_chart(request: Request):
 
 @app.get("/gallery", response_class=HTMLResponse)
 async def gallery(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM trip_photos ORDER BY created_at DESC")
         photos = await cursor.fetchall()
@@ -1636,7 +1711,7 @@ async def gallery(request: Request):
 
 @app.get("/logbook/{line_id}", response_class=HTMLResponse)
 async def view_line(request: Request, line_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM logbook_lines WHERE id = ?", (line_id,))
         line = await cursor.fetchone()
@@ -1661,7 +1736,7 @@ async def _set_line_field(line_id: int, field: str, value: Optional[str]):
     """Update one whitelisted column; returns where to redirect afterwards."""
     if field not in EDITABLE_LINE_FIELDS:
         raise HTTPException(status_code=404, detail="Field not editable")
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         cursor = await db.execute("SELECT route_id FROM logbook_lines WHERE id = ?", (line_id,))
         row = await cursor.fetchone()
         if row is None:
@@ -1689,7 +1764,7 @@ async def add_line_note(line_id: int = Form(...), value: Optional[str] = Form(No
 
 @app.get("/logbook/{line_id}/add-photo", response_class=HTMLResponse)
 async def add_photo_form(request: Request, line_id: int):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM logbook_lines WHERE id = ?", (line_id,))
         line = await cursor.fetchone()
@@ -1709,7 +1784,7 @@ async def add_photo(
     comment: Optional[str] = Form(None),
     added_by: Optional[str] = Form(None),
 ):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         cursor = await db.execute("SELECT id FROM logbook_lines WHERE id = ?", (line_id,))
         if await cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Entry not found")
@@ -1738,7 +1813,7 @@ async def setup_save(ikommunicate_url: str = Form(...)):
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_form(request: Request):
-    async with aiosqlite.connect(DATABASE_URL) as db:
+    async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
     return templates.TemplateResponse(

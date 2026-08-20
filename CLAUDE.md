@@ -23,21 +23,23 @@ pip install -r requirements.txt
 The data hierarchy is the thing to understand first:
 
 ```
-ship_info ──(ship_id cookie selects the "current" ship)
-cruises  (croisière — a multi-leg voyage)
-  └── routes  (a single leg: departure → destination, has finished flag)
-        ├── logbook_lines  (manual log entries: wind, position, depth…)
-        ├── stopovers      (escales — marina stays with cost/nights)
-        └── track_points   (automatic GPS breadcrumbs)
+ship_info  (the ship_id cookie selects the "current" one)
+  └── cruises  (croisière — a multi-leg voyage)
+        └── routes  (a single leg: departure → destination, has finished flag)
+              ├── logbook_lines  (manual log entries: wind, position, depth…)
+              ├── stopovers      (escales — marina stays with cost/nights)
+              └── track_points   (automatic GPS breadcrumbs)
 trip_photos  (linked to a logbook line via trip_id, or a route/cruise)
 ```
 
-Ship-scoped tables (`todo_items`, `expenses`, `contacts`) carry a `ship_id` column; navigation tables do not — they hang off `cruise_id` / `route_id`.
+**Strict single ownership, enforced in the schema.** Each level belongs to exactly one parent, all the way up: a route belongs to one cruise, so transitively to one ship. Every arrow above is a real foreign key with `ON DELETE CASCADE`, so this holds under deletion too — see the note on `connect()` below, which is what makes those cascades fire. Anything that lists cruises or routes must filter by the current ship; there is no "all ships" view.
 
-Several "current" routes resolve implicitly rather than via a flag:
-- **Current cruise** = the cruise with the latest `COALESCE(start_time, created_at)`.
+`todo_items`, `expenses` and `contacts` also carry `ship_id`, but as a flat scope rather than part of this chain.
+
+Several "current" pointers resolve implicitly rather than via a flag, and all are ship-scoped:
+- **Current cruise** = that ship's cruise with the latest `COALESCE(start_time, created_at)`.
 - **Current route** = highest-`id` route in the current cruise.
-- **Track recording target** = highest-`id` route where `finished IS NOT 1`.
+- `cruise_detail` takes the ship from the *cruise row*, not the cookie, so a direct link keeps prev/next navigation coherent.
 
 ## Architecture
 
@@ -57,7 +59,9 @@ Angles are whole degrees and depth is one decimal. This is enforced in three pla
 
 ### Background GPS tracker
 
-`track_recorder_loop()` is started by the app `lifespan` and inserts a `track_points` row every `TRACK_INTERVAL` (30 s) for the newest unfinished route. `get_position()` is blocking `requests` code, so it's dispatched with `asyncio.to_thread`. The loop swallows and prints all exceptions — it must never take the app down.
+**Currently disabled** — `TRACK_RECORDING = False`, so `lifespan` never starts the task. It had appended a `track_points` row every `TRACK_INTERVAL` (30 s) to the newest unfinished route, which accumulated ~19 000 rows, most of them orphaned by deletions that never cascaded. Flip the flag to resume.
+
+The loop itself still works: `get_position()` is blocking `requests` code, so it's dispatched with `asyncio.to_thread`, and all exceptions are swallowed and printed — it must never take the app down. Note it picks its target route across all ships, since a background task has no cookie; that is only safe because one boat runs one instance.
 
 ### Map API
 
@@ -65,9 +69,9 @@ Three JSON endpoints feed Leaflet maps in the templates: `/api/routes/{id}/map-d
 
 ## Conventions
 
-**DB access** — no connection pool or shared handle: every handler opens its own `async with aiosqlite.connect(DATABASE_URL)`. Reads set `db.row_factory = aiosqlite.Row` and are converted with `dict(row)` before going into a template context; writes pass positional tuples and `await db.commit()`.
+**DB access** — no connection pool or shared handle: every handler opens its own `async with connect() as db`. Reads set `db.row_factory = aiosqlite.Row` and are converted with `dict(row)` before going into a template context; writes pass positional tuples and `await db.commit()`.
 
-**Schema changes** — `init_db()` uses `CREATE TABLE IF NOT EXISTS` and runs on every startup, so adding a *table* just works. Adding a *column* to an existing table does not — the guard skips it, and an existing `logbook.db` keeps the old shape. Apply an `ALTER TABLE` by hand for those.
+**Schema changes** — `init_db()` uses `CREATE TABLE IF NOT EXISTS` and runs on every startup, so adding a *table* just works. Adding a *column* does not: the guard skips the existing table and a live `logbook.db` keeps the old shape. Put those in `_migrate()`, which runs at the end of `init_db()` — guard each step (e.g. check `PRAGMA table_info`) because it re-runs on every startup. Update the `CREATE TABLE` too, so fresh databases skip the migration path.
 
 **Form handlers** — form field names match DB column names one-to-one. Every field is `Optional[...] = Form(None)`, and empty strings are normalised with `x or None` so blanks land as `NULL`. POSTs end in `RedirectResponse(..., status_code=303)`. Mutations are always plain form posts — there is no `fetch()`-based write anywhere; the only JavaScript is Leaflet and the arrival modal.
 
@@ -83,7 +87,7 @@ Positions are **stored** as signed decimal degrees (that is what SignalK returns
 
 **French stored values** — `todo_items.status` holds `'A faire'` / `'Terminé'` and these literals appear in SQL `WHERE` / `ORDER BY` clauses (`main.py:632`, `main.py:1341`). Don't translate them without updating every query.
 
-**Deletes** — most foreign keys declare `ON DELETE CASCADE`, but `PRAGMA foreign_keys = ON` is only set inside `init_db()`, not in per-handler connections. Cascades therefore do **not** fire during normal request handling; delete children explicitly, or enable the pragma on that connection.
+**Deletes** — the schema's `ON DELETE CASCADE` clauses do the work; never delete children by hand. This depends entirely on `PRAGMA foreign_keys = ON`, which SQLite defaults to *off per connection*: a bare `aiosqlite.connect()` makes every cascade a silent no-op. That was the case for a long time and it orphaned ~19 000 rows. **Always open the database with the `connect()` helper**, never `aiosqlite.connect()` directly.
 
 ## Stale documentation
 
