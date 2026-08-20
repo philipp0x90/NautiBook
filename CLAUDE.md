@@ -69,7 +69,9 @@ Three JSON endpoints feed Leaflet maps in the templates: `/api/routes/{id}/map-d
 
 **Schema changes** — `init_db()` uses `CREATE TABLE IF NOT EXISTS` and runs on every startup, so adding a *table* just works. Adding a *column* to an existing table does not — the guard skips it, and an existing `logbook.db` keeps the old shape. Apply an `ALTER TABLE` by hand for those.
 
-**Form handlers** — form field names match DB column names one-to-one. Every field is `Optional[...] = Form(None)`, and empty strings are normalised with `x or None` so blanks land as `NULL`. POSTs end in `RedirectResponse(..., status_code=303)`.
+**Form handlers** — form field names match DB column names one-to-one. Every field is `Optional[...] = Form(None)`, and empty strings are normalised with `x or None` so blanks land as `NULL`. POSTs end in `RedirectResponse(..., status_code=303)`. Mutations are always plain form posts — there is no `fetch()`-based write anywhere; the only JavaScript is Leaflet and the arrival modal.
+
+**Inline editing** — logbook-line columns are edited in place on the route page: wrap one field in its own form (never a shared one, or concurrent edits overwrite each other) that auto-submits via `onchange="this.form.submit()"`, and give it `class="inline-edit"` so it reads as plain text until hovered. All of them post to the single handler `update_line_field` at `POST /logbook/{line_id}/field/{field}`, with the form field always named `value`. **To make another column editable, add its name to `EDITABLE_LINE_FIELDS`** — the field name is interpolated into the `UPDATE`, so that set is what keeps the URL out of SQL. Currently `visual_pos` (log table) and `notes` (Journal panel). Saving reloads the page, so scroll position resets.
 
 **Ship context** — `get_current_ship_id(request)` reads the `ship_id` cookie (defaulting to 1); `_fetch_ship(db, ship_id)` falls back to the first ship when that id is gone. Templates get the ship as `current_ship`, which `base.html` uses for the nav label.
 

@@ -1652,6 +1652,32 @@ async def view_line(request: Request, line_id: int):
     )
 
 
+# Columns the route page may edit in place. The field name is interpolated
+# into SQL, so it must come from this set and never straight from the URL.
+EDITABLE_LINE_FIELDS = {"visual_pos", "notes"}
+
+
+@app.post("/logbook/{line_id}/field/{field}")
+async def update_line_field(line_id: int, field: str, value: Optional[str] = Form(None)):
+    """Inline edit of one logbook-line column from the route page."""
+    if field not in EDITABLE_LINE_FIELDS:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("SELECT route_id FROM logbook_lines WHERE id = ?", (line_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        route_id = row[0]
+        await db.execute(
+            f"UPDATE logbook_lines SET {field} = ? WHERE id = ?",
+            (value or None, line_id),
+        )
+        await db.commit()
+    if route_id:
+        return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+    return RedirectResponse(url=f"/logbook/{line_id}", status_code=303)
+
+
 @app.get("/logbook/{line_id}/add-photo", response_class=HTMLResponse)
 async def add_photo_form(request: Request, line_id: int):
     async with aiosqlite.connect(DATABASE_URL) as db:

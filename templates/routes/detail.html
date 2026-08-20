@@ -21,6 +21,20 @@
     .log-table .row-bot td { background: #f0f8fc; border-bottom: 2px solid #d0e8f0; }
     .log-table .sog-cell { font-weight: 700; }
     .log-table .depth-cell { color: #1a5fa3; font-weight: 600; text-align: center; vertical-align: middle; }
+    /* Inline-editable field: looks like plain text until hovered or focused */
+    .inline-edit {
+        width: 100%; padding: 2px 5px; font: inherit; color: inherit;
+        background: transparent; border: 1px solid transparent; border-radius: 4px;
+    }
+    .inline-edit:hover { background: #fff; border-color: #cfe3ef; }
+    .inline-edit:focus { background: #fff; border-color: var(--accent); outline: none; }
+    .log-table .inline-edit { min-width: 120px; }
+    /* Notes are multi-line: sized to their content, roomier while editing */
+    textarea.inline-edit {
+        font-size: 12px; line-height: 1.5; color: #333;
+        resize: vertical; overflow: hidden; display: block;
+    }
+    textarea.inline-edit:focus { overflow: auto; min-height: 60px; }
     .log-table .add-row td { background: #e8f7fb; }
     .log-table .add-row td a { color: var(--accent-dark); font-weight: 700; text-decoration: none; font-size: 14px; }
 
@@ -144,7 +158,14 @@
                                 {{ ln.position_lon | lon }}
                             {% else %}—{% endif %}
                         </td>
-                        <td rowspan="2">{{ ln.visual_pos or '' }}</td>
+                        <td rowspan="2">
+                            <form method="POST" action="/logbook/{{ ln.id }}/field/visual_pos">
+                                <input type="text" name="value" class="inline-edit"
+                                       value="{{ ln.visual_pos or '' }}" placeholder="—"
+                                       title="Modifier la position visuelle (Entrée pour enregistrer)"
+                                       onchange="this.form.submit()">
+                            </form>
+                        </td>
                     </tr>
                     <tr class="row-bot">
                         <td>{{ ln.awa | deg }}</td>
@@ -184,18 +205,23 @@
     {# ── Journal / Notes panel ── #}
     <div class="info-panel">
         <h4>✏ Journal / Notes</h4>
-        {% set notes_lines = lines | selectattr('notes') | list %}
-        {% if notes_lines %}
-        <div style="max-height:260px;overflow-y:auto;display:grid;gap:8px">
-            {% for ln in notes_lines %}
+        {% if lines %}
+        <div style="max-height:260px;overflow-y:auto;display:grid;gap:6px">
+            {% for ln in lines %}
             <div style="font-size:12px">
                 <div style="color:var(--muted);font-size:11px;margin-bottom:2px">{{ ln.timestamp[11:16] if ln.timestamp else '' }}</div>
-                <div style="color:#333;white-space:pre-wrap;line-height:1.5">{{ ln.notes }}</div>
+                <form method="POST" action="/logbook/{{ ln.id }}/field/notes">
+                    <textarea name="value" class="inline-edit"
+                              rows="{{ [(ln.notes or '').splitlines() | length or 1, 8] | min }}"
+                              placeholder="Ajouter une note…"
+                              title="Modifier la note de cette ligne"
+                              onchange="this.form.submit()">{{ ln.notes or '' }}</textarea>
+                </form>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <div style="color:var(--muted);font-size:13px">Aucune note.</div>
+        <div style="color:var(--muted);font-size:13px">Aucune ligne de bord.</div>
         {% endif %}
         {% if route.notes %}
         <div style="margin-top:10px;padding-top:8px;border-top:1px solid #edf2f7;font-size:13px;color:#333;white-space:pre-wrap">{{ route.notes }}</div>
