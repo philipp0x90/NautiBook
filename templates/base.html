@@ -176,6 +176,7 @@
         /* ── Footer ── */
         footer { text-align: center; padding: 28px 0 10px; color: var(--muted); font-size: 13px; border-top: 1px solid #dde5ee; margin-top: 40px; }
         .footer-ship { margin-bottom: 5px; font-size: 17px; font-weight: 700; color: var(--accent-dark); }
+        .icon-boat { width: 1em; height: 1em; vertical-align: -0.1em; }
 
         @media (max-width: 780px) {
             nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
@@ -185,6 +186,19 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+
+{# Sailboat icon, defined once and referenced with <use href="#icon-boat">.
+   Sized in em, so the font-size of the surrounding element still controls it. #}
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="icon-boat" viewBox="0 0 512 512">
+        <g fill="none" stroke="currentColor" stroke-width="20"
+           stroke-linecap="round" stroke-linejoin="round">
+            <path d="M162 34c40 94 45 194 10 273l-13 30c-38-15-81-14-119 2L162 34z"/>
+            <path d="M197 10c141 66 247 204 256 379-91-21-168-17-255 2C234 268 233 137 197 10z"/>
+            <path d="M28 430h150c70 0 130-25 200-27h106l-54 87c-14 22-38 36-64 36H150c-26 0-50-14-64-36L28 430z"/>
+        </g>
+    </symbol>
+</svg>
 
 <header class="topbar">
     <a href="/" class="topbar-logo">
