@@ -43,9 +43,38 @@ def _unit(value, suffix):
     return f"{value} {suffix}"
 
 
+def _dmm(value, hemispheres, deg_width):
+    """Decimal degrees → degrees and decimal minutes, the format used on
+    charts and plotters: 43.2891 → 43° 17.346' N. Positions are stored as
+    signed DD, so the hemisphere comes from the sign."""
+    if value is None or value == "":
+        return "—"
+    try:
+        dd = float(value)
+    except (TypeError, ValueError):
+        return value
+    hemisphere = hemispheres[0] if dd >= 0 else hemispheres[1]
+    degrees, minutes = divmod(abs(dd) * 60, 60)
+    if round(minutes, 3) >= 60:  # 59.9996' rounds up into the next degree
+        degrees, minutes = degrees + 1, 0.0
+    return f"{int(degrees):0{deg_width}d}° {minutes:06.3f}' {hemisphere}"
+
+
+def _lat(value):
+    """Latitude in DMM, two degree digits: 43° 17.346' N"""
+    return _dmm(value, "NS", 2)
+
+
+def _lon(value):
+    """Longitude in DMM, three degree digits: 005° 24.000' E"""
+    return _dmm(value, "EW", 3)
+
+
 templates.env.filters["datefr"] = _datefr
 templates.env.filters["deg"] = _deg
 templates.env.filters["unit"] = _unit
+templates.env.filters["lat"] = _lat
+templates.env.filters["lon"] = _lon
 
 
 async def init_db():

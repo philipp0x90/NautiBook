@@ -140,8 +140,8 @@
                         </td>
                         <td rowspan="2">
                             {% if ln.position_lat and ln.position_lon %}
-                                {{ '%.4f'|format(ln.position_lat) }}° N<br>
-                                {{ '%.4f'|format(ln.position_lon) }}° E
+                                {{ ln.position_lat | lat }}<br>
+                                {{ ln.position_lon | lon }}
                             {% else %}—{% endif %}
                         </td>
                         <td rowspan="2">{{ ln.visual_pos or '' }}</td>

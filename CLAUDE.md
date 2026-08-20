@@ -75,7 +75,9 @@ Three JSON endpoints feed Leaflet maps in the templates: `/api/routes/{id}/map-d
 
 **Template context** — pass `active_section` (`ship`, `cruises`, `routes`, `tools`, `gallery`, `settings`) so `base.html` highlights the right nav item.
 
-**Timestamps** — stored as ISO strings in **local** time via `datetime.now()` (deliberately not UTC — a logbook records boat time). **Display filters** — custom Jinja filters registered at the top of `main.py`, all falling back to an em-dash for missing values: `datefr` (ISO → `DD/MM/YYYY`), `deg` (float → whole degrees with the `°` sign, e.g. `47.0` → `47°`), and `unit(suffix)` (appends a unit, e.g. `12.4` → `12.4 kn`). Units belong in the *value* via these filters, not in table headers — see the log table in `routes/detail.html`. Note `unit` treats `0` as absent, matching the older `value or '—'` idiom it replaced.
+**Timestamps** — stored as ISO strings in **local** time via `datetime.now()` (deliberately not UTC — a logbook records boat time). **Display filters** — custom Jinja filters registered at the top of `main.py`, all falling back to an em-dash for missing values: `datefr` (ISO → `DD/MM/YYYY`), `deg` (float → whole degrees with the `°` sign, e.g. `47.0` → `47°`), `unit(suffix)` (appends a unit, e.g. `12.4` → `12.4 kn`), and `lat` / `lon` (signed decimal degrees → DMM, `43.2891` → `43° 17.346' N`). Units belong in the *value* via these filters, not in table headers — see the log table in `routes/detail.html`. Note `unit` treats `0` as absent, matching the older `value or '—'` idiom it replaced.
+
+Positions are **stored** as signed decimal degrees (that is what SignalK returns and what Leaflet and the `/api/*/map-data` endpoints consume) and only **displayed** as DMM. Don't convert at the storage or API layer. The `lat`/`lon` filters derive the hemisphere letter from the sign, so hemispheres must never be hardcoded in a template.
 
 **French stored values** — `todo_items.status` holds `'A faire'` / `'Terminé'` and these literals appear in SQL `WHERE` / `ORDER BY` clauses (`main.py:632`, `main.py:1341`). Don't translate them without updating every query.
 

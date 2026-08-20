@@ -9,7 +9,7 @@
 
 <div class="card" style="margin-top:12px">
     <div class="meta" style="margin-bottom:10px">
-        {% if line.position_lat and line.position_lon %}<div><strong>Position:</strong> {{ line.position_lat }}°, {{ line.position_lon }}°</div>{% endif %}
+        {% if line.position_lat and line.position_lon %}<div><strong>Position:</strong> {{ line.position_lat | lat }}, {{ line.position_lon | lon }}</div>{% endif %}
         {% if line.speed %}<div><strong>Speed:</strong> {{ line.speed }} knots</div>{% endif %}
         {% if line.wind_speed %}<div><strong>Wind Speed:</strong> {{ line.wind_speed }} knots</div>{% endif %}
     </div>
