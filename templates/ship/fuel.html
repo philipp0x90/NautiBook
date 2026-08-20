@@ -5,7 +5,7 @@
 <div class="section-bar">
     <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
     <div class="section-bar-title">Gasoil</div>
-    <div class="section-bar-right">Ship #1</div>
+    <div class="section-bar-right">Navire #{{ current_ship.id if current_ship else '—' }}</div>
 </div>
 
 <div class="stub">

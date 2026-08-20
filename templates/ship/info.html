@@ -3,9 +3,13 @@
 {% block content %}
 
 <div class="section-bar">
-    <div class="section-bar-left">{{ ship.name if ship else 'Navire' }}</div>
-    <div class="section-bar-title">Infos Navire</div>
-    <div class="section-bar-right">Ship #1</div>
+    {# empty spacer, same width as the removed badge, so the title stays centred #}
+    <div style="min-width:140px"></div>
+    <div class="section-bar-title">
+        Infos Navire
+        <div style="font-size:24px;margin-top:2px">{{ ship.name if ship else 'Navire' }}</div>
+    </div>
+    <div class="section-bar-right">Navire #{{ ship.id if ship else '—' }}</div>
 </div>
 
 <div style="margin-bottom:14px;display:flex;justify-content:flex-end">

@@ -175,6 +175,7 @@
 
         /* ── Footer ── */
         footer { text-align: center; padding: 28px 0 10px; color: var(--muted); font-size: 13px; border-top: 1px solid #dde5ee; margin-top: 40px; }
+        .footer-ship { margin-bottom: 5px; font-size: 17px; font-weight: 700; color: var(--accent-dark); }
 
         @media (max-width: 780px) {
             nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
@@ -193,7 +194,7 @@
     <nav class="main-nav" role="navigation" aria-label="Main">
         <ul>
             <li class="{{ 'active' if active_section == 'ship' else '' }}">
-                <a href="/ship/info">{{ current_ship.name if current_ship is defined and current_ship else 'Navire' }}</a>
+                <a href="/ship/info">Navire</a>
                 <div class="dropdown-menu">
                     <a href="/ship/info">Infos</a>
                     <a href="/ship/todo">To Do</a>
@@ -236,7 +237,12 @@
     <main>
         {% block content %}{% endblock %}
     </main>
-    <footer>— Nautibook —</footer>
+    <footer>
+        {% if request.state.ship_name %}
+        <div class="footer-ship">{{ request.state.ship_name }}</div>
+        {% endif %}
+        — Nautibook —
+    </footer>
 </div>
 
 </body>

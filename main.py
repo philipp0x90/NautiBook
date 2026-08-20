@@ -440,6 +440,24 @@ async def _fetch_ship(db, ship_id: int):
     return ship
 
 
+@app.middleware("http")
+async def attach_ship_name(request: Request, call_next):
+    """Expose the current ship's name to every template as request.state.ship_name.
+
+    base.html shows it in the footer on every page, and only the /ship/*
+    handlers pass `current_ship` in their context — threading it through the
+    other thirty would be worse than one small query here.
+    """
+    request.state.ship_name = None
+    if not request.url.path.startswith("/api/"):
+        async with connect() as db:
+            db.row_factory = aiosqlite.Row
+            ship = await _fetch_ship(db, get_current_ship_id(request))
+            if ship is not None:
+                request.state.ship_name = ship["name"]
+    return await call_next(request)
+
+
 # ── Home ──────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
