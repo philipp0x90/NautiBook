@@ -30,13 +30,22 @@ def _deg(value):
     if value is None or value == "":
         return "—"
     try:
-        return str(round(float(value)))
+        return f"{round(float(value))}°"
     except (TypeError, ValueError):
         return value
 
 
+def _unit(value, suffix):
+    """Append a unit to a measurement. Falsy values show an em-dash, so a
+    recorded 0 reads as "no value" — same as before this filter existed."""
+    if not value:
+        return "—"
+    return f"{value} {suffix}"
+
+
 templates.env.filters["datefr"] = _datefr
 templates.env.filters["deg"] = _deg
+templates.env.filters["unit"] = _unit
 
 
 async def init_db():

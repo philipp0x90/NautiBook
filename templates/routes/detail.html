@@ -127,14 +127,14 @@
                         <td class="time-cell" rowspan="2">
                             {{ ln.timestamp[11:16] if ln.timestamp else '—' }}
                         </td>
-                        <td>{{ ln.aws or '—' }}</td>
-                        <td>{{ ln.tws or '—' }}</td>
+                        <td>{{ ln.aws | unit('kn') }}</td>
+                        <td>{{ ln.tws | unit('kn') }}</td>
                         <td>{{ ln.sea_state or '—' }}</td>
-                        <td>{{ ln.water_temp or '—' }}</td>
-                        <td class="sog-cell">{{ ln.sog or '—' }}</td>
+                        <td>{{ ln.water_temp | unit('°C') }}</td>
+                        <td class="sog-cell">{{ ln.sog | unit('kn') }}</td>
                         <td>{{ ln.heading | deg }}</td>
                         <td>{{ ln.sails or '—' }}</td>
-                        <td>{{ ln.log or '—' }}</td>
+                        <td>{{ ln.log | unit('NM') }}</td>
                         <td class="depth-cell" rowspan="2">
                             {% if ln.depth %}-{{ ln.depth }} m{% else %}—{% endif %}
                         </td>
@@ -150,11 +150,11 @@
                         <td>{{ ln.awa | deg }}</td>
                         <td>{{ ln.twa | deg }}</td>
                         <td>{{ ln.visibility or '—' }}</td>
-                        <td>{{ ln.pressure or '—' }}</td>
-                        <td>{{ ln.stw or '—' }}</td>
+                        <td>{{ ln.pressure | unit('hPa') }}</td>
+                        <td>{{ ln.stw | unit('kn') }}</td>
                         <td>{{ ln.cog | deg }}</td>
                         <td>{{ ln.points_of_sail or '—' }}</td>
-                        <td>{{ ln.trip or '—' }}</td>
+                        <td>{{ ln.trip | unit('NM') }}</td>
                     </tr>
                     {% else %}
                     <tr>
