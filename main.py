@@ -1395,6 +1395,11 @@ async def create_line(
 ):
     if depth is not None:
         depth = round(depth, 1)
+    # Angles are logged as whole degrees (position lat/lon keep full precision).
+    awa = round(awa) if awa is not None else None
+    twa = round(twa) if twa is not None else None
+    heading = round(heading) if heading is not None else None
+    cog = round(cog) if cog is not None else None
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
             """INSERT INTO logbook_lines

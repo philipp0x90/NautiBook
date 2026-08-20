@@ -1,8 +1,14 @@
+import math
 import requests
 from config import get_ikommunicate_url
 
 DATABASE_URL = "logbook.db"
 VESSEL = "self"
+
+# SignalK serves everything in SI units (m/s, radians, Kelvin, meters).
+# The logbook stores and displays knots, degrees, Celsius and nautical miles.
+MS_TO_KNOTS = 1.9438444924406
+METERS_PER_NM = 1852
 
 endpoints = {
     "AWS": f"vessels/{VESSEL}/environment/wind/speedApparent",
@@ -19,6 +25,32 @@ endpoints = {
     "tws": f"vessels/{VESSEL}/environment/wind/speedTrue",
     "twa": f"vessels/{VESSEL}/environment/wind/directionTrue",
 }
+
+
+def _round1(value):
+    return round(value, 1)
+
+
+def _knots(value):
+    return round(value * MS_TO_KNOTS, 1)
+
+
+def _nm(value):
+    return round(value / METERS_PER_NM, 1)
+
+
+def _celsius(value):
+    return round(value - 273.15, 1)
+
+
+def _signed_deg(value):
+    """Wind angle: whole degrees, signed (negative = port side), range -180..180."""
+    return round((math.degrees(value) + 180) % 360 - 180)
+
+
+def _bearing_deg(value):
+    """Heading / course: whole degrees, normalised to 0..360."""
+    return round(math.degrees(value) % 360)
 
 
 def _get_signalk_http_url() -> str | None:
@@ -46,6 +78,20 @@ def get_data_at_endpoint(signalk_url: str, endpoint: str):
         return None
 
 
+def _read(signalk_url: str, key: str, convert=None):
+    """Fetch one endpoint and return its value in the unit the logbook displays."""
+    r = get_data_at_endpoint(signalk_url, endpoints[key])
+    if r is None or r.get("value") is None:
+        return None
+    if convert is None:
+        return r["value"]
+    try:
+        return convert(r["value"])
+    except (TypeError, ValueError) as e:
+        print(f"SignalK unit conversion failed ({key}): {e}")
+        return None
+
+
 def get_position() -> tuple[float, float] | None:
     """Return (lat, lon) from SignalK, or None if unavailable."""
     signalk_url = _get_signalk_http_url()
@@ -65,31 +111,25 @@ def get_sensor_data() -> dict:
 
     data = {}
     try:
-        r = get_data_at_endpoint(signalk_url, endpoints["AWS"])
-        if r: data["aws"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["AWA"])
-        if r: data["awa"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["water_temp"])
-        if r: data["water_temp"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["heading"])
-        if r: data["heading"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["cog"])
-        if r: data["cog"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["log"])
-        if r: data["log"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["trip"])
-        if r: data["trip"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["depth"])
-        if r: data["depth"] = r["value"]
+        readings = {
+            "aws": _read(signalk_url, "AWS", _knots),          # m/s  → nds
+            "awa": _read(signalk_url, "AWA", _signed_deg),     # rad  → °
+            "water_temp": _read(signalk_url, "water_temp", _celsius),  # K → °C
+            "heading": _read(signalk_url, "heading", _bearing_deg),    # rad → °
+            "cog": _read(signalk_url, "cog", _bearing_deg),    # rad  → °
+            "log": _read(signalk_url, "log", _nm),             # m    → NM
+            "trip": _read(signalk_url, "trip", _nm),           # m    → NM
+            "depth": _read(signalk_url, "depth", _round1),     # m    → m
+            "stw": _read(signalk_url, "stw", _knots),          # m/s  → nds
+            "sog": _read(signalk_url, "sog", _knots),          # m/s  → nds
+        }
+        data = {k: v for k, v in readings.items() if v is not None}
+
         r = get_data_at_endpoint(signalk_url, endpoints["position"])
         if r:
             coord = r["value"]
             data["lat"] = coord["latitude"]
             data["long"] = coord["longitude"]
-        r = get_data_at_endpoint(signalk_url, endpoints["stw"])
-        if r: data["stw"] = r["value"]
-        r = get_data_at_endpoint(signalk_url, endpoints["sog"])
-        if r: data["sog"] = r["value"]
     except Exception as e:
         print(f"SignalK data collection error: {e}")
 

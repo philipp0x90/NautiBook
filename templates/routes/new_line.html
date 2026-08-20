@@ -22,7 +22,7 @@
         </div>
         <div>
             <label>AWA (°)</label>
-            <input type="number" step="any" name="awa" value="{{ data.awa if data else '' }}">
+            <input type="number" step="1" name="awa" value="{{ data.awa if data else '' }}">
         </div>
         <div>
             <label>TWS (kn)</label>
@@ -30,7 +30,7 @@
         </div>
         <div>
             <label>TWA (°)</label>
-            <input type="number" step="any" name="twa">
+            <input type="number" step="1" name="twa">
         </div>
         <div>
             <label>État de la mer</label>
@@ -58,11 +58,11 @@
         </div>
         <div>
             <label>Cap (°)</label>
-            <input type="number" step="any" name="heading" value="{{ data.heading if data else '' }}">
+            <input type="number" step="1" name="heading" value="{{ data.heading if data else '' }}">
         </div>
         <div>
             <label>COG (°)</label>
-            <input type="number" step="any" name="cog" value="{{ data.cog if data else '' }}">
+            <input type="number" step="1" name="cog" value="{{ data.cog if data else '' }}">
         </div>
         <div>
             <label>SOG (kn)</label>
