@@ -36,6 +36,8 @@ trip_photos  (linked to a logbook line via trip_id, or a route/cruise)
 
 `todo_items`, `expenses` and `contacts` also carry `ship_id`, but as a flat scope rather than part of this chain.
 
+**Displayed numbers are not ids.** The `001` on a cruise and the `02` on a route are positions counted among their siblings — cruises within a ship, routes within a cruise — produced by the `CRUISE_NUMBER` / `ROUTE_NUMBER` SQL snippets, which the query aliases `AS number`. Ids are `AUTOINCREMENT` and never reused, so showing them meant a fresh cruise displayed `004` after the first three were deleted. Positions renumber instead: delete one and its successors shift down. Never show a raw `id` in the interface, and never treat `number` as stable — links, form actions and foreign keys all use `id`.
+
 Several "current" pointers resolve implicitly rather than via a flag, and all are ship-scoped:
 - **Current cruise** = that ship's cruise with the latest `COALESCE(start_time, created_at)`.
 - **Current route** = highest-`id` route in the current cruise.

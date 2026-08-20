@@ -29,7 +29,7 @@
         <tbody>
             {% for c in cruises %}
             <tr>
-                <td style="font-weight:700">{{ '%03d'|format(c.id) }}</td>
+                <td style="font-weight:700">{{ '%03d'|format(c.number) }}</td>
                 <td>{{ c.departure or '—' }}</td>
                 <td>{{ c.destination or '—' }}</td>
                 <td style="white-space:nowrap">{{ c.start_time | datefr }}</td>

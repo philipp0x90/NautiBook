@@ -948,6 +948,17 @@ async def contact_detail(request: Request, contact_id: int):
 
 # ── Cruises ───────────────────────────────────────────────────────────────────
 
+# What the interface shows as "001" is a position, not the primary key. Ids come
+# from AUTOINCREMENT and are never reused, so after deleting every cruise the
+# next one would display 004. Counting predecessors instead keeps the sequence
+# at 1..N with no gaps: delete one and those after it shift down. Ids stay
+# untouched underneath, so links and foreign keys still resolve.
+# Each expects its table aliased as c (cruises) or r (routes).
+CRUISE_NUMBER = ("(SELECT COUNT(*) FROM cruises c2"
+                 " WHERE c2.ship_id IS c.ship_id AND c2.id <= c.id)")
+ROUTE_NUMBER = ("(SELECT COUNT(*) FROM routes r2"
+                " WHERE r2.cruise_id IS r.cruise_id AND r2.id <= r.id)")
+
 @app.get("/cruises", response_class=HTMLResponse)
 async def cruises_index(request: Request):
     return RedirectResponse(url="/cruises/current", status_code=302)
@@ -959,8 +970,8 @@ async def current_cruise(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM cruises WHERE ship_id = ? "
-            "ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1",
+            f"SELECT c.*, {CRUISE_NUMBER} AS number FROM cruises c WHERE c.ship_id = ? "
+            "ORDER BY COALESCE(c.start_time, c.created_at) DESC LIMIT 1",
             (ship_id,),
         )
         cruise = await cursor.fetchone()
@@ -973,7 +984,7 @@ async def current_cruise(request: Request):
             )
         cruise_id = cruise["id"]
         cursor = await db.execute(
-            """SELECT r.*,
+            f"""SELECT r.*, {ROUTE_NUMBER} AS number,
                       (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
                FROM routes r WHERE r.cruise_id = ?
                ORDER BY r.id ASC""",
@@ -1019,7 +1030,8 @@ async def cruise_list(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT * FROM cruises WHERE ship_id = ? ORDER BY id ASC", (ship_id,)
+            f"SELECT c.*, {CRUISE_NUMBER} AS number FROM cruises c WHERE c.ship_id = ? ORDER BY c.id ASC",
+            (ship_id,),
         )
         cruises = await cursor.fetchall()
         current_cursor = await db.execute(
@@ -1045,13 +1057,14 @@ async def all_stopovers(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT s.*,
+            f"""SELECT s.*,
                       CAST(
                           CASE WHEN s.arrival_date IS NOT NULL AND s.departure_date IS NOT NULL
                           THEN julianday(s.departure_date) - julianday(s.arrival_date)
                           ELSE NULL END AS INTEGER
                       ) AS nights,
                       r.departure_location, r.destination_location,
+                      {ROUTE_NUMBER} AS route_number,
                       c.name AS cruise_name, c.id AS cruise_id
                FROM stopovers s
                JOIN routes r ON s.route_id = r.id
@@ -1083,7 +1096,9 @@ async def new_cruise_form(request: Request):
 async def cruise_detail(request: Request, cruise_id: int):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM cruises WHERE id = ?", (cruise_id,))
+        cursor = await db.execute(
+            f"SELECT c.*, {CRUISE_NUMBER} AS number FROM cruises c WHERE c.id = ?", (cruise_id,)
+        )
         cruise = await cursor.fetchone()
         if cruise is None:
             raise HTTPException(status_code=404, detail="Cruise not found")
@@ -1091,7 +1106,7 @@ async def cruise_detail(request: Request, cruise_id: int):
         # even when another ship is selected.
         ship_id = cruise["ship_id"]
         cursor = await db.execute(
-            """SELECT r.*,
+            f"""SELECT r.*, {ROUTE_NUMBER} AS number,
                       (SELECT COUNT(*) FROM logbook_lines l WHERE l.route_id = r.id) AS line_count
                FROM routes r
                WHERE r.cruise_id = ?
@@ -1189,7 +1204,7 @@ async def new_stopover_form(request: Request, route_id: int):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT r.*, c.name AS cruise_name
+            f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name
                FROM routes r LEFT JOIN cruises c ON r.cruise_id = c.id
                WHERE r.id = ?""",
             (route_id,),
@@ -1429,7 +1444,7 @@ async def route_detail(request: Request, route_id: int):
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            """SELECT r.*, c.name AS cruise_name
+            f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name
                FROM routes r LEFT JOIN cruises c ON r.cruise_id = c.id
                WHERE r.id = ?""",
             (route_id,),
@@ -1491,7 +1506,7 @@ async def new_line_form(request: Request, route_id: int):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT r.*, c.name AS cruise_name
+            f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name
                FROM routes r LEFT JOIN cruises c ON r.cruise_id = c.id
                WHERE r.id = ?""",
             (route_id,),

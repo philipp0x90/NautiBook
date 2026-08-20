@@ -43,7 +43,7 @@
                     {% if s.route_id %}
                     <a href="/routes/{{ s.route_id }}" style="color:var(--accent);text-decoration:none;font-size:12px">
                         {{ s.departure_location or '' }}{% if s.departure_location and s.destination_location %} → {% endif %}{{ s.destination_location or '' }}
-                        {% if not s.departure_location and not s.destination_location %}Route #{{ s.route_id }}{% endif %}
+                        {% if not s.departure_location and not s.destination_location %}Route #{{ s.route_number }}{% endif %}
                     </a>
                     {% else %}—{% endif %}
                 </td>

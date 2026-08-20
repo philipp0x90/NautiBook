@@ -74,10 +74,10 @@
             {% if route.departure_location and route.destination_location %}
                 De {{ route.departure_location }} à {{ route.destination_location }}
                 <span style="font-size:14px;color:var(--muted)">
-                    ({{ route.cruise_name or '' }}·{{ '%02d'|format(route.id) }})
+                    ({{ route.cruise_name or '' }}·{{ '%02d'|format(route.number) }})
                 </span>
             {% else %}
-                Route #{{ route.id }}
+                Route #{{ route.number }}
             {% endif %}
         </div>
     </div>
