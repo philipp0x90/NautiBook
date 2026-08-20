@@ -1393,6 +1393,8 @@ async def create_line(
     visual_pos: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
 ):
+    if depth is not None:
+        depth = round(depth, 1)
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
             """INSERT INTO logbook_lines
