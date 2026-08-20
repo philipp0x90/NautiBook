@@ -300,7 +300,7 @@ async def track_recorder_loop():
             lat, lon = position
 
             async with aiosqlite.connect(DATABASE_URL) as db:
-                now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+                now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
                 await db.execute(
                     "INSERT INTO track_points (route_id, timestamp, lat, lon) VALUES (?, ?, ?, ?)",
                     (route_id, now, lat, lon),
@@ -711,7 +711,7 @@ async def update_todo_item(
 
 @app.post("/ship/todo/{item_id}/done")
 async def mark_todo_done(item_id: int, next: Optional[str] = Form(None)):
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d")
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
             "UPDATE todo_items SET status='Terminé', completed_at=? WHERE id=? AND status != 'Terminé'",
@@ -1005,7 +1005,7 @@ async def cruise_detail(request: Request, cruise_id: int):
 
 @app.post("/cruises/{cruise_id}/arrival")
 async def cruise_arrival(cruise_id: int):
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute(
             "UPDATE cruises SET end_time = ? WHERE id = ?",
@@ -1201,7 +1201,7 @@ async def route_arrivee(
     destination_location: Optional[str] = Form(None),
     motor_hours_end: Optional[float] = Form(None),
 ):
-    now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -1403,7 +1403,7 @@ async def create_line(
                 sea_state, visibility, sails, points_of_sail, visual_pos, notes)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                datetime.utcnow(), route_id, aws, awa, water_temp, heading, cog, log, trip, depth,
+                datetime.now(), route_id, aws, awa, water_temp, heading, cog, log, trip, depth,
                 position_lat, position_lon, stw, sog, tws, twa, pressure,
                 sea_state, visibility, sails, points_of_sail, visual_pos, notes,
             ),
