@@ -25,7 +25,18 @@ def _datefr(value):
     return s
 
 
+def _deg(value):
+    """Angles are whole degrees, but REAL columns hand them back as floats (47.0)."""
+    if value is None or value == "":
+        return "—"
+    try:
+        return str(round(float(value)))
+    except (TypeError, ValueError):
+        return value
+
+
 templates.env.filters["datefr"] = _datefr
+templates.env.filters["deg"] = _deg
 
 
 async def init_db():

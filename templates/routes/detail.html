@@ -132,7 +132,7 @@
                         <td>{{ ln.sea_state or '—' }}</td>
                         <td>{{ ln.water_temp or '—' }}</td>
                         <td class="sog-cell">{{ ln.sog or '—' }}</td>
-                        <td>{{ ln.heading or '—' }}</td>
+                        <td>{{ ln.heading | deg }}</td>
                         <td>{{ ln.sails or '—' }}</td>
                         <td>{{ ln.log or '—' }}</td>
                         <td class="depth-cell" rowspan="2">
@@ -147,12 +147,12 @@
                         <td rowspan="2">{{ ln.visual_pos or '' }}</td>
                     </tr>
                     <tr class="row-bot">
-                        <td>{{ ln.awa or '—' }}</td>
-                        <td>{{ ln.twa or '—' }}</td>
+                        <td>{{ ln.awa | deg }}</td>
+                        <td>{{ ln.twa | deg }}</td>
                         <td>{{ ln.visibility or '—' }}</td>
                         <td>{{ ln.pressure or '—' }}</td>
                         <td>{{ ln.stw or '—' }}</td>
-                        <td>{{ ln.cog or '—' }}</td>
+                        <td>{{ ln.cog | deg }}</td>
                         <td>{{ ln.points_of_sail or '—' }}</td>
                         <td>{{ ln.trip or '—' }}</td>
                     </tr>
