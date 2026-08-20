@@ -1657,9 +1657,8 @@ async def view_line(request: Request, line_id: int):
 EDITABLE_LINE_FIELDS = {"visual_pos", "notes"}
 
 
-@app.post("/logbook/{line_id}/field/{field}")
-async def update_line_field(line_id: int, field: str, value: Optional[str] = Form(None)):
-    """Inline edit of one logbook-line column from the route page."""
+async def _set_line_field(line_id: int, field: str, value: Optional[str]):
+    """Update one whitelisted column; returns where to redirect afterwards."""
     if field not in EDITABLE_LINE_FIELDS:
         raise HTTPException(status_code=404, detail="Field not editable")
     async with aiosqlite.connect(DATABASE_URL) as db:
@@ -1673,9 +1672,19 @@ async def update_line_field(line_id: int, field: str, value: Optional[str] = For
             (value or None, line_id),
         )
         await db.commit()
-    if route_id:
-        return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
-    return RedirectResponse(url=f"/logbook/{line_id}", status_code=303)
+    return f"/routes/{route_id}" if route_id else f"/logbook/{line_id}"
+
+
+@app.post("/logbook/{line_id}/field/{field}")
+async def update_line_field(line_id: int, field: str, value: Optional[str] = Form(None)):
+    """Inline edit of one logbook-line column from the route page."""
+    return RedirectResponse(url=await _set_line_field(line_id, field, value), status_code=303)
+
+
+@app.post("/logbook/note")
+async def add_line_note(line_id: int = Form(...), value: Optional[str] = Form(None)):
+    """Journal panel: annotate a line picked from the dropdown of unannotated ones."""
+    return RedirectResponse(url=await _set_line_field(line_id, "notes", value), status_code=303)
 
 
 @app.get("/logbook/{line_id}/add-photo", response_class=HTMLResponse)

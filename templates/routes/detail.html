@@ -205,23 +205,43 @@
     {# ── Journal / Notes panel ── #}
     <div class="info-panel">
         <h4>✏ Journal / Notes</h4>
-        {% if lines %}
+        {% set notes_lines = lines | selectattr('notes') | list %}
+        {% set blank_lines = lines | rejectattr('notes') | list %}
+        {% if notes_lines %}
         <div style="max-height:260px;overflow-y:auto;display:grid;gap:6px">
-            {% for ln in lines %}
+            {% for ln in notes_lines %}
             <div style="font-size:12px">
                 <div style="color:var(--muted);font-size:11px;margin-bottom:2px">{{ ln.timestamp[11:16] if ln.timestamp else '' }}</div>
                 <form method="POST" action="/logbook/{{ ln.id }}/field/notes">
                     <textarea name="value" class="inline-edit"
                               rows="{{ [(ln.notes or '').splitlines() | length or 1, 8] | min }}"
-                              placeholder="Ajouter une note…"
-                              title="Modifier la note de cette ligne"
-                              onchange="this.form.submit()">{{ ln.notes or '' }}</textarea>
+                              title="Modifier la note (vider le champ la supprime)"
+                              onchange="this.form.submit()">{{ ln.notes }}</textarea>
                 </form>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <div style="color:var(--muted);font-size:13px">Aucune ligne de bord.</div>
+        <div style="color:var(--muted);font-size:13px">Aucune note.</div>
+        {% endif %}
+
+        {% if blank_lines %}
+        <form method="POST" action="/logbook/note"
+              style="margin-top:10px;padding-top:10px;border-top:1px solid #edf2f7;display:grid;gap:6px">
+            <label style="margin:0">Annoter la ligne de</label>
+            <select name="line_id" style="font-size:12px;padding:4px 6px">
+                {% for ln in blank_lines %}
+                <option value="{{ ln.id }}">
+                    {{ ln.timestamp[11:16] if ln.timestamp else 'Ligne #' ~ ln.id }}{% if ln.visual_pos %} — {{ ln.visual_pos }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <textarea name="value" rows="2" required placeholder="Observations, événements…"
+                      style="font-size:12px"></textarea>
+            <button type="submit" class="btn btn-blue" style="justify-self:end;padding:4px 14px;font-size:12px">
+                Ajouter
+            </button>
+        </form>
         {% endif %}
         {% if route.notes %}
         <div style="margin-top:10px;padding-top:8px;border-top:1px solid #edf2f7;font-size:13px;color:#333;white-space:pre-wrap">{{ route.notes }}</div>
