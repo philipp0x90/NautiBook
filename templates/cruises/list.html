@@ -28,7 +28,8 @@
         </thead>
         <tbody>
             {% for c in cruises %}
-            <tr>
+            <tr style="cursor:pointer" title="Ouvrir cette croisière"
+                onclick="rowLink(event, '/cruises/{{ c.id }}')">
                 <td style="font-weight:700">{{ '%03d'|format(c.number) }}</td>
                 <td>{{ c.departure or '—' }}</td>
                 <td>{{ c.destination or '—' }}</td>
@@ -39,7 +40,6 @@
                 <td style="text-align:right">{{ c.loch_end or '—' }}</td>
                 <td style="text-align:right">{{ c.distance or '—' }}</td>
                 <td style="white-space:nowrap">
-                    <a href="/cruises/{{ c.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a>
                     <form method="POST" action="/cruises/{{ c.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette croisière ?')">
                         <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>

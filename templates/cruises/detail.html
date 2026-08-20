@@ -81,7 +81,8 @@
         </thead>
         <tbody>
             {% for r in routes %}
-            <tr>
+            <tr style="cursor:pointer" title="Ouvrir cette route"
+                onclick="rowLink(event, '/routes/{{ r.id }}')">
                 <td>{{ r.number }}</td>
                 <td style="white-space:nowrap">{{ r.start_time | datefr }}</td>
                 <td>{{ r.departure_location or '—' }}</td>
@@ -89,7 +90,6 @@
                 <td style="white-space:nowrap">{{ r.end_time | datefr }}</td>
                 <td>{{ r.line_count or 0 }}</td>
                 <td style="white-space:nowrap">
-                    <a href="/routes/{{ r.id }}" class="btn btn-blue" style="padding:3px 10px;font-size:12px">Voir</a>
                     <form method="POST" action="/routes/{{ r.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette route ?')">
                         <button type="submit" class="btn btn-orange" style="padding:3px 8px;font-size:12px">✕</button>

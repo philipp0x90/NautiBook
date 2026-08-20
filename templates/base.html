@@ -259,5 +259,15 @@
     </footer>
 </div>
 
+<script>
+// Whole-row links in tables: <tr onclick="rowLink(event, '/somewhere')">.
+// Ignores clicks that landed on something interactive, so the delete button
+// and any link inside the row keep doing their own job.
+function rowLink(event, url) {
+    if (event.target.closest('a, button, input, select, textarea, label, form')) return;
+    location.href = url;
+}
+</script>
+
 </body>
 </html>

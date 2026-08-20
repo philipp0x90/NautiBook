@@ -33,7 +33,9 @@
         </thead>
         <tbody>
             {% for s in stopovers %}
-            <tr>
+            {# the cruise and route links inside the row still win — see rowLink #}
+            <tr style="cursor:pointer" title="Modifier cette escale"
+                onclick="rowLink(event, '/stopovers/{{ s.id }}/edit')">
                 <td>
                     {% if s.cruise_name %}
                     <a href="/cruises/{{ s.cruise_id }}" style="color:var(--accent);text-decoration:none">{{ s.cruise_name }}</a>
@@ -64,7 +66,6 @@
                 <td style="text-align:right">{{ ('%.2f €'|format(s.cost_per_night)) if s.cost_per_night else '—' }}</td>
                 <td style="text-align:right">{{ ('%.2f €'|format(s.cost)) if s.cost else '—' }}</td>
                 <td style="white-space:nowrap">
-                    <a href="/stopovers/{{ s.id }}/edit" class="btn" style="background:#e0f2fe;color:#0369a1;padding:2px 10px;font-size:12px">Modifier</a>
                     <form method="POST" action="/stopovers/{{ s.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette escale ?')">
                         <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px">✕</button>
