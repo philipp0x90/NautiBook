@@ -23,7 +23,10 @@
             display: flex;
             align-items: center;
             padding: 10px 24px;
-            background: var(--card);
+            /* The logo fills its solid parts with the bar's own colour, so pages
+               that repaint the topbar (the Gallery) override this variable too. */
+            --topbar-bg: var(--card);
+            background: var(--topbar-bg);
             border-bottom: 1px solid #dde5ee;
             box-sizing: border-box;
             position: sticky;
@@ -33,16 +36,15 @@
         .topbar-logo {
             width: 52px;
             flex-shrink: 0;
-            text-align: center;
+            display: flex;
+            justify-content: center;
             text-decoration: none;
+            color: #08204e;  /* the logo draws itself in currentColor */
         }
-        .topbar-logo-text {
-            font-size: 10px;
-            font-weight: 800;
-            color: var(--accent-dark);
-            line-height: 1.15;
-            letter-spacing: 1px;
-        }
+        .topbar-logo svg { width: 36px; height: 36px; display: block; }
+        /* Set here rather than as a fill="" attribute: var() is unreliable in SVG
+           presentation attributes, but always works in a CSS declaration. */
+        .topbar-logo .logo-fill { fill: var(--topbar-bg); }
 
         /* ── Nav ── */
         nav.main-nav { flex: 1; display: flex; justify-content: center; }
@@ -95,10 +97,11 @@
         nav .dropdown-menu a:hover { background: #e8f4f9; }
 
         .topbar-gear {
-            width: 44px;
+            width: 48px;
             flex-shrink: 0;
             text-align: center;
-            font-size: 20px;
+            font-size: 28px;
+            line-height: 1;  /* keep the bigger glyph from stretching the topbar */
             cursor: pointer;
             color: var(--muted);
             text-decoration: none;
@@ -197,8 +200,17 @@
 </svg>
 
 <header class="topbar">
-    <a href="/" class="topbar-logo">
-        <div class="topbar-logo-text">NAUTI<br>BOOK</div>
+    {# Ancre (icone-ancre-nautibook.svg), inlined like the other artwork. The link
+       carries the label, so the icon itself is hidden from screen readers. #}
+    <a href="/" class="topbar-logo" title="Accueil" aria-label="Accueil — NautiBook">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+            <g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                <circle class="logo-fill" cx="32" cy="10" r="6"/>
+                <path d="M32 16v41"/>
+                <path d="M19 25h26"/>
+                <path d="M11 38c2 12 10 19 21 19s19-7 21-19"/>
+            </g>
+        </svg>
     </a>
 
     <nav class="main-nav" role="navigation" aria-label="Main">
