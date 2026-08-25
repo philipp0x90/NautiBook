@@ -6,3 +6,7 @@ claude_todo.md
 config.yaml
 *.pdf
 logbook.db.backup-*
+
+# Photos uploaded into IMG/ stay local; the folder itself is tracked
+IMG/*
+!IMG/.gitkeep

@@ -1,11 +1,14 @@
 # main.py
-from fastapi import FastAPI, HTTPException, Request, Form, Query
+from fastapi import FastAPI, HTTPException, Request, Form, Query, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
 import asyncio
+import re
 import aiosqlite
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 from utils import get_sensor_data, get_position
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
@@ -421,6 +424,43 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+# ── Photo storage ─────────────────────────────────────────────────────────────
+
+# Uploaded images live in IMG/ and are served under the same name, so the
+# photo_path stored in the database ("/IMG/20260825-143002_coucher.jpg") is
+# directly usable as an <img src>. Photos entered as an external URL still
+# work: nothing rewrites photo_path, the upload just fills it in.
+IMG_DIR = Path(__file__).parent / "IMG"
+IMG_URL = "/IMG"
+IMG_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
+
+IMG_DIR.mkdir(exist_ok=True)
+app.mount(IMG_URL, StaticFiles(directory=IMG_DIR), name="img")
+
+
+async def _save_photo(upload: Optional[UploadFile]) -> Optional[str]:
+    """Store an uploaded image in IMG/ and return the URL to use as photo_path.
+    Returns None when the form was submitted without choosing a file, so the
+    caller can fall back to a manually typed path or URL."""
+    if upload is None or not upload.filename:
+        return None
+    suffix = Path(upload.filename).suffix.lower()
+    if suffix not in IMG_SUFFIXES:
+        raise HTTPException(status_code=400, detail=f"Format d'image non supporté : {suffix or 'inconnu'}")
+    # Keep a readable name but drop anything that could escape IMG/ or need
+    # URL-encoding, and stamp it so two "coucher.jpg" can coexist.
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(upload.filename).stem).strip("-")[:40] or "photo"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    name = f"{stamp}_{stem}{suffix}"
+    counter = 1
+    while (IMG_DIR / name).exists():
+        name = f"{stamp}_{stem}-{counter}{suffix}"
+        counter += 1
+    data = await upload.read()
+    await asyncio.to_thread((IMG_DIR / name).write_bytes, data)
+    return f"{IMG_URL}/{name}"
+
+
 # ── Ship helpers ──────────────────────────────────────────────────────────────
 
 def get_current_ship_id(request: Request) -> int:
@@ -768,12 +808,14 @@ async def create_todo_item(
     due_date: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
     photo_path: Optional[str] = Form(None),
+    photo_file: Optional[UploadFile] = File(None),
 ):
     ship_id = get_current_ship_id(request)
+    photo = await _save_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
             "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, tags, photo_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (ship_id, title, task or None, 1 if urgent else 0, due_date or None, tags or None, photo_path or None),
+            (ship_id, title, task or None, 1 if urgent else 0, due_date or None, tags or None, photo),
         )
         await db.commit()
     return RedirectResponse(url="/ship/todo", status_code=303)
@@ -809,13 +851,16 @@ async def update_todo_item(
     completed_at: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
     photo_path: Optional[str] = Form(None),
+    photo_file: Optional[UploadFile] = File(None),
 ):
+    # A newly chosen file wins over the text field, which still holds the old path.
+    photo = await _save_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
             """UPDATE todo_items SET title=?, task=?, urgent=?, status=?, due_date=?, completed_at=?, tags=?, photo_path=?
                WHERE id=?""",
             (title or None, task or None, 1 if urgent else 0, status or 'A faire', due_date or None,
-             completed_at or None, tags or None, photo_path or None, item_id),
+             completed_at or None, tags or None, photo, item_id),
         )
         await db.commit()
     return RedirectResponse(url="/ship/todo", status_code=303)
@@ -1813,17 +1858,21 @@ async def add_photo_form(request: Request, line_id: int):
 async def add_photo(
     request: Request,
     line_id: int,
-    photo_path: str = Form(...),
+    photo_file: Optional[UploadFile] = File(None),
+    photo_path: Optional[str] = Form(None),
     comment: Optional[str] = Form(None),
     added_by: Optional[str] = Form(None),
 ):
+    photo = await _save_photo(photo_file) or photo_path or None
+    if photo is None:
+        raise HTTPException(status_code=400, detail="Choisissez un fichier image ou saisissez une URL")
     async with connect() as db:
         cursor = await db.execute("SELECT id FROM logbook_lines WHERE id = ?", (line_id,))
         if await cursor.fetchone() is None:
             raise HTTPException(status_code=404, detail="Entry not found")
         await db.execute(
             "INSERT INTO trip_photos (trip_id, photo_path, comment, added_by) VALUES (?, ?, ?, ?)",
-            (line_id, photo_path, comment, added_by),
+            (line_id, photo, comment, added_by),
         )
         await db.commit()
     return RedirectResponse(url=f"/logbook/{line_id}", status_code=303)

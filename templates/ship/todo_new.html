@@ -8,7 +8,7 @@
     <div class="section-bar-right"></div>
 </div>
 
-<form method="POST" action="/ship/todo/new" style="display:grid;gap:14px;max-width:560px">
+<form method="POST" action="/ship/todo/new" enctype="multipart/form-data" style="display:grid;gap:14px;max-width:560px">
 
     <div>
         <label>Titre <span style="color:#e05">*</span></label>
@@ -47,8 +47,11 @@
     </div>
 
     <div>
-        <label>Photo <span class="meta" style="font-weight:400">(chemin ou URL)</span></label>
-        <input type="text" name="photo_path" placeholder="/static/photos/exemple.jpg">
+        <label>Photo</label>
+        <input type="file" name="photo_file" accept="image/*">
+        <div class="meta" style="margin-top:4px">La photo est copiée dans le dossier IMG du logiciel.</div>
+        <input type="text" name="photo_path" placeholder="ou une URL : https://exemple.com/winch.jpg"
+               style="margin-top:8px">
     </div>
 
     <div style="display:flex;gap:10px">

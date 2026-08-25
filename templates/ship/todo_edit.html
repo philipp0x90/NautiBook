@@ -10,7 +10,7 @@
 
 {% set current_tags = (item.tags or '').split(',') %}
 
-<form method="POST" action="/ship/todo/{{ item.id }}/edit" style="display:grid;gap:14px;max-width:560px">
+<form method="POST" action="/ship/todo/{{ item.id }}/edit" enctype="multipart/form-data" style="display:grid;gap:14px;max-width:560px">
 
     <div>
         <label>Titre <span style="color:#e05">*</span></label>
@@ -68,8 +68,14 @@
     </div>
 
     <div>
-        <label>Photo <span class="meta" style="font-weight:400">(chemin ou URL)</span></label>
-        <input type="text" name="photo_path" value="{{ item.photo_path or '' }}" placeholder="/static/photos/exemple.jpg">
+        <label>Photo</label>
+        {% if item.photo_path %}
+        <div style="margin:4px 0"><img src="{{ item.photo_path }}" alt="" style="max-height:120px;border-radius:6px;border:1px solid #dde5ee"></div>
+        {% endif %}
+        <input type="file" name="photo_file" accept="image/*">
+        <div class="meta" style="margin-top:4px">Choisir un fichier remplace la photo actuelle.</div>
+        <input type="text" name="photo_path" value="{{ item.photo_path or '' }}"
+               placeholder="ou une URL : https://exemple.com/winch.jpg" style="margin-top:8px">
     </div>
 
     <div style="display:flex;gap:10px">

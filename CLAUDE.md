@@ -51,7 +51,15 @@ Several "current" pointers resolve implicitly rather than via a flag, and all ar
 - **`templates/`** — Jinja2, all extending `base.html`, which holds the entire stylesheet inline and the nav bar.
 - **`tables.sql`** — a translation of the original FileMaker schema (French table names, `ta_*`). It is *reference material only*, not the live schema and not kept in sync with `init_db()`.
 
-There is no `static/` directory and no `StaticFiles` mount. Leaflet and other assets come from CDNs; photos are stored as path/URL strings (`photo_path`) with no upload handling.
+There is no `static/` directory: Leaflet and other assets come from CDNs. The one `StaticFiles` mount is `IMG/`, served at `/IMG` — see below.
+
+### Photos
+
+`trip_photos.photo_path` and `todo_items.photo_path` hold a *string used verbatim as an `<img src>`* — either an external URL or a local `/IMG/<file>`. Nothing rewrites it, so old rows holding a bare URL keep working.
+
+Uploads land in `IMG/` (created at import time by `_save_photo`'s module block, git-ignored except `.gitkeep`) and are served by the `/IMG` mount, which is why the stored path doubles as the URL. `_save_photo(upload)` is the single entry point: it whitelists the suffix against `IMG_SUFFIXES`, slugifies the original stem, prefixes a `YYYYMMDD-HHMMSS` stamp, and suffixes `-1`, `-2`… on collision. It returns `None` when the form was submitted with no file, so every handler reads `await _save_photo(photo_file) or photo_path or None` — a chosen file wins, the text field is the fallback. Forms that accept a file need `enctype="multipart/form-data"`, and the field is always named `photo_file` alongside the text `photo_path`.
+
+Replacing a to-do photo leaves the previous file in `IMG/`; nothing prunes orphans.
 
 ### Unit conversion boundary
 

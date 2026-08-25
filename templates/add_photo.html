@@ -1,30 +1,40 @@
 {% extends "base.html" %}
 
-{% block title %}Add Photo — {{ line.timestamp.split('.')[0] }}{% endblock %}
+{% block title %}Ajouter une photo — {{ line.timestamp.split('.')[0] }}{% endblock %}
 
 {% block content %}
-<a href="/logbook/{{ line.id }}">← Back to Entry</a>
-<h1 style="margin-top:8px">Add Photo to Trip</h1>
-<h3 style="margin-top:4px">{{ line.timestamp.split('.')[0] }}</h3>
 
-<form method="POST" action="/logbook/{{ line.id }}/add-photo" class="card" style="margin-top:12px;display:grid;gap:12px">
+<div class="section-bar">
+    <div class="section-bar-left"><a href="/logbook/{{ line.id }}">← Retour à la ligne</a></div>
+    <div class="section-bar-title">Ajouter une photo</div>
+    <div class="section-bar-right">{{ line.timestamp | datefr }}</div>
+</div>
+
+<form method="POST" action="/logbook/{{ line.id }}/add-photo" enctype="multipart/form-data"
+      class="card" style="margin-top:12px;display:grid;gap:12px">
     <div>
-        <label>Photo Path / URL</label>
-        <input type="text" name="photo_path" required placeholder="/photos/sunset.jpg">
+        <label>Fichier image</label>
+        <input type="file" name="photo_file" accept="image/*">
+        <div class="meta" style="margin-top:4px">La photo est copiée dans le dossier IMG du logiciel.</div>
     </div>
 
     <div>
-        <label>Comment</label>
-        <textarea name="comment" placeholder="Beautiful sunset at the harbor..."></textarea>
+        <label>ou chemin / URL <span class="meta" style="font-weight:400">(si la photo est ailleurs)</span></label>
+        <input type="text" name="photo_path" placeholder="https://exemple.com/coucher.jpg">
     </div>
 
     <div>
-        <label>Added By</label>
-        <input type="text" name="added_by" placeholder="Your name">
+        <label>Commentaire</label>
+        <textarea name="comment" placeholder="Coucher de soleil à l'entrée du port..."></textarea>
     </div>
 
     <div>
-        <button type="submit" class="primary">Add Photo</button>
+        <label>Ajoutée par</label>
+        <input type="text" name="added_by" placeholder="Votre nom">
+    </div>
+
+    <div>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
     </div>
 </form>
 
