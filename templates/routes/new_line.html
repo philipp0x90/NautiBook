@@ -2,17 +2,7 @@
 {% block title %}Nouvelle ligne — NautiBook{% endblock %}
 {% block content %}
 
-<div style="margin-bottom:4px" class="meta">
-    {{ route.cruise_name }} ›
-    {% if route.departure_location and route.destination_location %}
-        {{ route.departure_location }} → {{ route.destination_location }}
-    {% elif route.name %}
-        {{ route.name }}
-    {% else %}
-        Route #{{ route.number }}
-    {% endif %}
-</div>
-<h2 style="margin:0 0 18px;font-size:18px">Nouvelle ligne de bord</h2>
+<h2 style="margin:24px 0 18px;font-size:18px;text-align:center">Ajouter une ligne au journal de bord</h2>
 
 <form method="POST" action="/routes/{{ route.id }}/new-line" class="card" style="display:grid;gap:12px">
     <div class="grid">

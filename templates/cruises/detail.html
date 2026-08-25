@@ -23,19 +23,27 @@
 </div>
 {% else %}
 
-{% if is_current is defined and is_current %}
-<div style="text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px">Croisière en cours</div>
-{% endif %}
-
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
     <form method="POST" action="/cruises/{{ cruise.id }}/delete"
           onsubmit="return confirm('Supprimer cette croisière et toutes ses routes ?')">
         <button type="submit" class="btn btn-orange">— Supprimer croisière</button>
     </form>
-    <div style="flex:1;text-align:center">
-        <div style="font-size:20px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:10px 20px;display:inline-block">
-            {{ cruise.name or 'Croisière sans nom' }}
+    {# One line: "Croisière en cours" pushed left, the name centred in what is
+       left, the number pushed right. The middle cell takes the slack, so the
+       name stays centred whether or not the "en cours" label is there. #}
+    <div style="flex:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        {% if is_current is defined and is_current %}
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
+        {% endif %}
+        <div style="flex:1;text-align:center">
+            <div style="font-size:20px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:10px 20px;display:inline-block">
+                {{ cruise.name or 'Croisière sans nom' }}
+            </div>
         </div>
+        {# Position among this ship's cruises, not the id — same %03d as the list. #}
+        {% if cruise.number %}
+        <div style="font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
+        {% endif %}
     </div>
     <a href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
 </div>

@@ -191,10 +191,14 @@
         {# Nouvelle ligne + Arrivée ── below table #}
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
             <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow">+ Nouvelle ligne</a>
-            <div style="flex:1"></div>
-            {% if not route.finished %}
-            <button type="button" class="btn btn-blue" onclick="document.getElementById('arrivee-modal').classList.add('open')">Arrivée ⚓</button>
-            {% endif %}
+            {# Arrivée sits in the middle cell, which takes the slack on both
+               sides, so it stays centred even on a finished route where the
+               button is gone. #}
+            <div style="flex:1;text-align:center">
+                {% if not route.finished %}
+                <button type="button" class="btn btn-blue" onclick="document.getElementById('arrivee-modal').classList.add('open')">Arrivée</button>
+                {% endif %}
+            </div>
             <form method="POST" action="/routes/{{ route.id }}/delete" style="display:inline"
                   onsubmit="return confirm('Supprimer cette route ?')">
                 <button type="submit" class="btn btn-orange">— Supprimer route</button>
@@ -373,7 +377,7 @@ function buildMap() {
 {# ── Arrivée modal ── #}
 <div id="arrivee-modal" onclick="if(event.target===this)this.classList.remove('open')">
     <div id="arrivee-box">
-        <h3 style="margin:0;font-size:17px">Arrivée ⚓</h3>
+        <h3 style="margin:0;font-size:17px">Arrivée</h3>
         <form method="POST" action="/routes/{{ route.id }}/arrivee" style="display:grid;gap:12px">
             {% if not route.destination_location %}
             <div>
