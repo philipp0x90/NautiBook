@@ -178,6 +178,28 @@
 </div>
 {% endif %}
 
+{# Navigation de croisière et création de route, remontées juste sous la liste
+   des routes : c'est de là qu'on enchaîne, plutôt qu'après les panneaux
+   Équipage et Escales. Le bloc reste entier — « Arrivée » et « Croisière
+   Suiv. » partagent la rangée. #}
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">
+    {% if prev_cruise_id %}
+    <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
+    {% endif %}
+    <div style="flex:1;text-align:center;display:flex;gap:8px;justify-content:center">
+        <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
+        {% if not cruise.end_time %}
+        <form method="POST" action="/cruises/{{ cruise.id }}/arrival" style="display:inline"
+              onsubmit="return confirm('Marquer l\'arrivée de cette croisière ?')">
+            <button type="submit" class="btn btn-blue">Arrivée</button>
+        </form>
+        {% endif %}
+    </div>
+    {% if next_cruise_id %}
+    <a href="/cruises/{{ next_cruise_id }}" class="btn btn-blue">Croisière Suiv. →</a>
+    {% endif %}
+</div>
+
 {# Équipage — cruise_crew. Le rôle est stocké en anglais ('skipper' / 'crew'),
    comme le DEFAULT de la colonne, et traduit seulement à l'affichage. #}
 <div class="card" style="margin-bottom:16px;padding:14px">
@@ -299,24 +321,6 @@
     {% endif %}
 </div>
 {% endif %}
-
-<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">
-    {% if prev_cruise_id %}
-    <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
-    {% endif %}
-    <div style="flex:1;text-align:center;display:flex;gap:8px;justify-content:center">
-        <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
-        {% if not cruise.end_time %}
-        <form method="POST" action="/cruises/{{ cruise.id }}/arrival" style="display:inline"
-              onsubmit="return confirm('Marquer l\'arrivée de cette croisière ?')">
-            <button type="submit" class="btn btn-blue">Arrivée</button>
-        </form>
-        {% endif %}
-    </div>
-    {% if next_cruise_id %}
-    <a href="/cruises/{{ next_cruise_id }}" class="btn btn-blue">Croisière Suiv. →</a>
-    {% endif %}
-</div>
 
 {# ── Cruise Map ── #}
 <div style="margin-bottom:24px;background:var(--card);border:1px solid #dde5ee;border-radius:8px;overflow:hidden">
