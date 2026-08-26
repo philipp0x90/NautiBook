@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Request, Form, Query, File, UploadFi
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from datetime import datetime
+from datetime import datetime, date
 import asyncio
 import re
 import aiosqlite
@@ -26,6 +26,21 @@ def _datefr(value):
     if len(s) >= 10 and s[4] == "-" and s[7] == "-" and s[:4].isdigit() and s[5:7].isdigit() and s[8:10].isdigit():
         return f"{s[8:10]}/{s[5:7]}/{s[:4]}"
     return s
+
+
+JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
+def _jourfr(value):
+    """ISO date (or datetime) → French weekday name: 2026-08-26 → mercredi.
+    Hardcoded rather than locale-driven: strftime('%A') would depend on the
+    Raspberry Pi's locale being installed and set, which it need not be."""
+    if not value:
+        return "—"
+    try:
+        return JOURS_FR[date.fromisoformat(str(value)[:10]).weekday()]
+    except ValueError:
+        return "—"
 
 
 def _deg(value):
@@ -69,15 +84,59 @@ def _lat(value):
 
 
 def _lon(value):
-    """Longitude in DMM, three degree digits: 005° 24.000' E"""
-    return _dmm(value, "EW", 3)
+    """Longitude in DMM, two degree digits like the latitude: 05° 24.000' E.
+    The width is a minimum, so a longitude past 100° keeps its three digits."""
+    return _dmm(value, "EW", 2)
+
+
+def _dmm_parts(value, hemispheres):
+    """Split stored decimal degrees into the three boxes of a position form:
+    whole degrees, decimal minutes, hemisphere letter. Same split as _dmm,
+    which renders it as one string for display. An absent position leaves the
+    boxes empty rather than showing a spurious 0° 00.000'."""
+    blank = {"deg": "", "min": "", "hem": hemispheres[0]}
+    if value is None or value == "":
+        return blank
+    try:
+        dd = float(value)
+    except (TypeError, ValueError):
+        return blank
+    hemisphere = hemispheres[0] if dd >= 0 else hemispheres[1]
+    degrees, minutes = divmod(abs(dd) * 60, 60)
+    if round(minutes, 3) >= 60:  # 59.9996' rounds up into the next degree
+        degrees, minutes = degrees + 1, 0.0
+    return {"deg": int(degrees), "min": f"{minutes:.3f}", "hem": hemisphere}
+
+
+def _lat_parts(value):
+    return _dmm_parts(value, "NS")
+
+
+def _lon_parts(value):
+    return _dmm_parts(value, "EW")
+
+
+def _dmm_to_dd(degrees, minutes, hemisphere):
+    """The way back: the three form boxes → the signed decimal degrees the
+    database stores. Empty boxes mean "no position", not zero, so both blank
+    yields None. The sign comes from the hemisphere, so a negative typed into
+    the degrees box is ignored rather than flipping it twice."""
+    if degrees is None and minutes is None:
+        return None
+    dd = abs(degrees or 0) + abs(minutes or 0) / 60
+    if (hemisphere or "").upper() in ("S", "W"):
+        dd = -dd
+    return round(dd, 6)
 
 
 templates.env.filters["datefr"] = _datefr
+templates.env.filters["jourfr"] = _jourfr
 templates.env.filters["deg"] = _deg
 templates.env.filters["unit"] = _unit
 templates.env.filters["lat"] = _lat
 templates.env.filters["lon"] = _lon
+templates.env.filters["latdmm"] = _lat_parts
+templates.env.filters["londmm"] = _lon_parts
 
 
 @asynccontextmanager
@@ -1004,6 +1063,38 @@ CRUISE_NUMBER = ("(SELECT COUNT(*) FROM cruises c2"
 ROUTE_NUMBER = ("(SELECT COUNT(*) FROM routes r2"
                 " WHERE r2.cruise_id IS r.cruise_id AND r2.id <= r.id)")
 
+# Where a cruise starts and where it has got to, read from its routes. The
+# declared departure wins for the start — it is the plan, and the first route
+# may not exist yet — whereas for the arrival the last route wins over the
+# declared destination, which is a goal, not a fact.
+CRUISE_FROM = ("COALESCE(c.departure, (SELECT r4.departure_location FROM routes r4"
+               " WHERE r4.cruise_id = c.id ORDER BY r4.id ASC LIMIT 1))")
+CRUISE_TO = ("COALESCE((SELECT COALESCE(r5.destination_location, r5.departure_location)"
+             " FROM routes r5 WHERE r5.cruise_id = c.id ORDER BY r5.id DESC LIMIT 1),"
+             " c.destination)")
+
+# Loch read on the cruise's logbook lines, for the cruise list. Also expect the
+# cruises table aliased as c.
+LOCH_FIRST = ("(SELECT MIN(l.log) FROM logbook_lines l"
+              " JOIN routes r3 ON l.route_id = r3.id WHERE r3.cruise_id = c.id)")
+LOCH_LAST = ("(SELECT MAX(l.log) FROM logbook_lines l"
+             " JOIN routes r3 ON l.route_id = r3.id WHERE r3.cruise_id = c.id)")
+
+
+async def _current_cruise_id(db, ship_id: int) -> Optional[int]:
+    """The ship's current cruise: the latest by start date, falling back to
+    creation date. Resolved on the fly — no flag for it in the schema — so
+    every screen that needs to know must ask here rather than guess.
+    Expects db.row_factory set to aiosqlite.Row.
+    """
+    cursor = await db.execute(
+        "SELECT id FROM cruises WHERE ship_id = ? "
+        "ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1",
+        (ship_id,),
+    )
+    row = await cursor.fetchone()
+    return row["id"] if row else None
+
 @app.get("/cruises", response_class=HTMLResponse)
 async def cruises_index(request: Request):
     return RedirectResponse(url="/cruises/current", status_code=302)
@@ -1015,7 +1106,9 @@ async def current_cruise(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            f"SELECT c.*, {CRUISE_NUMBER} AS number FROM cruises c WHERE c.ship_id = ? "
+            f"SELECT c.*, {CRUISE_NUMBER} AS number,"
+            f" {CRUISE_FROM} AS from_location, {CRUISE_TO} AS to_location"
+            " FROM cruises c WHERE c.ship_id = ? "
             "ORDER BY COALESCE(c.start_time, c.created_at) DESC LIMIT 1",
             (ship_id,),
         )
@@ -1075,23 +1168,37 @@ async def cruise_list(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            f"SELECT c.*, {CRUISE_NUMBER} AS number FROM cruises c WHERE c.ship_id = ? ORDER BY c.id ASC",
+            f"""SELECT c.*, {CRUISE_NUMBER} AS number,
+                       {CRUISE_FROM} AS from_location,
+                       {CRUISE_TO} AS to_location,
+                       CAST(julianday(c.end_time) - julianday(c.start_time)
+                            AS INTEGER) AS duration_days,
+                       -- Loch au départ et à l'arrivée. Les colonnes
+                       -- cruises.loch_start / loch_end existent mais aucun
+                       -- écran ne les remplit : à défaut, on lit le loch des
+                       -- lignes de journal de la croisière. Un loch ne recule
+                       -- pas, donc MIN et MAX sont bien le premier et le
+                       -- dernier relevé, et une ligne saisie hors ordre
+                       -- chronologique ne fausse rien.
+                       COALESCE(c.loch_start, {LOCH_FIRST}) AS loch_from,
+                       COALESCE(c.loch_end, {LOCH_LAST}) AS loch_to,
+                       -- Distance = ce que le loch a compté. Arrondi parce que
+                       -- la soustraction de deux flottants sort
+                       -- 12.299999999999955 pour 512.3 - 500.0.
+                       ROUND(COALESCE(c.loch_end, {LOCH_LAST})
+                             - COALESCE(c.loch_start, {LOCH_FIRST}), 1) AS distance
+                FROM cruises c WHERE c.ship_id = ? ORDER BY c.id ASC""",
             (ship_id,),
         )
         cruises = await cursor.fetchall()
-        current_cursor = await db.execute(
-            "SELECT id FROM cruises WHERE ship_id = ? "
-            "ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1",
-            (ship_id,),
-        )
-        latest = await current_cursor.fetchone()
+        current_id = await _current_cruise_id(db, ship_id)
     return templates.TemplateResponse(
         "cruises/list.html",
         {
             "request": request,
             "active_section": "cruises",
             "cruises": [dict(c) for c in cruises],
-            "current_cruise_id": latest["id"] if latest else None,
+            "current_cruise_id": current_id,
         },
     )
 
@@ -1142,7 +1249,10 @@ async def cruise_detail(request: Request, cruise_id: int):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            f"SELECT c.*, {CRUISE_NUMBER} AS number FROM cruises c WHERE c.id = ?", (cruise_id,)
+            f"SELECT c.*, {CRUISE_NUMBER} AS number,"
+            f" {CRUISE_FROM} AS from_location, {CRUISE_TO} AS to_location"
+            " FROM cruises c WHERE c.id = ?",
+            (cruise_id,),
         )
         cruise = await cursor.fetchone()
         if cruise is None:
@@ -1177,11 +1287,16 @@ async def cruise_detail(request: Request, cruise_id: int):
             (cruise_id,),
         )
         stopovers = await cursor.fetchall()
+        # Arriver ici par un lien direct ou par les flèches n'enlève rien au
+        # fait que ce soit la croisière en cours : la mention doit s'afficher
+        # comme sur /cruises/current.
+        is_current = await _current_cruise_id(db, ship_id) == cruise_id
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
             "request": request,
             "active_section": "cruises",
+            "is_current": is_current,
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
             "stopovers": [dict(s) for s in stopovers],
@@ -1209,6 +1324,18 @@ async def cruise_set_end(cruise_id: int, end_time: Optional[str] = Form(None)):
         await db.execute(
             "UPDATE cruises SET end_time = ? WHERE id = ?",
             (end_time or None, cruise_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+
+
+@app.post("/cruises/{cruise_id}/set-name")
+async def cruise_set_name(cruise_id: int, name: Optional[str] = Form(None)):
+    """Rename a cruise from its own page, edited in place like a logbook line."""
+    async with connect() as db:
+        await db.execute(
+            "UPDATE cruises SET name = ? WHERE id = ?",
+            (name or None, cruise_id),
         )
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
@@ -1454,11 +1581,26 @@ async def new_route_form(request: Request, cruise_id: int = Query(...)):
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM cruises WHERE id = ?", (cruise_id,))
         cruise = await cursor.fetchone()
+        # A leg starts where the previous one ended, with the same engine hours
+        # on the clock. Highest id = the cruise's latest route, as everywhere
+        # else. Either column may be NULL when that route has no arrival yet;
+        # the form then simply opens blank.
+        cursor = await db.execute(
+            """SELECT destination_location, motor_hours_end
+               FROM routes WHERE cruise_id = ? ORDER BY id DESC LIMIT 1""",
+            (cruise_id,),
+        )
+        previous = await cursor.fetchone()
     if cruise is None:
         raise HTTPException(status_code=404, detail="Cruise not found")
     return templates.TemplateResponse(
         "new_route.html",
-        {"request": request, "cruise": dict(cruise), "active_section": "routes"},
+        {
+            "request": request,
+            "cruise": dict(cruise),
+            "previous": dict(previous) if previous else None,
+            "active_section": "routes",
+        },
     )
 
 
@@ -1473,18 +1615,23 @@ async def create_route(
     motor_hours_start: Optional[float] = Form(None),
 ):
     async with connect() as db:
-        await db.execute(
+        cursor = await db.execute(
             """INSERT INTO routes (cruise_id, name, departure_location, destination_location, start_time, notes, motor_hours_start)
                VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (cruise_id, name or None, departure_location or None, destination_location or None,
              start_time or None, notes or None, motor_hours_start),
         )
+        route_id = cursor.lastrowid
         await db.commit()
-    return RedirectResponse(url="/cruises/current", status_code=303)
+    # Land on the fresh route rather than on the cruise: it is empty, and the
+    # flag makes it offer a first logbook line straight away.
+    return RedirectResponse(url=f"/routes/{route_id}?nouvelle=1", status_code=303)
 
 
 @app.get("/routes/{route_id}", response_class=HTMLResponse)
-async def route_detail(request: Request, route_id: int):
+async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
+    """The `nouvelle` flag is set by create_route and only opens the modal that
+    offers a first logbook line; it changes nothing else on the page."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
 
@@ -1542,6 +1689,7 @@ async def route_detail(request: Request, route_id: int):
             "prev_route": dict(prev_route) if prev_route else None,
             "next_route": dict(next_route) if next_route else None,
             "todos": [dict(t) for t in todos],
+            "ask_new_line": bool(nouvelle),
         },
     )
 
@@ -1557,12 +1705,28 @@ async def new_line_form(request: Request, route_id: int):
             (route_id,),
         )
         route = await cursor.fetchone()
+        # Sea state, visibility and sail plan are eyeballed, not measured:
+        # SignalK has nothing to say about them, so the form inherits them from
+        # the route's latest line. They change slowly, hence the confirmation
+        # on save.
+        cursor = await db.execute(
+            """SELECT sea_state, visibility, sails FROM logbook_lines
+               WHERE route_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1""",
+            (route_id,),
+        )
+        previous = await cursor.fetchone()
     if route is None:
         raise HTTPException(status_code=404, detail="Route not found")
     data = get_sensor_data()
     return templates.TemplateResponse(
         "routes/new_line.html",
-        {"request": request, "active_section": "routes", "data": data, "route": dict(route)},
+        {
+            "request": request,
+            "active_section": "routes",
+            "data": data,
+            "route": dict(route),
+            "previous": dict(previous) if previous else None,
+        },
     )
 
 
@@ -1570,8 +1734,14 @@ async def new_line_form(request: Request, route_id: int):
 async def create_line(
     request: Request,
     route_id: int,
-    position_lat: Optional[float] = Form(None),
-    position_lon: Optional[float] = Form(None),
+    # The form asks for degrees, decimal minutes and a hemisphere; the column
+    # keeps signed decimal degrees. _dmm_to_dd is the only place that converts.
+    lat_deg: Optional[float] = Form(None),
+    lat_min: Optional[float] = Form(None),
+    lat_hem: Optional[str] = Form(None),
+    lon_deg: Optional[float] = Form(None),
+    lon_min: Optional[float] = Form(None),
+    lon_hem: Optional[str] = Form(None),
     aws: Optional[float] = Form(None),
     stw: Optional[float] = Form(None),
     sog: Optional[float] = Form(None),
@@ -1599,6 +1769,8 @@ async def create_line(
     twa = round(twa) if twa is not None else None
     heading = round(heading) if heading is not None else None
     cog = round(cog) if cog is not None else None
+    position_lat = _dmm_to_dd(lat_deg, lat_min, lat_hem)
+    position_lon = _dmm_to_dd(lon_deg, lon_min, lon_hem)
     async with connect() as db:
         await db.execute(
             """INSERT INTO logbook_lines
@@ -1807,8 +1979,13 @@ async def update_line(
     request: Request,
     line_id: int,
     timestamp: Optional[str] = Form(None),
-    position_lat: Optional[float] = Form(None),
-    position_lon: Optional[float] = Form(None),
+    # Same DMM boxes as the creation form; see _dmm_to_dd.
+    lat_deg: Optional[float] = Form(None),
+    lat_min: Optional[float] = Form(None),
+    lat_hem: Optional[str] = Form(None),
+    lon_deg: Optional[float] = Form(None),
+    lon_min: Optional[float] = Form(None),
+    lon_hem: Optional[str] = Form(None),
     aws: Optional[float] = Form(None),
     stw: Optional[float] = Form(None),
     sog: Optional[float] = Form(None),
@@ -1843,6 +2020,8 @@ async def update_line(
         timestamp = timestamp.replace("T", " ")
         if len(timestamp) == 16:
             timestamp += ":00"
+    position_lat = _dmm_to_dd(lat_deg, lat_min, lat_hem)
+    position_lon = _dmm_to_dd(lon_deg, lon_min, lon_hem)
     async with connect() as db:
         cursor = await db.execute("SELECT route_id FROM logbook_lines WHERE id = ?", (line_id,))
         row = await cursor.fetchone()

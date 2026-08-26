@@ -53,10 +53,12 @@
     .bottom-panel { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px; }
     .bottom-panel h4 { margin: 0 0 10px; font-size: 13px; font-weight: 700; text-align: center; border-bottom: 1px solid #dde5ee; padding-bottom: 6px; }
 
-    /* Arrivée modal */
-    #arrivee-modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:200; align-items:center; justify-content:center; }
-    #arrivee-modal.open { display:flex; }
-    #arrivee-box { background:#fff; border-radius:10px; padding:24px; max-width:380px; width:90%; display:grid; gap:14px; }
+    /* Fenêtres modales de la page (Arrivée, première ligne). En classes plutôt
+       qu'en identifiants, pour que la seconde n'ait pas à recopier le style ;
+       les identifiants restent, ce sont eux que les onclick manipulent. */
+    .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:200; align-items:center; justify-content:center; }
+    .modal.open { display:flex; }
+    .modal-box { background:#fff; border-radius:10px; padding:24px; max-width:380px; width:90%; display:grid; gap:14px; }
 
     @media (max-width: 900px) {
         .route-layout { grid-template-columns: 1fr; }
@@ -97,26 +99,32 @@
 
 {# ── Départ / Arrivée info bar ── #}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid #dde5ee;border-radius:8px;overflow:hidden;margin-bottom:12px">
+    {# Le lieu passe en <strong> avec la date : c'est une information de même
+       nature, pas une annotation. Seuls les mots « Départ : », « de : » et
+       « à : » restent en gris. Le nom du jour n'est écrit que s'il y a une
+       date. #}
     <div style="padding:10px 18px;border-right:1px solid #dde5ee">
         <span class="meta">Départ :</span>
         <strong style="margin-left:8px">
             {% if route.start_time %}
+                {{ route.start_time | jourfr }}
                 {{ route.start_time[:10] | datefr }} {{ route.start_time[11:16] if route.start_time|length > 10 else '' }}
             {% else %}—{% endif %}
         </strong>
         {% if route.departure_location %}
-        <span class="meta"> — de : {{ route.departure_location }}</span>
+        <span class="meta"> — de :</span> <strong>{{ route.departure_location }}</strong>
         {% endif %}
     </div>
     <div style="padding:10px 18px;text-align:right">
         <span class="meta">Arrivée :</span>
         <strong style="margin-left:8px">
             {% if route.end_time %}
+                {{ route.end_time | jourfr }}
                 {{ route.end_time[:10] | datefr }} {{ route.end_time[11:16] if route.end_time|length > 10 else '' }}
             {% else %}—{% endif %}
         </strong>
         {% if route.destination_location %}
-        <span class="meta"> — à : {{ route.destination_location }}</span>
+        <span class="meta"> — à :</span> <strong>{{ route.destination_location }}</strong>
         {% endif %}
     </div>
 </div>
@@ -387,8 +395,8 @@ function buildMap() {
 </script>
 
 {# ── Arrivée modal ── #}
-<div id="arrivee-modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <div id="arrivee-box">
+<div id="arrivee-modal" class="modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
         <h3 style="margin:0;font-size:17px">Arrivée</h3>
         <form method="POST" action="/routes/{{ route.id }}/arrivee" style="display:grid;gap:12px">
             {% if not route.destination_location %}
@@ -409,5 +417,23 @@ function buildMap() {
         </form>
     </div>
 </div>
+
+{# ── Première ligne, proposée juste après la création de la route ──
+   Ouverte d'emblée (classe open) puisque create_route vient de rediriger ici
+   avec ?nouvelle=1. « Plus tard » ne fait que la refermer : la route existe
+   déjà, il n'y a rien à annuler. #}
+{% if ask_new_line %}
+<div id="premiere-ligne-modal" class="modal open" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box">
+        <h3 style="margin:0;font-size:17px">Route créée</h3>
+        <div>Ajouter tout de suite une première ligne au journal de bord ?</div>
+        <div style="display:flex;gap:10px">
+            <a href="/routes/{{ route.id }}/new-line" class="btn btn-blue">+ Nouvelle ligne</a>
+            <button type="button" class="btn" style="background:#eee;color:#333"
+                    onclick="document.getElementById('premiere-ligne-modal').classList.remove('open')">Plus tard</button>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% endblock %}

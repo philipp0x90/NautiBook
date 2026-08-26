@@ -9,9 +9,14 @@
 <form method="POST" action="/routes/new" class="card" style="margin-top:12px;display:grid;gap:14px;max-width:520px">
     <input type="hidden" name="cruise_id" value="{{ cruise.id }}">
     <div class="grid">
+        {# Préremplis depuis l'arrivée de la route précédente : une étape part
+           d'où la précédente s'est arrêtée, avec le même horamètre au compteur.
+           Les champs restent modifiables, et vides si cette route n'a pas
+           encore d'arrivée enregistrée. #}
         <div>
             <label>Départ de</label>
-            <input type="text" name="departure_location" placeholder="Marseille">
+            <input type="text" name="departure_location" placeholder="Marseille"
+                   value="{{ previous.destination_location if previous and previous.destination_location else '' }}">
         </div>
         <div>
             <label>Arrivée à</label>
@@ -28,14 +33,21 @@
     </div>
     <div>
         <label>Horamètre au départ (h)</label>
-        <input type="number" name="motor_hours_start" step="0.1" placeholder="ex : 1234.5">
+        <input type="number" name="motor_hours_start" step="0.1" placeholder="ex : 1234.5"
+               value="{{ previous.motor_hours_end if previous and previous.motor_hours_end is not none else '' }}">
+        {% if previous and (previous.destination_location or previous.motor_hours_end is not none) %}
+        <div class="meta" style="margin-top:4px">Repris de l'arrivée de la route précédente.</div>
+        {% endif %}
     </div>
     <div>
         <label>Notes</label>
         <textarea name="notes" placeholder="Météo prévue, points de passage…"></textarea>
     </div>
-    <div>
+    <div style="display:flex;gap:10px;align-items:center">
         <button type="submit" class="primary">Créer la route</button>
+        {# Retour à la croisière d'où l'on vient : rien n'est créé tant que le
+           formulaire n'est pas envoyé, un simple lien suffit. #}
+        <a href="/cruises/{{ cruise.id }}" style="padding:9px 16px;color:var(--muted);text-decoration:none;font-size:14px">Annuler</a>
     </div>
 </form>
 {% endblock %}

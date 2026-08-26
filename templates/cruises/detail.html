@@ -8,6 +8,16 @@
     .map-legend { background:#fff; padding:8px 12px; border-radius:6px; box-shadow:0 1px 5px rgba(0,0,0,.2); font-size:12px; line-height:1.8; }
     .map-legend-row { display:flex; align-items:center; gap:7px; }
     .map-legend-swatch { width:20px; height:3px; border-radius:2px; flex-shrink:0; }
+    /* Le nom de la croisière : même cadre qu'avant, mais saisissable. Il se lit
+       comme un titre au repos et ne se signale qu'au survol, comme les champs
+       modifiables du tableau de bord. */
+    .cruise-name {
+        font-size: 20px; font-weight: 700; text-align: center;
+        padding: 10px 20px; border: 2px solid #dde5ee; border-radius: 8px;
+        background: transparent; width: 100%; max-width: 420px;
+    }
+    .cruise-name:hover { background: #f7fbfd; }
+    .cruise-name:focus { background: #fff; border-color: var(--accent); outline: none; }
 </style>
 {% endblock %}
 
@@ -28,17 +38,21 @@
           onsubmit="return confirm('Supprimer cette croisière et toutes ses routes ?')">
         <button type="submit" class="btn btn-orange">— Supprimer croisière</button>
     </form>
-    {# One line: "Croisière en cours" pushed left, the name centred in what is
-       left, the number pushed right. The middle cell takes the slack, so the
-       name stays centred whether or not the "en cours" label is there. #}
+    {# Le nom occupe la cellule centrale, qui prend le mou de la rangée, avec la
+       mention « en cours » centrée juste dessous. Le numéro reste poussé à
+       droite. Le nom est modifiable sur place, comme les colonnes du journal de
+       bord : un formulaire à un seul champ qui s'envoie au changement. #}
     <div style="flex:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        {% if is_current is defined and is_current %}
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
-        {% endif %}
         <div style="flex:1;text-align:center">
-            <div style="font-size:20px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:10px 20px;display:inline-block">
-                {{ cruise.name or 'Croisière sans nom' }}
-            </div>
+            <form method="POST" action="/cruises/{{ cruise.id }}/set-name">
+                <input type="text" name="name" class="cruise-name" value="{{ cruise.name or '' }}"
+                       placeholder="Croisière sans nom"
+                       title="Modifier le nom de la croisière (Entrée pour enregistrer)"
+                       onchange="this.form.submit()">
+            </form>
+            {% if is_current is defined and is_current %}
+            <div style="margin-top:6px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
+            {% endif %}
         </div>
         {# Position among this ship's cruises, not the id — same %03d as the list. #}
         {% if cruise.number %}
@@ -49,13 +63,29 @@
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid #dde5ee;border-radius:8px;overflow:hidden;margin-bottom:16px">
+    {# Nom du jour devant la date, et le lieu à côté, dans la même graisse —
+       comme sur la page route. Les dates d'une croisière sont saisies sans
+       heure : il n'y a rien à afficher après. Les lieux viennent des routes,
+       voir CRUISE_FROM / CRUISE_TO dans main.py. #}
     <div style="padding:14px 20px;border-right:1px solid #dde5ee">
         <span style="font-size:14px;color:var(--muted)">Départ :</span>
-        <strong style="font-size:16px;margin-left:8px">{{ cruise.start_time | datefr }}</strong>
+        <strong style="font-size:16px;margin-left:8px">
+            {% if cruise.start_time %}{{ cruise.start_time | jourfr }} {{ cruise.start_time | datefr }}{% else %}—{% endif %}
+        </strong>
+        {% if cruise.from_location %}
+        <span style="font-size:14px;color:var(--muted)"> — de :</span>
+        <strong style="font-size:16px">{{ cruise.from_location }}</strong>
+        {% endif %}
     </div>
     <div style="padding:10px 20px;text-align:right;display:flex;align-items:center;justify-content:flex-end;gap:8px">
         <span style="font-size:14px;color:var(--muted)">Arrivée :</span>
-        <strong style="font-size:16px">{{ cruise.end_time | datefr }}</strong>
+        <strong style="font-size:16px">
+            {% if cruise.end_time %}{{ cruise.end_time | jourfr }} {{ cruise.end_time | datefr }}{% else %}—{% endif %}
+        </strong>
+        {% if cruise.to_location %}
+        <span style="font-size:14px;color:var(--muted)">— à :</span>
+        <strong style="font-size:16px">{{ cruise.to_location }}</strong>
+        {% endif %}
         <button type="button" onclick="document.getElementById('end-edit').classList.toggle('hidden')"
                 style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 6px">✎</button>
     </div>

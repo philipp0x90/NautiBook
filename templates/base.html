@@ -118,12 +118,16 @@
             border-radius: 8px;
             margin: 14px 0 20px;
         }
+        /* Les deux badges reprennent le gabarit de .btn — même corps, mêmes
+           marges internes, même arrondi — pour que la barre pèse pareil à ses
+           deux extrémités, y compris là où le slot de gauche porte un vrai
+           bouton (page ship/info). */
         .section-bar-left {
             min-width: 140px;
             background: rgba(255,255,255,0.25);
-            border-radius: 16px;
-            padding: 3px 14px;
-            font-size: 13px;
+            border-radius: 20px;
+            padding: 8px 18px;
+            font-size: 14px;
             font-weight: 600;
             text-align: center;
         }
@@ -136,9 +140,9 @@
         .section-bar-right {
             min-width: 80px;
             background: rgba(255,255,255,0.25);
-            border-radius: 16px;
-            padding: 3px 14px;
-            font-size: 13px;
+            border-radius: 20px;
+            padding: 8px 18px;
+            font-size: 14px;
             font-weight: 600;
             text-align: center;
         }
