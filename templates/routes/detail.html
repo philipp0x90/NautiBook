@@ -35,6 +35,12 @@
         resize: vertical; overflow: hidden; display: block;
     }
     textarea.inline-edit:focus { overflow: auto; min-height: 60px; }
+    /* Ligne cliquable, comme les tableaux de cruises/list.html. Chaque ligne de
+       bord occupe deux <tr>, regroupés dans leur propre <tbody> : c'est ce qui
+       permet de surligner « la ligne » d'un bloc au survol, ce qu'un :hover sur
+       un <tr> seul ne saurait faire. */
+    .log-table .log-line { cursor: pointer; }
+    .log-table .log-line:hover td { background: #e8f7fb; }
     .log-table .add-row td { background: #e8f7fb; }
     .log-table .add-row td a { color: var(--accent-dark); font-weight: 700; text-decoration: none; font-size: 14px; }
 
@@ -135,9 +141,12 @@
                         <th>STW</th><th>COG</th><th>Allure</th><th>Trip</th>
                     </tr>
                 </thead>
-                <tbody>
                     {% for ln in lines %}
-                    <tr class="row-top">
+                    {# rowLink ignore les clics tombés sur un élément interactif,
+                       donc le champ « position visuelle » reste éditable en place. #}
+                    <tbody class="log-line">
+                    <tr class="row-top" title="Modifier cette ligne"
+                        onclick="rowLink(event, '/logbook/{{ ln.id }}/edit')">
                         <td class="time-cell" rowspan="2">
                             {{ ln.timestamp[11:16] if ln.timestamp else '—' }}
                         </td>
@@ -167,7 +176,8 @@
                             </form>
                         </td>
                     </tr>
-                    <tr class="row-bot">
+                    <tr class="row-bot" title="Modifier cette ligne"
+                        onclick="rowLink(event, '/logbook/{{ ln.id }}/edit')">
                         <td>{{ ln.awa | deg }}</td>
                         <td>{{ ln.twa | deg }}</td>
                         <td>{{ ln.visibility or '—' }}</td>
@@ -177,14 +187,16 @@
                         <td>{{ ln.points_of_sail or '—' }}</td>
                         <td>{{ ln.trip | unit('NM') }}</td>
                     </tr>
+                    </tbody>
                     {% else %}
+                    <tbody>
                     <tr>
                         <td colspan="12" style="text-align:center;color:var(--muted);padding:20px">
                             Aucune ligne de bord enregistrée.
                         </td>
                     </tr>
+                    </tbody>
                     {% endfor %}
-                </tbody>
             </table>
         </div>
 

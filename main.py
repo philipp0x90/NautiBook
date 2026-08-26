@@ -1787,22 +1787,106 @@ async def gallery(request: Request):
     )
 
 
-@app.get("/logbook/{line_id}", response_class=HTMLResponse)
-async def view_line(request: Request, line_id: int):
+@app.get("/logbook/{line_id}/edit", response_class=HTMLResponse)
+async def edit_line_form(request: Request, line_id: int):
+    """Full edit form for one logbook line, reached from the pencil on the route page."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM logbook_lines WHERE id = ?", (line_id,))
         line = await cursor.fetchone()
-        if line is None:
-            raise HTTPException(status_code=404, detail="Entry not found")
-        cursor = await db.execute(
-            "SELECT * FROM trip_photos WHERE trip_id = ? ORDER BY created_at DESC", (line_id,)
-        )
-        photos = await cursor.fetchall()
+    if line is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
     return templates.TemplateResponse(
-        "line_detail.html",
-        {"request": request, "line": line, "photos": photos, "active_section": "routes"},
+        "routes/edit_line.html",
+        {"request": request, "active_section": "routes", "line": dict(line)},
     )
+
+
+@app.post("/logbook/{line_id}/edit")
+async def update_line(
+    request: Request,
+    line_id: int,
+    timestamp: Optional[str] = Form(None),
+    position_lat: Optional[float] = Form(None),
+    position_lon: Optional[float] = Form(None),
+    aws: Optional[float] = Form(None),
+    stw: Optional[float] = Form(None),
+    sog: Optional[float] = Form(None),
+    awa: Optional[float] = Form(None),
+    tws: Optional[float] = Form(None),
+    twa: Optional[float] = Form(None),
+    sea_state: Optional[str] = Form(None),
+    visibility: Optional[str] = Form(None),
+    water_temp: Optional[float] = Form(None),
+    heading: Optional[float] = Form(None),
+    cog: Optional[float] = Form(None),
+    sails: Optional[str] = Form(None),
+    log: Optional[float] = Form(None),
+    trip: Optional[float] = Form(None),
+    depth: Optional[float] = Form(None),
+    points_of_sail: Optional[str] = Form(None),
+    pressure: Optional[float] = Form(None),
+    visual_pos: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+):
+    if depth is not None:
+        depth = round(depth, 1)
+    # Same rounding as create_line: whole degrees, lat/lon keep full precision.
+    awa = round(awa) if awa is not None else None
+    twa = round(twa) if twa is not None else None
+    heading = round(heading) if heading is not None else None
+    cog = round(cog) if cog is not None else None
+    # <input type="datetime-local"> submits "YYYY-MM-DDTHH:MM"; rows written by
+    # create_line hold str(datetime.now()), so normalise to that shape rather
+    # than leaving two formats in the column.
+    if timestamp:
+        timestamp = timestamp.replace("T", " ")
+        if len(timestamp) == 16:
+            timestamp += ":00"
+    async with connect() as db:
+        cursor = await db.execute("SELECT route_id FROM logbook_lines WHERE id = ?", (line_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        route_id = row[0]
+        await db.execute(
+            """UPDATE logbook_lines SET
+                   timestamp = COALESCE(?, timestamp),
+                   aws = ?, awa = ?, water_temp = ?, heading = ?, cog = ?, log = ?,
+                   trip = ?, depth = ?, position_lat = ?, position_lon = ?, stw = ?,
+                   sog = ?, tws = ?, twa = ?, pressure = ?, sea_state = ?,
+                   visibility = ?, sails = ?, points_of_sail = ?, visual_pos = ?,
+                   notes = ?
+               WHERE id = ?""",
+            (
+                timestamp or None,
+                aws, awa, water_temp, heading, cog, log, trip, depth,
+                position_lat, position_lon, stw, sog, tws, twa, pressure,
+                sea_state or None, visibility or None, sails or None,
+                points_of_sail or None, visual_pos or None, notes or None,
+                line_id,
+            ),
+        )
+        await db.commit()
+    dest = f"/routes/{route_id}" if route_id else f"/logbook/{line_id}"
+    return RedirectResponse(url=dest, status_code=303)
+
+
+@app.post("/logbook/{line_id}/delete")
+async def delete_line(line_id: int):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT route_id FROM logbook_lines WHERE id = ?", (line_id,))
+        row = await cursor.fetchone()
+        route_id = row["route_id"] if row else None
+        # trip_photos.trip_id has no foreign key to logbook_lines, so no cascade
+        # fires here — the attached photo rows have to go by hand, or they join
+        # the orphans. The files in IMG/ stay, as everywhere else in the app.
+        await db.execute("DELETE FROM trip_photos WHERE trip_id = ?", (line_id,))
+        await db.execute("DELETE FROM logbook_lines WHERE id = ?", (line_id,))
+        await db.commit()
+    dest = f"/routes/{route_id}" if route_id else "/cruises/current"
+    return RedirectResponse(url=dest, status_code=303)
 
 
 # Columns the route page may edit in place. The field name is interpolated
@@ -1838,44 +1922,6 @@ async def update_line_field(line_id: int, field: str, value: Optional[str] = For
 async def add_line_note(line_id: int = Form(...), value: Optional[str] = Form(None)):
     """Journal panel: annotate a line picked from the dropdown of unannotated ones."""
     return RedirectResponse(url=await _set_line_field(line_id, "notes", value), status_code=303)
-
-
-@app.get("/logbook/{line_id}/add-photo", response_class=HTMLResponse)
-async def add_photo_form(request: Request, line_id: int):
-    async with connect() as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM logbook_lines WHERE id = ?", (line_id,))
-        line = await cursor.fetchone()
-        if line is None:
-            raise HTTPException(status_code=404, detail="Entry not found")
-    return templates.TemplateResponse(
-        "add_photo.html",
-        {"request": request, "line": line, "active_section": "routes"},
-    )
-
-
-@app.post("/logbook/{line_id}/add-photo")
-async def add_photo(
-    request: Request,
-    line_id: int,
-    photo_file: Optional[UploadFile] = File(None),
-    photo_path: Optional[str] = Form(None),
-    comment: Optional[str] = Form(None),
-    added_by: Optional[str] = Form(None),
-):
-    photo = await _save_photo(photo_file) or photo_path or None
-    if photo is None:
-        raise HTTPException(status_code=400, detail="Choisissez un fichier image ou saisissez une URL")
-    async with connect() as db:
-        cursor = await db.execute("SELECT id FROM logbook_lines WHERE id = ?", (line_id,))
-        if await cursor.fetchone() is None:
-            raise HTTPException(status_code=404, detail="Entry not found")
-        await db.execute(
-            "INSERT INTO trip_photos (trip_id, photo_path, comment, added_by) VALUES (?, ?, ?, ?)",
-            (line_id, photo, comment, added_by),
-        )
-        await db.commit()
-    return RedirectResponse(url=f"/logbook/{line_id}", status_code=303)
 
 
 # ── Setup (first run) ─────────────────────────────────────────────────────────

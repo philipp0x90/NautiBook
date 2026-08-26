@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}Modifier une ligne — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    /* Même grille que new_line.html : cinq colonnes thématiques qui partagent
+       les rangées du parent via subgrid, pour que les champs restent alignés
+       d'une colonne à l'autre. */
+    .field-groups {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-rows: repeat(5, auto);
+        gap: 10px 20px;
+    }
+    .field-group {
+        display: grid;
+        grid-row: 1 / -1;
+        grid-template-rows: subgrid;
+        gap: 10px;
+        align-content: start;
+    }
+    .field-group-title { text-align: center; font-weight: 700; font-size: 14px; }
+    @media (max-width: 900px) {
+        .field-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; gap: 20px; }
+        .field-group { grid-row: auto; grid-template-rows: none; }
+    }
+    @media (max-width: 560px) {
+        .field-groups { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<h2 style="margin:24px 0 18px;font-size:18px;text-align:center">
+    Modifier la ligne du journal de bord
+    {% if line.timestamp %}
+    <span style="font-size:14px;color:var(--muted)">
+        — {{ line.timestamp[:10] | datefr }} {{ line.timestamp[11:16] }}
+    </span>
+    {% endif %}
+</h2>
+
+{# Les listes déroulantes ouvrent sur une option vide : une valeur absente en
+   base doit pouvoir le rester, alors que le formulaire de création part
+   toujours sur la première option. #}
+<form method="POST" action="/logbook/{{ line.id }}/edit" class="card" style="display:grid;gap:16px">
+
+    <div class="field-groups">
+
+        <div class="field-group">
+            <div class="field-group-title">Vent</div>
+            <div>
+                <label>AWS (kn)</label>
+                <input type="number" step="any" name="aws" value="{{ line.aws if line.aws is not none else '' }}">
+            </div>
+            <div>
+                <label>TWS (kn)</label>
+                <input type="number" step="any" name="tws" value="{{ line.tws if line.tws is not none else '' }}">
+            </div>
+            <div>
+                <label>AWA (°)</label>
+                <input type="number" step="1" name="awa" value="{{ line.awa if line.awa is not none else '' }}">
+            </div>
+            <div>
+                <label>TWA (°)</label>
+                <input type="number" step="1" name="twa" value="{{ line.twa if line.twa is not none else '' }}">
+            </div>
+        </div>
+
+        <div class="field-group">
+            <div class="field-group-title">Environnement</div>
+            <div>
+                <label>État de la mer</label>
+                <select name="sea_state">
+                    <option value="">—</option>
+                    {% for opt in ['Calme','Belle','Peu Agitée','Agitée','Forte','Très forte','Grosse','Très grosse','Énorme'] %}
+                    <option value="{{ opt }}" {{ 'selected' if line.sea_state == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>P° Atmo. (hPa)</label>
+                <input type="number" step="any" name="pressure" value="{{ line.pressure if line.pressure is not none else '' }}">
+            </div>
+            <div>
+                <label>T° eau (°C)</label>
+                <input type="number" step="any" name="water_temp" value="{{ line.water_temp if line.water_temp is not none else '' }}">
+            </div>
+            <div>
+                <label>Visibilité</label>
+                <select name="visibility">
+                    <option value="">—</option>
+                    {% for opt in ['Bonne','Moyenne','Mauvaise','Très Mauvaise'] %}
+                    <option value="{{ opt }}" {{ 'selected' if line.visibility == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="field-group">
+            <div class="field-group-title">Course</div>
+            <div>
+                <label>Cap (°)</label>
+                <input type="number" step="1" name="heading" value="{{ line.heading if line.heading is not none else '' }}">
+            </div>
+            <div>
+                <label>COG (°)</label>
+                <input type="number" step="1" name="cog" value="{{ line.cog if line.cog is not none else '' }}">
+            </div>
+            <div>
+                <label>Trip (NM)</label>
+                <input type="number" step="any" name="trip" value="{{ line.trip if line.trip is not none else '' }}">
+            </div>
+            <div>
+                <label>Log (NM)</label>
+                <input type="number" step="any" name="log" value="{{ line.log if line.log is not none else '' }}">
+            </div>
+        </div>
+
+        <div class="field-group">
+            <div class="field-group-title">Navire</div>
+            <div>
+                <label>STW (kn)</label>
+                <input type="number" step="any" name="stw" value="{{ line.stw if line.stw is not none else '' }}">
+            </div>
+            <div>
+                <label>SOG (kn)</label>
+                <input type="number" step="any" name="sog" value="{{ line.sog if line.sog is not none else '' }}">
+            </div>
+            <div>
+                <label>Voiles</label>
+                <select name="sails">
+                    <option value="">—</option>
+                    {% for opt in ['Moteur','GV + Génois','GV 1 Ris + Génois','GV 2 Ris + Génois','GV + Moteur','+ Appui Moteur','Génois seul','GV seule','GV + Trinq.','GV 1 Ris + Trinq.','GV 2 Ris + Trinq.','Trinq. seule','À sec'] %}
+                    <option value="{{ opt }}" {{ 'selected' if line.sails == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Allure</label>
+                <select name="points_of_sail">
+                    <option value="">—</option>
+                    {% for opt in ['Près','Bon plein','Travers','Largue','Grand largue','Vent arrière','Cape','N/A','Vent debout'] %}
+                    <option value="{{ opt }}" {{ 'selected' if line.points_of_sail == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="field-group">
+            <div class="field-group-title">Position</div>
+            <div>
+                <label>Latitude</label>
+                <input type="number" step="any" name="position_lat" value="{{ line.position_lat if line.position_lat is not none else '' }}">
+            </div>
+            <div>
+                <label>Longitude</label>
+                <input type="number" step="any" name="position_lon" value="{{ line.position_lon if line.position_lon is not none else '' }}">
+            </div>
+            <div>
+                <label>Sonde (m)</label>
+                <input type="number" step="0.1" name="depth" value="{{ '%.1f'|format(line.depth) if line.depth is not none else '' }}">
+            </div>
+            <div>
+                <label>Position (visuelle)</label>
+                <input type="text" name="visual_pos" value="{{ line.visual_pos or '' }}" placeholder="Bouée xyz, devant le cap...">
+            </div>
+        </div>
+
+    </div>
+
+    <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start">
+        <div>
+            {# Le séparateur stocké est un espace ; datetime-local veut un T. Le
+               handler refait la conversion dans l'autre sens à l'enregistrement. #}
+            <label>Date et heure (locale)</label>
+            <input type="datetime-local" name="timestamp"
+                   value="{{ (line.timestamp[:16] | replace(' ', 'T')) if line.timestamp else '' }}">
+        </div>
+        <div>
+            <label>Notes / Journal</label>
+            <textarea name="notes" rows="3" placeholder="Observations, événements...">{{ line.notes or '' }}</textarea>
+        </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center">
+        <button type="submit" class="primary">Enregistrer les modifications</button>
+        <a href="/routes/{{ line.route_id }}" style="padding:9px 16px;color:var(--muted);text-decoration:none;font-size:14px">Annuler</a>
+        <div style="flex:1"></div>
+        {# Le bouton est ici mais appartient au formulaire de suppression déclaré
+           plus bas, via l'attribut form= : imbriquer deux <form> est interdit,
+           et la suppression ne doit pas partager la route d'enregistrement. #}
+        <button type="submit" form="delete-line" class="btn btn-orange">— Supprimer la ligne</button>
+    </div>
+</form>
+
+<form id="delete-line" method="POST" action="/logbook/{{ line.id }}/delete"
+      onsubmit="return confirm('Supprimer cette ligne du journal ?')"></form>
+
+{% endblock %}
