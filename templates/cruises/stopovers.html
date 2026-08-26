@@ -2,10 +2,11 @@
 {% block title %}Escales — NautiBook{% endblock %}
 {% block content %}
 
+{# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
+   vide n'était pas invisible pour autant — il gardait son fond translucide et
+   son min-width, donc une pastille creuse à droite. #}
 <div class="section-bar">
-    <div class="section-bar-left">Croisières</div>
     <div class="section-bar-title">Escales</div>
-    <div class="section-bar-right"></div>
 </div>
 
 <div style="display:flex;gap:10px;margin-bottom:20px">

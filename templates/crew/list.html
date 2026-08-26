@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Équipiers — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    /* Vignette ronde dans le tableau ; un cercle gris tient la place quand
+       l'équipier n'a pas de photo, pour que les lignes gardent la même hauteur. */
+    .crew-thumb {
+        width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
+        display: block; background: #dde5ee;
+    }
+    .crew-thumb-empty {
+        width: 34px; height: 34px; border-radius: 50%; background: #dde5ee;
+        display: flex; align-items: center; justify-content: center;
+        color: #7d8fa3; font-size: 13px; font-weight: 700;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# Pas de badge de navire dans la barre : les équipiers ne sont pas rattachés à
+   un navire, c'est la seule liste de l'application qui ignore le cookie. #}
+<div class="section-bar">
+    <div class="section-bar-title">Équipiers</div>
+</div>
+
+<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
+    <a href="/crew/new" class="btn btn-yellow">+ Nouvel équipier</a>
+</div>
+
+{% if crew %}
+<div style="overflow-x:auto">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th></th>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th style="text-align:center">Âge</th>
+                <th>Nationalité</th>
+                <th>Localité</th>
+                <th>Téléphone</th>
+                <th>Email</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in crew %}
+            <tr style="cursor:pointer" title="Ouvrir cette fiche"
+                onclick="rowLink(event, '/crew/{{ m.id }}')">
+                <td style="width:1%">
+                    {% if m.photo_path %}
+                    <img src="{{ m.photo_path }}" alt="" class="crew-thumb">
+                    {% else %}
+                    <div class="crew-thumb-empty">{{ (m.first_name or m.last_name or '?')[0] | upper }}</div>
+                    {% endif %}
+                </td>
+                <td style="font-weight:700;text-transform:uppercase">{{ m.last_name or '—' }}</td>
+                <td>{{ m.first_name or '' }}</td>
+                {# Âge calculé depuis la date de naissance ; la colonne age de la
+                   table n'est jamais lue ni écrite. #}
+                <td style="text-align:center">{{ m.birth_date | age }}</td>
+                <td>{{ m.nationality or '' }}</td>
+                <td>{{ m.city or '' }}</td>
+                <td style="white-space:nowrap">{{ m.phone or '' }}</td>
+                <td>{% if m.email %}<a href="mailto:{{ m.email }}" style="color:var(--accent)">{{ m.email }}</a>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="stub">
+    <div style="font-size:36px;margin-bottom:12px">🧑‍✈️</div>
+    <div>Aucun équipier enregistré.</div>
+    <div style="margin-top:16px">
+        <a href="/crew/new" class="btn btn-yellow">+ Premier équipier</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -211,6 +211,17 @@
         {# Nouvelle ligne + Arrivée ── below table #}
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
             <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow">+ Nouvelle ligne</a>
+            {# Une route n'a qu'une escale : le bouton propose de la créer tant
+               qu'il n'y en a pas, puis de modifier celle qui existe. C'est le
+               seul chemin vers ces deux formulaires, qu'aucun écran ne liait. #}
+            {% if stopovers %}
+            <a href="/stopovers/{{ stopovers[0].id }}/edit" class="btn btn-blue"
+               title="Modifier l'escale de cette route">
+                ✎ Escale{% if stopovers[0].name or stopovers[0].locality %} : {{ stopovers[0].name or stopovers[0].locality }}{% endif %}
+            </a>
+            {% else %}
+            <a href="/routes/{{ route.id }}/stopovers/new" class="btn btn-yellow">+ Escale</a>
+            {% endif %}
             {# Arrivée sits in the middle cell, which takes the slack on both
                sides, so it stays centred even on a finished route where the
                button is gone. #}

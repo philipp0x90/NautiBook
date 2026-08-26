@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ member.first_name or '' }} {{ member.last_name or 'Équipier' }} — NautiBook{% endblock %}
+
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Équipiers</a></div>
+    <div class="section-bar-title">
+        {{ member.first_name or '' }} <span style="text-transform:uppercase">{{ member.last_name or '' }}</span>
+    </div>
+</div>
+
+<div style="margin-bottom:14px;display:flex;gap:10px;align-items:center">
+    <a href="/crew/{{ member.id }}/edit" class="btn btn-yellow">✎ Modifier</a>
+    <div style="flex:1"></div>
+    <form method="POST" action="/crew/{{ member.id }}/delete"
+          onsubmit="return confirm('Supprimer cette fiche d\'équipier ?')">
+        <button type="submit" class="btn btn-orange">— Supprimer la fiche</button>
+    </form>
+</div>
+
+<div class="card" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start">
+    <div>
+        {% if member.photo_path %}
+        <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
+             style="width:160px;height:160px;object-fit:cover;border-radius:8px;display:block">
+        {% else %}
+        <div style="width:160px;height:160px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
+            {{ (member.first_name or member.last_name or '?')[0] | upper }}
+        </div>
+        {% endif %}
+    </div>
+
+    <div style="display:grid;gap:16px">
+        {# Âge calculé, jamais stocké — voir le filtre age dans main.py. #}
+        {% for titre, champs in [
+            ('Identité', [
+                ('Nom', member.last_name),
+                ('Prénom', member.first_name),
+                ('Date de naissance', member.birth_date | datefr),
+                ('Âge', member.birth_date | age),
+                ('Lieu de naissance', member.birth_place),
+                ('Nationalité', member.nationality)
+            ]),
+            ('Adresse', [
+                ('Rue et numéro', member.street),
+                ('Code postal', member.postal_code),
+                ('Localité', member.city)
+            ]),
+            ('Pièce d\'identité et contact', [
+                ('Type de pièce', member.id_type),
+                ('Numéro', member.id_number),
+                ('Téléphone', member.phone),
+                ('Email', member.email)
+            ])
+        ] %}
+        <section>
+            <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">{{ titre }}</h3>
+            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+                {% for label, val in champs %}
+                <div>
+                    <div class="meta">{{ label }}</div>
+                    <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">
+                        {{ val if val is not none and val != '' else '—' }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+</div>
+
+{% endblock %}

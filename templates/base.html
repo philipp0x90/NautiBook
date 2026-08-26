@@ -231,13 +231,19 @@
                     <a href="/ship/select">Changer de navire</a>
                 </div>
             </li>
-            <li class="{{ 'active' if active_section == 'cruises' else '' }}">
+            {# « crew » allume aussi cet onglet : les équipiers vivent dans ce
+               menu déroulant, sans être une croisière pour autant. #}
+            <li class="{{ 'active' if active_section in ('cruises', 'crew') else '' }}">
                 <a href="/cruises/current">Croisières</a>
                 <div class="dropdown-menu">
                     <a href="/cruises/new">Nouvelle croisière</a>
                     <a href="/cruises/current">Croisière en cours</a>
                     <a href="/cruises/stopovers">Escales</a>
                     <a href="/cruises/list">Liste des croisières</a>
+                    {# Les équipiers ne dépendent pas du navire courant, mais ils
+                       embarquent sur une croisière : l'entrée est ici plutôt que
+                       dans le menu Navire, et plutôt qu'un sixième onglet. #}
+                    <a href="/crew">Équipiers</a>
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'routes' else '' }}">

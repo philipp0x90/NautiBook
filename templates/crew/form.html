@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{# Un seul gabarit pour la création et la modification : douze champs identiques
+   de part et d'autre, qu'il aurait fallu maintenir en double. `member` est nul
+   à la création. #}
+{% set edition = member is not none %}
+{% block title %}{{ 'Modifier un équipier' if edition else 'Nouvel équipier' }} — NautiBook{% endblock %}
+
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Équipiers</a></div>
+    <div class="section-bar-title">{{ 'Modifier un équipier' if edition else 'Nouvel équipier' }}</div>
+</div>
+
+{# enctype obligatoire dès qu'un champ envoie un fichier. #}
+<form method="POST" enctype="multipart/form-data" class="card" style="display:grid;gap:16px"
+      action="{{ '/crew/' ~ member.id ~ '/edit' if edition else '/crew/new' }}">
+
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Identité</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+            <div>
+                <label>Nom</label>
+                <input type="text" name="last_name" value="{{ member.last_name or '' if edition else '' }}" placeholder="Dupont">
+            </div>
+            <div>
+                <label>Prénom</label>
+                <input type="text" name="first_name" value="{{ member.first_name or '' if edition else '' }}" placeholder="Jean">
+            </div>
+            <div>
+                {# Pas de champ « âge » : il se déduit de la date de naissance,
+                   sans quoi il vieillirait faux en base. #}
+                <label>Date de naissance</label>
+                <input type="date" name="birth_date" value="{{ member.birth_date[:10] if edition and member.birth_date else '' }}">
+            </div>
+            <div>
+                <label>Lieu de naissance</label>
+                <input type="text" name="birth_place" value="{{ member.birth_place or '' if edition else '' }}" placeholder="Bruxelles">
+            </div>
+            <div>
+                <label>Nationalité</label>
+                <input type="text" name="nationality" value="{{ member.nationality or '' if edition else '' }}" placeholder="Belge">
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Adresse</h3>
+        <div class="grid" style="grid-template-columns:2fr 1fr 2fr;gap:12px">
+            <div>
+                <label>Rue et numéro</label>
+                <input type="text" name="street" value="{{ member.street or '' if edition else '' }}" placeholder="1 rue de la Mer">
+            </div>
+            <div>
+                <label>Code postal</label>
+                <input type="text" name="postal_code" value="{{ member.postal_code or '' if edition else '' }}" placeholder="1000">
+            </div>
+            <div>
+                <label>Localité</label>
+                <input type="text" name="city" value="{{ member.city or '' if edition else '' }}" placeholder="Bruxelles">
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Pièce d'identité et contact</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+            <div>
+                <label>Type de pièce</label>
+                <input type="text" name="id_type" value="{{ member.id_type or '' if edition else '' }}" placeholder="Passeport">
+            </div>
+            <div>
+                <label>Numéro</label>
+                <input type="text" name="id_number" value="{{ member.id_number or '' if edition else '' }}">
+            </div>
+            <div>
+                <label>Téléphone</label>
+                <input type="tel" name="phone" value="{{ member.phone or '' if edition else '' }}" placeholder="+32 470 12 34 56">
+            </div>
+            <div>
+                <label>Email</label>
+                <input type="email" name="email" value="{{ member.email or '' if edition else '' }}" placeholder="jean@example.com">
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Photo</h3>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+                <label>Fichier image</label>
+                <input type="file" name="photo_file" accept="image/*">
+                <div class="meta" style="margin-top:4px">La photo est copiée dans le dossier IMG du logiciel.</div>
+            </div>
+            <div>
+                <label>ou chemin / URL <span class="meta" style="font-weight:400">(si la photo est ailleurs)</span></label>
+                <input type="text" name="photo_path" value="{{ member.photo_path or '' if edition else '' }}" placeholder="https://exemple.com/photo.jpg">
+            </div>
+        </div>
+    </section>
+
+    <div style="display:flex;gap:10px;align-items:center">
+        <button type="submit" class="primary">{{ 'Enregistrer les modifications' if edition else 'Créer la fiche' }}</button>
+        <a href="{{ '/crew/' ~ member.id if edition else '/crew' }}"
+           style="padding:9px 16px;color:var(--muted);text-decoration:none;font-size:14px">Annuler</a>
+    </div>
+</form>
+
+{% endblock %}

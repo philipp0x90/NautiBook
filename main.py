@@ -43,6 +43,25 @@ def _jourfr(value):
         return "—"
 
 
+def _age(value):
+    """Birth date → age in whole years, as of today.
+
+    `crew_members.age` exists in the schema (a FileMaker leftover) but nothing
+    writes it, and nothing should: a stored age is wrong within the year. The
+    month/day comparison is what makes this a real age rather than a subtraction
+    of years — someone born in December is not yet a year older in January.
+    """
+    if not value:
+        return "—"
+    try:
+        born = date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return "—"
+    today = date.today()
+    years = today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+    return years if years >= 0 else "—"
+
+
 def _deg(value):
     """Angles are whole degrees, but REAL columns hand them back as floats (47.0)."""
     if value is None or value == "":
@@ -131,6 +150,7 @@ def _dmm_to_dd(degrees, minutes, hemisphere):
 
 templates.env.filters["datefr"] = _datefr
 templates.env.filters["jourfr"] = _jourfr
+templates.env.filters["age"] = _age
 templates.env.filters["deg"] = _deg
 templates.env.filters["unit"] = _unit
 templates.env.filters["lat"] = _lat
@@ -1050,6 +1070,147 @@ async def contact_detail(request: Request, contact_id: int):
     )
 
 
+# ── Crew (équipiers) ──────────────────────────────────────────────────────────
+
+# Deliberately *not* ship-scoped: crew_members carries no ship_id, because the
+# same person may sail on more than one boat. This is the one list in the app
+# that ignores the ship cookie. Which cruise someone embarked on lives in
+# cruise_crew — no screen for that yet.
+#
+# `age` is never written: _age computes it from birth_date at display time.
+
+
+@app.get("/crew", response_class=HTMLResponse)
+async def crew_list(request: Request):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM crew_members ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE"
+        )
+        crew = await cursor.fetchall()
+    return templates.TemplateResponse(
+        "crew/list.html",
+        {"request": request, "active_section": "crew", "crew": [dict(m) for m in crew]},
+    )
+
+
+@app.get("/crew/new", response_class=HTMLResponse)
+async def new_crew_form(request: Request):
+    return templates.TemplateResponse(
+        "crew/form.html",
+        {"request": request, "active_section": "crew", "member": None},
+    )
+
+
+@app.post("/crew/new")
+async def create_crew(
+    request: Request,
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    birth_date: Optional[str] = Form(None),
+    birth_place: Optional[str] = Form(None),
+    nationality: Optional[str] = Form(None),
+    street: Optional[str] = Form(None),
+    postal_code: Optional[str] = Form(None),
+    city: Optional[str] = Form(None),
+    id_type: Optional[str] = Form(None),
+    id_number: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    photo_file: Optional[UploadFile] = File(None),
+    photo_path: Optional[str] = Form(None),
+):
+    photo = await _save_photo(photo_file) or photo_path or None
+    async with connect() as db:
+        await db.execute(
+            """INSERT INTO crew_members
+               (first_name, last_name, birth_date, birth_place, nationality,
+                street, postal_code, city, id_type, id_number, phone, email, photo_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (first_name or None, last_name or None, birth_date or None, birth_place or None,
+             nationality or None, street or None, postal_code or None, city or None,
+             id_type or None, id_number or None, phone or None, email or None, photo),
+        )
+        await db.commit()
+    return RedirectResponse(url="/crew", status_code=303)
+
+
+@app.get("/crew/{crew_id}", response_class=HTMLResponse)
+async def crew_detail(request: Request, crew_id: int):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM crew_members WHERE id = ?", (crew_id,))
+        member = await cursor.fetchone()
+    if member is None:
+        raise HTTPException(status_code=404, detail="Crew member not found")
+    return templates.TemplateResponse(
+        "crew/detail.html",
+        {"request": request, "active_section": "crew", "member": dict(member)},
+    )
+
+
+@app.get("/crew/{crew_id}/edit", response_class=HTMLResponse)
+async def edit_crew_form(request: Request, crew_id: int):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM crew_members WHERE id = ?", (crew_id,))
+        member = await cursor.fetchone()
+    if member is None:
+        raise HTTPException(status_code=404, detail="Crew member not found")
+    return templates.TemplateResponse(
+        "crew/form.html",
+        {"request": request, "active_section": "crew", "member": dict(member)},
+    )
+
+
+@app.post("/crew/{crew_id}/edit")
+async def update_crew(
+    request: Request,
+    crew_id: int,
+    first_name: Optional[str] = Form(None),
+    last_name: Optional[str] = Form(None),
+    birth_date: Optional[str] = Form(None),
+    birth_place: Optional[str] = Form(None),
+    nationality: Optional[str] = Form(None),
+    street: Optional[str] = Form(None),
+    postal_code: Optional[str] = Form(None),
+    city: Optional[str] = Form(None),
+    id_type: Optional[str] = Form(None),
+    id_number: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    photo_file: Optional[UploadFile] = File(None),
+    photo_path: Optional[str] = Form(None),
+):
+    # Same field list as create_crew — a new column has to be added to both.
+    photo = await _save_photo(photo_file) or photo_path or None
+    async with connect() as db:
+        await db.execute(
+            """UPDATE crew_members SET
+                   first_name = ?, last_name = ?, birth_date = ?, birth_place = ?,
+                   nationality = ?, street = ?, postal_code = ?, city = ?,
+                   id_type = ?, id_number = ?, phone = ?, email = ?,
+                   -- COALESCE : soumettre le formulaire sans toucher à la photo
+                   -- ne doit pas effacer celle déjà enregistrée.
+                   photo_path = COALESCE(?, photo_path)
+               WHERE id = ?""",
+            (first_name or None, last_name or None, birth_date or None, birth_place or None,
+             nationality or None, street or None, postal_code or None, city or None,
+             id_type or None, id_number or None, phone or None, email or None,
+             photo, crew_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
+
+
+@app.post("/crew/{crew_id}/delete")
+async def delete_crew(crew_id: int):
+    async with connect() as db:
+        await db.execute("DELETE FROM crew_members WHERE id = ?", (crew_id,))
+        await db.commit()
+    return RedirectResponse(url="/crew", status_code=303)
+
+
 # ── Cruises ───────────────────────────────────────────────────────────────────
 
 # What the interface shows as "001" is a position, not the primary key. Ids come
@@ -1222,7 +1383,10 @@ async def all_stopovers(request: Request):
                JOIN routes r ON s.route_id = r.id
                JOIN cruises c ON r.cruise_id = c.id
                WHERE c.ship_id = ?
-               ORDER BY s.arrival_date DESC""",
+               -- Chronologique. COALESCE plutôt que arrival_date seul : une
+               -- date NULL trie avant tout en SQLite, donc les escales sans
+               -- date d'arrivée ouvriraient la liste ; elles la ferment.
+               ORDER BY COALESCE(s.arrival_date, '9999') ASC, s.id ASC""",
             (ship_id,),
         )
         stopovers = await cursor.fetchall()
