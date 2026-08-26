@@ -2,10 +2,11 @@
 {% block title %}Gasoil — NautiBook{% endblock %}
 {% block content %}
 
+{# Barre sans badges, comme les autres pages Navire : le titre occupe toute la
+   largeur. Le badge de droite affichait « Navire #<id> », donc un identifiant
+   brut — ce que l'interface ne doit jamais montrer. #}
 <div class="section-bar">
-    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
     <div class="section-bar-title">Gasoil</div>
-    <div class="section-bar-right">Navire #{{ current_ship.id if current_ship else '—' }}</div>
 </div>
 
 <div class="stub">
