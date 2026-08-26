@@ -116,7 +116,7 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th>Nom de la route</th>
+                <th>Route</th>
                 <th>#</th>
                 <th>Départ</th>
                 <th>Arrivée</th>
@@ -134,7 +134,7 @@
                 <td style="font-weight:700">
                     {%- if r.name %}{{ r.name }}
                     {%- elif r.departure_location or r.destination_location %}
-                        De {{ r.departure_location or '?' }} à {{ r.destination_location or '?' }}
+                        {{ r.departure_location or '?' }} - {{ r.destination_location or '?' }}
                     {%- else %}—{% endif %}
                 </td>
                 <td>{{ '%02d'|format(r.number) if r.number else '—' }}</td>
