@@ -116,12 +116,10 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th>Route #</th>
+                <th>Nom de la route</th>
+                <th>#</th>
                 <th>Départ</th>
-                <th>De</th>
-                <th>À</th>
                 <th>Arrivée</th>
-                <th>Lignes</th>
                 <th></th>
             </tr>
         </thead>
@@ -129,12 +127,19 @@
             {% for r in routes %}
             <tr style="cursor:pointer" title="Ouvrir cette route"
                 onclick="rowLink(event, '/routes/{{ r.id }}')">
-                <td>{{ r.number }}</td>
+                {# routes.name est facultatif et souvent vide ; à défaut, le
+                   trajet tient lieu de nom, comme dans le titre de la page
+                   route — sans quoi les colonnes De et À, qui disparaissent
+                   ici, emporteraient toute indication de lieu. #}
+                <td style="font-weight:700">
+                    {%- if r.name %}{{ r.name }}
+                    {%- elif r.departure_location or r.destination_location %}
+                        De {{ r.departure_location or '?' }} à {{ r.destination_location or '?' }}
+                    {%- else %}—{% endif %}
+                </td>
+                <td>{{ '%02d'|format(r.number) if r.number else '—' }}</td>
                 <td style="white-space:nowrap">{{ r.start_time | datefr }}</td>
-                <td>{{ r.departure_location or '—' }}</td>
-                <td>{{ r.destination_location or '—' }}</td>
                 <td style="white-space:nowrap">{{ r.end_time | datefr }}</td>
-                <td>{{ r.line_count or 0 }}</td>
                 <td style="white-space:nowrap">
                     <form method="POST" action="/routes/{{ r.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette route ?')">
