@@ -1126,10 +1126,21 @@ def _phone_parts(value):
 
 def _join_phone(code, number):
     """The two boxes → the stored string. A lone country code is not a phone
-    number, so it stores nothing; a number without its code still does."""
+    number, so it stores nothing; a number without its code still does.
+
+    A Belgian number is regrouped `xxx xx xx xx`, so the column holds one shape
+    rather than whatever spacing was typed. Only for exactly nine digits — the
+    standard national number once the leading 0 is dropped. Eight digits is a
+    Brussels landline (`2 512 34 56`), ten means the 0 was typed anyway; both
+    are left as entered rather than mangled into the wrong grouping.
+    """
     code, number = (code or "").strip(), (number or "").strip()
     if not number:
         return None
+    if code == "+32":
+        digits = "".join(c for c in number if c.isdigit())
+        if len(digits) == 9:
+            number = f"{digits[:3]} {digits[3:5]} {digits[5:7]} {digits[7:]}"
     return f"{code} {number}" if code else number
 
 

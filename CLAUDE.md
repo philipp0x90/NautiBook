@@ -113,6 +113,8 @@ The cruise name uses the same one-field-form idiom on `cruises/detail.html`, but
 
 **Clickable rows** — `rowLink(event, url)` in `base.html` is the whole mechanism: put it in the row's `onclick` and give the row `cursor:pointer`. It ignores clicks that landed on anything interactive, which is what lets the log table's inline `visual_pos` field keep working inside a clickable row. A logbook line spans **two `<tr>`**, so the pair is wrapped in its own `<tbody class="log-line">`: that is what makes the whole line light up on hover, which a `:hover` on one `<tr>` cannot do. Both rows carry the same `onclick`, pointing at the line's edit form.
 
+**A Jinja comment cannot go inside a tag.** Several templates loop over a list literal spelled out in the `{% for %}` itself (`ship/info.html`, `crew/detail.html`). A `{# … #}` between two entries of that list is not a comment — the tag is one expression, and the result is `TemplateSyntaxError: unexpected char '#'`, i.e. a 500 on that page only. Put the comment above the `{% for %}`. This has bitten twice; there is no linter to catch it, so a page whose template changed is worth loading once.
+
 **Ship context** — `get_current_ship_id(request)` reads the `ship_id` cookie (defaulting to 1); `_fetch_ship(db, ship_id)` falls back to the first ship when that id is gone. Templates get the ship as `current_ship`, which `base.html` uses for the nav label.
 
 **Template context** — pass `active_section` (`ship`, `cruises`, `crew`, `routes`, `tools`, `gallery`, `settings`) so `base.html` highlights the right nav item. `crew` lights the Croisières tab, whose dropdown holds the Équipiers entry: crew are reached from there rather than as a sixth tab, but they are not a cruise.

@@ -32,10 +32,12 @@
     </div>
 
     <div style="display:grid;gap:16px">
-        {# Âge calculé, jamais stocké — voir le filtre age dans main.py. #}
+        {# Âge calculé, jamais stocké — voir le filtre age dans main.py. Le nom
+           est en capitales ici comme dans le titre et dans la liste, ainsi
+           qu'il figure sur les pièces d'identité. #}
         {% for titre, champs in [
             ('Identité', [
-                ('Nom', member.last_name),
+                ('Nom', (member.last_name or '') | upper),
                 ('Prénom', member.first_name),
                 ('Date de naissance', member.birth_date | datefr),
                 ('Âge', member.birth_date | age),
