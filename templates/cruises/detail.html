@@ -8,6 +8,28 @@
     .map-legend { background:#fff; padding:8px 12px; border-radius:6px; box-shadow:0 1px 5px rgba(0,0,0,.2); font-size:12px; line-height:1.8; }
     .map-legend-row { display:flex; align-items:center; gap:7px; }
     .map-legend-swatch { width:20px; height:3px; border-radius:2px; flex-shrink:0; }
+    /* En-tête de croisière. La première ligne porte tout ce qui doit s'aligner,
+       la seconde la seule mention « en cours » : align-items centre chaque
+       élément dans sa propre ligne, donc les boutons se règlent sur la hauteur
+       du nom et non sur celle du nom plus la mention. */
+    .cruise-header {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto;
+        grid-template-areas:
+            "sup nom num new"
+            ".   mention .   .";
+        align-items: center;
+        gap: 6px 10px;
+        margin-bottom: 16px;
+    }
+    /* Écran étroit : la grille s'empile, le nom en tête. */
+    @media (max-width: 820px) {
+        .cruise-header {
+            grid-template-columns: 1fr;
+            grid-template-areas: "nom" "mention" "num" "sup" "new";
+            justify-items: center;
+        }
+    }
     /* Le nom de la croisière : même cadre qu'avant, mais saisissable. Il se lit
        comme un titre au repos et ne se signale qu'au survol, comme les champs
        modifiables du tableau de bord. */
@@ -41,33 +63,32 @@
 </div>
 {% else %}
 
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-    <form method="POST" action="/cruises/{{ cruise.id }}/delete"
+{# En-tête en grille plutôt qu'en rangée souple : la mention « en cours » occupe
+   sa propre ligne, sous le nom, et ne compte donc plus dans le centrage vertical
+   de la première. Boutons, numéro et nom s'alignent ainsi sur un même axe — en
+   flex, le bloc nom + mention était plus haut que les boutons, qui se centraient
+   sur l'ensemble et paraissaient décalés vers le bas. Le nom est modifiable sur
+   place, comme les colonnes du journal de bord : un formulaire à un seul champ
+   qui s'envoie au changement. #}
+<div class="cruise-header">
+    <form style="grid-area:sup" method="POST" action="/cruises/{{ cruise.id }}/delete"
           onsubmit="return confirm('Supprimer cette croisière et toutes ses routes ?')">
         <button type="submit" class="btn btn-orange">— Supprimer croisière</button>
     </form>
-    {# Le nom occupe la cellule centrale, qui prend le mou de la rangée, avec la
-       mention « en cours » centrée juste dessous. Le numéro reste poussé à
-       droite. Le nom est modifiable sur place, comme les colonnes du journal de
-       bord : un formulaire à un seul champ qui s'envoie au changement. #}
-    <div style="flex:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <div style="flex:1;text-align:center">
-            <form method="POST" action="/cruises/{{ cruise.id }}/set-name">
-                <input type="text" name="name" class="cruise-name" value="{{ cruise.name or '' }}"
-                       placeholder="Croisière sans nom"
-                       title="Modifier le nom de la croisière (Entrée pour enregistrer)"
-                       onchange="this.form.submit()">
-            </form>
-            {% if is_current is defined and is_current %}
-            <div style="margin-top:6px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
-            {% endif %}
-        </div>
-        {# Position among this ship's cruises, not the id — same %03d as the list. #}
-        {% if cruise.number %}
-        <div style="font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
-        {% endif %}
-    </div>
-    <a href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
+    <form style="grid-area:nom;min-width:0;text-align:center" method="POST" action="/cruises/{{ cruise.id }}/set-name">
+        <input type="text" name="name" class="cruise-name" value="{{ cruise.name or '' }}"
+               placeholder="Croisière sans nom"
+               title="Modifier le nom de la croisière (Entrée pour enregistrer)"
+               onchange="this.form.submit()">
+    </form>
+    {# Position among this ship's cruises, not the id — same %03d as the list. #}
+    {% if cruise.number %}
+    <div style="grid-area:num;font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
+    {% endif %}
+    <a style="grid-area:new" href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
+    {% if is_current is defined and is_current %}
+    <div style="grid-area:mention;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
+    {% endif %}
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid #dde5ee;border-radius:8px;overflow:hidden;margin-bottom:16px">
