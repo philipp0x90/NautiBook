@@ -1079,6 +1079,65 @@ async def contact_detail(request: Request, contact_id: int):
 #
 # `age` is never written: _age computes it from birth_date at display time.
 
+# Dial codes offered next to the phone number. Belgium first — the boat's own
+# flag, so the usual case — then the cruising grounds by country name. The stored
+# column stays a single string ("+32 470 12 34 56"): _phone_parts splits it back
+# into the two boxes, _join_phone puts it together. Add a country here and old
+# rows keep working; remove one and numbers using it stop being recognised, so
+# they fall back to the plain-number box.
+DIAL_CODES = [
+    ("+32", "Belgique"),
+    ("+49", "Allemagne"),
+    ("+34", "Espagne"),
+    ("+33", "France"),
+    ("+30", "Grèce"),
+    ("+385", "Croatie"),
+    ("+353", "Irlande"),
+    ("+39", "Italie"),
+    ("+352", "Luxembourg"),
+    ("+356", "Malte"),
+    ("+212", "Maroc"),
+    ("+377", "Monaco"),
+    ("+31", "Pays-Bas"),
+    ("+351", "Portugal"),
+    ("+44", "Royaume-Uni"),
+    ("+41", "Suisse"),
+    ("+216", "Tunisie"),
+    ("+90", "Turquie"),
+    ("+1", "USA / Canada"),
+]
+
+
+def _phone_parts(value):
+    """Stored phone → the two form boxes, as a dict.
+
+    Longest code first: `+33` is a prefix of `+351`, so a shortest-first match
+    would read a Portuguese number as French and leave a stray `1` in the number.
+    An unrecognised prefix is left whole in the number box rather than guessed at.
+    """
+    if not value:
+        return {"code": "", "number": ""}
+    s = str(value).strip()
+    for code, _ in sorted(DIAL_CODES, key=lambda c: -len(c[0])):
+        if s.startswith(code):
+            return {"code": code, "number": s[len(code):].strip()}
+    return {"code": "", "number": s}
+
+
+def _join_phone(code, number):
+    """The two boxes → the stored string. A lone country code is not a phone
+    number, so it stores nothing; a number without its code still does."""
+    code, number = (code or "").strip(), (number or "").strip()
+    if not number:
+        return None
+    return f"{code} {number}" if code else number
+
+
+templates.env.filters["phoneparts"] = _phone_parts
+# Exposed as a global rather than threaded through every handler's context: it is
+# a fixed reference list, and the next form that needs it gets it for free.
+templates.env.globals["dial_codes"] = DIAL_CODES
+
 
 @app.get("/crew", response_class=HTMLResponse)
 async def crew_list(request: Request):
@@ -1115,11 +1174,13 @@ async def create_crew(
     city: Optional[str] = Form(None),
     id_type: Optional[str] = Form(None),
     id_number: Optional[str] = Form(None),
+    phone_code: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     photo_file: Optional[UploadFile] = File(None),
     photo_path: Optional[str] = Form(None),
 ):
+    phone = _join_phone(phone_code, phone)
     photo = await _save_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
@@ -1177,12 +1238,14 @@ async def update_crew(
     city: Optional[str] = Form(None),
     id_type: Optional[str] = Form(None),
     id_number: Optional[str] = Form(None),
+    phone_code: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     photo_file: Optional[UploadFile] = File(None),
     photo_path: Optional[str] = Form(None),
 ):
     # Same field list as create_crew — a new column has to be added to both.
+    phone = _join_phone(phone_code, phone)
     photo = await _save_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
@@ -1209,6 +1272,95 @@ async def delete_crew(crew_id: int):
         await db.execute("DELETE FROM crew_members WHERE id = ?", (crew_id,))
         await db.commit()
     return RedirectResponse(url="/crew", status_code=303)
+
+
+# ── Crew aboard a cruise (équipage) ───────────────────────────────────────────
+
+# cruise_crew.role holds 'skipper' or 'crew' — English, matching the column's
+# own DEFAULT, and translated only for display. There is at most one skipper per
+# cruise, enforced by demoting the others in set_skipper rather than by the
+# schema.
+
+
+async def _cruise_crew(db, cruise_id: int):
+    """Who is aboard this cruise, and who could still be added.
+
+    Both cruise-page handlers need this, so it lives here rather than in each.
+    The skipper sorts first. `available` excludes people already aboard, which
+    is what keeps duplicates out — cruise_crew has no UNIQUE(cruise_id,
+    crew_member_id), so nothing else would.
+    """
+    cursor = await db.execute(
+        """SELECT cc.id, cc.role, cc.embark_date, cc.disembark_date,
+                  m.id AS member_id, m.first_name, m.last_name, m.photo_path
+           FROM cruise_crew cc
+           JOIN crew_members m ON cc.crew_member_id = m.id
+           WHERE cc.cruise_id = ?
+           ORDER BY CASE WHEN cc.role = 'skipper' THEN 0 ELSE 1 END,
+                    m.last_name COLLATE NOCASE, m.first_name COLLATE NOCASE""",
+        (cruise_id,),
+    )
+    aboard = await cursor.fetchall()
+    cursor = await db.execute(
+        """SELECT id, first_name, last_name FROM crew_members
+           WHERE id NOT IN (SELECT crew_member_id FROM cruise_crew WHERE cruise_id = ?)
+           ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE""",
+        (cruise_id,),
+    )
+    available = await cursor.fetchall()
+    return [dict(r) for r in aboard], [dict(r) for r in available]
+
+
+@app.post("/cruises/{cruise_id}/crew")
+async def add_cruise_crew(
+    cruise_id: int,
+    crew_member_id: Optional[int] = Form(None),
+    embark_date: Optional[str] = Form(None),
+    disembark_date: Optional[str] = Form(None),
+):
+    if crew_member_id is None:
+        return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+    async with connect() as db:
+        # First aboard is the skipper by default — a boat does not sail without
+        # one, and it saves designating them by hand in the common case.
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM cruise_crew WHERE cruise_id = ?", (cruise_id,)
+        )
+        role = "crew" if (await cursor.fetchone())[0] else "skipper"
+        await db.execute(
+            """INSERT INTO cruise_crew (cruise_id, crew_member_id, role, embark_date, disembark_date)
+               VALUES (?, ?, ?, ?, ?)""",
+            (cruise_id, crew_member_id, role, embark_date or None, disembark_date or None),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+
+
+@app.post("/cruises/{cruise_id}/crew/{assignment_id}/skipper")
+async def set_skipper(cruise_id: int, assignment_id: int):
+    async with connect() as db:
+        # One skipper per cruise: demote first, promote second, same transaction.
+        await db.execute(
+            "UPDATE cruise_crew SET role = 'crew' WHERE cruise_id = ?", (cruise_id,)
+        )
+        await db.execute(
+            "UPDATE cruise_crew SET role = 'skipper' WHERE id = ? AND cruise_id = ?",
+            (assignment_id, cruise_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+
+
+@app.post("/cruises/{cruise_id}/crew/{assignment_id}/delete")
+async def remove_cruise_crew(cruise_id: int, assignment_id: int):
+    """Takes someone off this cruise. Their crew_members fiche is untouched."""
+    async with connect() as db:
+        await db.execute(
+            "DELETE FROM cruise_crew WHERE id = ? AND cruise_id = ?",
+            (assignment_id, cruise_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
 
 
 # ── Cruises ───────────────────────────────────────────────────────────────────
@@ -1308,6 +1460,7 @@ async def current_cruise(request: Request):
             (cruise_id,),
         )
         stopovers = await cursor.fetchall()
+        aboard, available_crew = await _cruise_crew(db, cruise_id)
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
@@ -1317,6 +1470,8 @@ async def current_cruise(request: Request):
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
             "stopovers": [dict(s) for s in stopovers],
+            "aboard": aboard,
+            "available_crew": available_crew,
             "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
             "next_cruise_id": next_cruise["id"] if next_cruise else None,
         },
@@ -1455,6 +1610,7 @@ async def cruise_detail(request: Request, cruise_id: int):
         # fait que ce soit la croisière en cours : la mention doit s'afficher
         # comme sur /cruises/current.
         is_current = await _current_cruise_id(db, ship_id) == cruise_id
+        aboard, available_crew = await _cruise_crew(db, cruise_id)
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
@@ -1464,6 +1620,8 @@ async def cruise_detail(request: Request, cruise_id: int):
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
             "stopovers": [dict(s) for s in stopovers],
+            "aboard": aboard,
+            "available_crew": available_crew,
             "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
             "next_cruise_id": next_cruise["id"] if next_cruise else None,
         },

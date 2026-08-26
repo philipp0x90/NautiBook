@@ -144,6 +144,91 @@
 </div>
 {% endif %}
 
+{# Équipage — cruise_crew. Le rôle est stocké en anglais ('skipper' / 'crew'),
+   comme le DEFAULT de la colonne, et traduit seulement à l'affichage. #}
+<div class="card" style="margin-bottom:16px;padding:14px">
+    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Équipage</h4>
+
+    {% if aboard %}
+    <div style="display:grid;gap:6px;margin-bottom:12px">
+        {% for m in aboard %}
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid #edf2f7">
+            {% if m.photo_path %}
+            <img src="{{ m.photo_path }}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">
+            {% else %}
+            <div style="width:30px;height:30px;border-radius:50%;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-weight:700;flex-shrink:0">{{ (m.first_name or m.last_name or '?')[0] | upper }}</div>
+            {% endif %}
+
+            <a href="/crew/{{ m.member_id }}" style="color:inherit;text-decoration:none">
+                {{ m.first_name or '' }} <strong style="text-transform:uppercase">{{ m.last_name or '' }}</strong>
+            </a>
+
+            {% if m.role == 'skipper' %}
+            <span style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:700">Skipper</span>
+            {% endif %}
+
+            <span class="meta" style="flex:1">
+                {% if m.embark_date %}{{ m.embark_date | datefr }}{% endif %}
+                {%- if m.embark_date and m.disembark_date %} → {{ m.disembark_date | datefr }}
+                {%- elif m.disembark_date %}→ {{ m.disembark_date | datefr }}{% endif %}
+            </span>
+
+            {% if m.role != 'skipper' %}
+            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/skipper" style="display:inline">
+                <button type="submit" class="btn btn-blue" style="padding:3px 10px;font-size:12px"
+                        title="Désigner cet équipier comme skipper">Skipper</button>
+            </form>
+            {% endif %}
+            {# Débarquer ne touche pas la fiche de la personne, seulement son
+               embarquement sur cette croisière. #}
+            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/delete" style="display:inline"
+                  onsubmit="return confirm('Retirer cet équipier de la croisière ?')">
+                <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px"
+                        title="Retirer de la croisière">✕</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="meta" style="margin-bottom:12px">Aucun équipier embarqué.</div>
+    {% endif %}
+
+    {% if available_crew %}
+    {# Dates préremplies depuis la croisière : un équipier embarque en général
+       au départ et débarque à l'arrivée. #}
+    <form method="POST" action="/cruises/{{ cruise.id }}/crew"
+          style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+            <label style="font-size:12px">Équipier</label>
+            <select name="crew_member_id" required>
+                {% for m in available_crew %}
+                <option value="{{ m.id }}">{{ m.last_name or '' }} {{ m.first_name or '' }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label style="font-size:12px">Embarquement</label>
+            <input type="date" name="embark_date" style="width:150px"
+                   value="{{ cruise.start_time[:10] if cruise.start_time else '' }}">
+        </div>
+        <div>
+            <label style="font-size:12px">Débarquement</label>
+            <input type="date" name="disembark_date" style="width:150px"
+                   value="{{ cruise.end_time[:10] if cruise.end_time else '' }}">
+        </div>
+        <button type="submit" class="btn btn-yellow">+ Embarquer</button>
+    </form>
+    {% elif not aboard %}
+    <div>
+        <a href="/crew/new" class="btn btn-yellow">+ Créer une fiche d'équipier</a>
+        <span class="meta" style="margin-left:8px">Aucune fiche d'équipier n'existe encore.</span>
+    </div>
+    {% else %}
+    <div class="meta">Tous les équipiers connus sont déjà embarqués.
+        <a href="/crew/new" style="color:var(--accent)">Créer une nouvelle fiche</a>.</div>
+    {% endif %}
+</div>
+
 {# Escales #}
 {% if stopovers %}
 <div class="card" style="margin-bottom:16px;padding:14px">

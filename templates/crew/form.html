@@ -5,6 +5,13 @@
 {% set edition = member is not none %}
 {% block title %}{{ 'Modifier un équipier' if edition else 'Nouvel équipier' }} — NautiBook{% endblock %}
 
+{% block head %}
+<style>
+    /* Code pays et numéro sur une ligne, la liste à sa largeur naturelle. */
+    .tel-row { display: flex; gap: 6px; align-items: center; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="section-bar">
@@ -65,17 +72,38 @@
     <section>
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Pièce d'identité et contact</h3>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+            {# Liste fermée, avec l'option vide qui laisse le champ non renseigné —
+               sans elle le navigateur présélectionne « Carte d'identité » et toute
+               fiche créée en porterait une sans qu'on l'ait choisie. Les libellés
+               sont des valeurs *stockées* : les changer demande de reprendre les
+               fiches existantes. #}
             <div>
                 <label>Type de pièce</label>
-                <input type="text" name="id_type" value="{{ member.id_type or '' if edition else '' }}" placeholder="Passeport">
+                <select name="id_type">
+                    <option value="">—</option>
+                    {% for opt in ["Carte d'identité", 'Passeport'] %}
+                    <option value="{{ opt }}" {{ 'selected' if edition and member.id_type == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div>
                 <label>Numéro</label>
                 <input type="text" name="id_number" value="{{ member.id_number or '' if edition else '' }}">
             </div>
+            {# Code pays à part, mais une seule colonne en base : le handler
+               recompose via _join_phone, le filtre phoneparts redécoupe. #}
+            {% set tel = (member.phone if edition else none) | phoneparts %}
             <div>
                 <label>Téléphone</label>
-                <input type="tel" name="phone" value="{{ member.phone or '' if edition else '' }}" placeholder="+32 470 12 34 56">
+                <div class="tel-row">
+                    <select name="phone_code" style="width:auto;flex:0 0 auto">
+                        <option value="">—</option>
+                        {% for code, pays in dial_codes %}
+                        <option value="{{ code }}" {{ 'selected' if tel.code == code else '' }}>{{ code }} {{ pays }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="tel" name="phone" value="{{ tel.number }}" placeholder="470 12 34 56" style="flex:1;min-width:0">
+                </div>
             </div>
             <div>
                 <label>Email</label>
