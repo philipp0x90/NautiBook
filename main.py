@@ -1202,11 +1202,29 @@ async def crew_detail(request: Request, crew_id: int):
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM crew_members WHERE id = ?", (crew_id,))
         member = await cursor.fetchone()
+        # The other side of cruise_crew: not this cruise's crew, but this
+        # person's cruises. Across every ship, since crew are not ship-scoped.
+        cursor = await db.execute(
+            f"""SELECT cc.role, cc.embark_date, cc.disembark_date,
+                       c.id AS cruise_id, c.name AS cruise_name,
+                       c.start_time, c.end_time, {CRUISE_NUMBER} AS number
+                FROM cruise_crew cc
+                JOIN cruises c ON cc.cruise_id = c.id
+                WHERE cc.crew_member_id = ?
+                ORDER BY COALESCE(c.start_time, c.created_at) DESC""",
+            (crew_id,),
+        )
+        cruises = await cursor.fetchall()
     if member is None:
         raise HTTPException(status_code=404, detail="Crew member not found")
     return templates.TemplateResponse(
         "crew/detail.html",
-        {"request": request, "active_section": "crew", "member": dict(member)},
+        {
+            "request": request,
+            "active_section": "crew",
+            "member": dict(member),
+            "cruises": [dict(c) for c in cruises],
+        },
     )
 
 
@@ -1321,6 +1339,16 @@ async def add_cruise_crew(
     if crew_member_id is None:
         return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
     async with connect() as db:
+        # Someone is either aboard or not. The form only offers people who are
+        # not, but the check belongs here too: without a UNIQUE(cruise_id,
+        # crew_member_id) nothing else stops a second row, and a duplicate shows
+        # up as the same person listed twice, once per role.
+        cursor = await db.execute(
+            "SELECT 1 FROM cruise_crew WHERE cruise_id = ? AND crew_member_id = ?",
+            (cruise_id, crew_member_id),
+        )
+        if await cursor.fetchone():
+            return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
         # First aboard is the skipper by default — a boat does not sail without
         # one, and it saves designating them by hand in the common case.
         cursor = await db.execute(
@@ -1346,6 +1374,30 @@ async def set_skipper(cruise_id: int, assignment_id: int):
         await db.execute(
             "UPDATE cruise_crew SET role = 'skipper' WHERE id = ? AND cruise_id = ?",
             (assignment_id, cruise_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
+
+
+# Dates an embarkation may edit in place. Like EDITABLE_LINE_FIELDS, the name is
+# interpolated into the UPDATE, so this set is what keeps the URL out of SQL.
+EDITABLE_CREW_DATES = {"embark_date", "disembark_date"}
+
+
+@app.post("/cruises/{cruise_id}/crew/{assignment_id}/date/{field}")
+async def set_cruise_crew_date(
+    cruise_id: int,
+    assignment_id: int,
+    field: str,
+    value: Optional[str] = Form(None),
+):
+    """Inline edit of one embarkation date from the cruise page's crew panel."""
+    if field not in EDITABLE_CREW_DATES:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    async with connect() as db:
+        await db.execute(
+            f"UPDATE cruise_crew SET {field} = ? WHERE id = ? AND cruise_id = ?",
+            (value or None, assignment_id, cruise_id),
         )
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)

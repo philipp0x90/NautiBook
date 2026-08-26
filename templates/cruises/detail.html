@@ -18,6 +18,14 @@
     }
     .cruise-name:hover { background: #f7fbfd; }
     .cruise-name:focus { background: #fff; border-color: var(--accent); outline: none; }
+    /* Dates d'embarquement : se lisent comme du texte, se signalent au survol —
+       même parti que .inline-edit sur la page route. */
+    .date-edit {
+        width: auto; padding: 1px 4px; font-size: 12px; color: var(--muted);
+        background: transparent; border: 1px solid transparent; border-radius: 4px;
+    }
+    .date-edit:hover { background: #fff; border-color: #cfe3ef; color: #333; }
+    .date-edit:focus { background: #fff; border-color: var(--accent); color: #333; outline: none; }
 </style>
 {% endblock %}
 
@@ -167,11 +175,20 @@
             <span style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:700">Skipper</span>
             {% endif %}
 
-            <span class="meta" style="flex:1">
-                {% if m.embark_date %}{{ m.embark_date | datefr }}{% endif %}
-                {%- if m.embark_date and m.disembark_date %} → {{ m.disembark_date | datefr }}
-                {%- elif m.disembark_date %}→ {{ m.disembark_date | datefr }}{% endif %}
-            </span>
+            {# Dates modifiables sur place : un formulaire par champ, jamais un
+               partagé, sinon deux modifications concurrentes s'écrasent. Vider
+               la case efface la date. #}
+            <div style="flex:1;display:flex;align-items:center;gap:4px">
+                <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/embark_date">
+                    <input type="date" name="value" class="date-edit" value="{{ m.embark_date[:10] if m.embark_date else '' }}"
+                           title="Date d'embarquement" onchange="this.form.submit()">
+                </form>
+                <span class="meta">→</span>
+                <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/disembark_date">
+                    <input type="date" name="value" class="date-edit" value="{{ m.disembark_date[:10] if m.disembark_date else '' }}"
+                           title="Date de débarquement" onchange="this.form.submit()">
+                </form>
+            </div>
 
             {% if m.role != 'skipper' %}
             <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/skipper" style="display:inline">

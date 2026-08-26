@@ -71,4 +71,50 @@
     </div>
 </div>
 
+{# Ses croisières — l'autre versant de cruise_crew. Tous navires confondus,
+   puisqu'un équipier n'est rattaché à aucun navire. Les embarquements se
+   modifient depuis la page de la croisière, pas d'ici. #}
+<div class="card" style="margin-top:16px;padding:14px">
+    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Croisières</h4>
+    {% if cruises %}
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Croisière</th>
+                <th>n°</th>
+                <th>Embarquement</th>
+                <th>Débarquement</th>
+                <th>Rôle</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in cruises %}
+            <tr style="cursor:pointer" title="Ouvrir cette croisière"
+                onclick="rowLink(event, '/cruises/{{ c.cruise_id }}')">
+                <td style="font-weight:700;text-transform:uppercase">{{ c.cruise_name or '—' }}</td>
+                <td>{{ '%03d'|format(c.number) if c.number else '—' }}</td>
+                {# À défaut de date d'embarquement, celle de la croisière : la
+                   personne était à bord, on ne sait juste pas depuis quand. #}
+                <td style="white-space:nowrap">
+                    {{ c.embark_date | datefr if c.embark_date else c.start_time | datefr }}
+                </td>
+                <td style="white-space:nowrap">
+                    {{ c.disembark_date | datefr if c.disembark_date else c.end_time | datefr }}
+                </td>
+                <td>
+                    {% if c.role == 'skipper' %}
+                    <span style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:700">Skipper</span>
+                    {% else %}
+                    <span class="meta">Équipier</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="meta">Cet équipier n'a embarqué sur aucune croisière.</div>
+    {% endif %}
+</div>
+
 {% endblock %}
