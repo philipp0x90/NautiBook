@@ -35,7 +35,7 @@
             <div><label>Longueur HT (m)</label><input type="number" step="0.01" name="loa" value="{{ s.loa or '' }}"></div>
             <div><label>Longueur coque (m)</label><input type="number" step="0.01" name="hull_length" value="{{ s.hull_length or '' }}"></div>
             <div><label>Longueur flottaison (m)</label><input type="number" step="0.01" name="waterline_length" value="{{ s.waterline_length or '' }}"></div>
-            <div><label>Surface (m²) <span style="font-size:11px;color:var(--muted);font-weight:400">calculée</span></label><input type="number" step="0.01" name="surface" id="surface_calc" value="{{ s.surface or '' }}" readonly style="background:#f0f4f8;color:var(--muted)"></div>
+            <div><label>Longueur x largeur (m²) <span style="font-size:11px;color:var(--muted);font-weight:400">calculée</span></label><input type="number" step="0.01" name="surface" id="surface_calc" value="{{ s.surface or '' }}" readonly style="background:#f0f4f8;color:var(--muted)"></div>
             <div><label>Largeur / Bau (m)</label><input type="number" step="0.01" name="beam" value="{{ s.beam or '' }}"></div>
             <div><label>Tirant d'eau (m)</label><input type="number" step="0.01" name="draft" value="{{ s.draft or '' }}"></div>
             <div><label>Tirant d'air (m)</label><input type="number" step="0.01" name="air_draft" value="{{ s.air_draft or '' }}"></div>
@@ -68,13 +68,21 @@
         </section>
     </div>
 
-    <!-- Moteur -->
+    <!-- Bateau : marque / modèle / n° de série décrivent le bateau, pas le
+         moteur. Les champs gardent leurs noms de colonne (engine_*). -->
     <section>
-        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Moteur</h3>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Bateau</h3>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
             <div><label>Marque</label><input type="text" name="engine_brand" value="{{ s.engine_brand or '' }}"></div>
             <div><label>Modèle</label><input type="text" name="engine_model" value="{{ s.engine_model or '' }}"></div>
             <div><label># Série</label><input type="text" name="engine_serial" value="{{ s.engine_serial or '' }}"></div>
+        </div>
+    </section>
+
+    <!-- Moteur -->
+    <section>
+        <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Moteur</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
             <div><label>Puissance</label><input type="text" name="engine_power" value="{{ s.engine_power or '' }}" placeholder="30 CV"></div>
             <div><label>Consommation (L/h)</label><input type="number" step="0.1" name="engine_consumption" value="{{ s.engine_consumption or '' }}"></div>
             <div><label>Horamètre initial (h)</label><input type="number" step="0.1" name="engine_hours_initial" value="{{ s.engine_hours_initial or '' }}"></div>

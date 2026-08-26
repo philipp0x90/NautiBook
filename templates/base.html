@@ -55,7 +55,7 @@
             padding: 7px 28px;
             color: #222;
             text-decoration: none;
-            font-size: 16px;
+            font-size: 24px;
             font-weight: 500;
             border-radius: 20px;
             white-space: nowrap;
@@ -88,7 +88,7 @@
             display: block;
             padding: 9px 18px;
             color: #1a1a2e;
-            font-size: 14px;
+            font-size: 20px;
             font-weight: 500;
             text-decoration: none;
             border-radius: 8px;
@@ -259,12 +259,16 @@
     <main>
         {% block content %}{% endblock %}
     </main>
+    {# Bloc surchargeable : la page d'accueil le vide, le logo tenant déjà
+       le rôle de signature. #}
+    {% block footer %}
     <footer>
         {% if request.state.ship_name %}
         <div class="footer-ship">{{ request.state.ship_name }}</div>
         {% endif %}
         — Nautibook —
     </footer>
+    {% endblock %}
 </div>
 
 <script>

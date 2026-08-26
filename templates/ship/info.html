@@ -1,19 +1,38 @@
 {% extends "base.html" %}
 {% block title %}Infos Navire — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    /* Dans chaque cellule de fiche, libellé et valeur sont centrés l'un sur
+       l'autre. Une règle unique plutôt qu'un style inline par cellule, car
+       toutes les rubriques de la page le veulent. Le bloc « Divers » n'est pas
+       dans une .grid, il garde donc son texte aligné à gauche. */
+    .grid > div { text-align: center; }
+
+    /* Le badge « Navire #… » reprend le corps et les marges internes de .btn,
+       pour faire le même gabarit que le bouton Modifier à l'autre bout de la
+       barre. Surcharge base.html : ce <style> vient après le sien. */
+    .section-bar-right {
+        font-size: 14px;
+        padding: 8px 18px;
+        border-radius: 20px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="section-bar">
-    {# empty spacer, same width as the removed badge, so the title stays centred #}
-    <div style="min-width:140px"></div>
+    {# le bouton occupe le slot de gauche, à la largeur de l'ancien espaceur,
+       pour que le titre reste centré face au badge de droite #}
+    <div style="min-width:140px">
+        <a href="/ship/info/edit" class="btn btn-yellow">✎ Modifier</a>
+    </div>
     <div class="section-bar-title">
         Infos Navire
         <div style="font-size:24px;margin-top:2px">{{ ship.name if ship else 'Navire' }}</div>
     </div>
     <div class="section-bar-right">Navire #{{ ship.id if ship else '—' }}</div>
-</div>
-
-<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
-    <a href="/ship/info/edit" class="btn btn-yellow">✎ Modifier</a>
 </div>
 
 {% if not ship %}
@@ -29,8 +48,11 @@
 <div style="display:flex;flex-direction:column;gap:20px">
 
     <section>
-        <h3 style="margin:0 0 10px;font-size:16px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Informations générales</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Informations générales</h3>
+        {# les 9 champs sur une seule ligne : colonnes fixes plutôt qu'auto-fit,
+           et minmax(0,…) pour qu'une valeur longue rétrécisse au lieu d'élargir
+           la colonne #}
+        <div class="grid" style="grid-template-columns:repeat(9,minmax(0,1fr));gap:8px">
             {% for label, val in [
                 ('Nom du navire', ship.name),
                 ('Port d\'attache', ship.home_port),
@@ -51,13 +73,15 @@
     </section>
 
     <section>
-        <h3 style="margin:0 0 10px;font-size:16px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Dimensions</h3>
+        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Dimensions</h3>
+        {# « Longueur x largeur » est l'ancien champ « Surface » : la valeur
+           stockée est bien longueur HT × bau. #}
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
             {% for label, val, unit in [
                 ('Longueur hors-tout', ship.loa, 'm'),
                 ('Longueur coque', ship.hull_length, 'm'),
                 ('Longueur Flottaison', ship.waterline_length, 'm'),
-                ('Surface', ship.surface, 'm²'),
+                ('Longueur x largeur', ship.surface, 'm²'),
                 ('Largeur (bau)', ship.beam, 'm'),
                 ('Tirant d\'eau', ship.draft, 'm'),
                 ('Tirant d\'air', ship.air_draft, 'm'),
@@ -79,7 +103,7 @@
 
     <div style="display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start">
         <section>
-            <h3 style="margin:0 0 10px;font-size:16px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Voiles</h3>
+            <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Voiles</h3>
             <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
                 {% for label, val in [
                     ('Grand voile', ship.sail_main),
@@ -99,7 +123,7 @@
         </section>
 
         <section style="min-width:200px">
-            <h3 style="margin:0 0 10px;font-size:16px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Réservoirs</h3>
+            <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Réservoirs</h3>
             <div class="grid" style="grid-template-columns:1fr 1fr">
                 {% for label, val in [('Gasoil', ship.tank_fuel), ('Eau douce', ship.tank_water)] %}
                 <div>
@@ -113,13 +137,33 @@
         </section>
     </div>
 
+    {# Marque / modèle / n° de série décrivent le bateau, pas le moteur : ils
+       ont leur propre rubrique. Les colonnes SQL gardent leur nom d'origine
+       (engine_brand, engine_model, engine_serial).
+       Les deux rubriques partagent une ligne, comme Voiles / Réservoirs plus
+       haut. Colonnes 3fr / 4fr, au prorata du nombre de champs, pour que les
+       cellules des deux côtés fassent la même largeur. #}
+    <div style="display:grid;grid-template-columns:3fr 4fr;gap:20px;align-items:start">
     <section>
-        <h3 style="margin:0 0 10px;font-size:16px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Moteur</h3>
+        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Bateau</h3>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
             {% for label, val in [
                 ('Marque', ship.engine_brand),
                 ('Modèle', ship.engine_model),
-                ('# Série', ship.engine_serial),
+                ('# Série', ship.engine_serial)
+            ] %}
+            <div>
+                <div class="meta">{{ label }}</div>
+                <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">{{ val | datefr }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section>
+        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Moteur</h3>
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+            {% for label, val in [
                 ('Puissance', ship.engine_power),
                 ('Consommation', ship.engine_consumption),
                 ('Horamètre initial', ship.engine_hours_initial),
@@ -132,9 +176,10 @@
             {% endfor %}
         </div>
     </section>
+    </div>
 
     <section>
-        <h3 style="margin:0 0 10px;font-size:16px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Assurance</h3>
+        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Assurance</h3>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
             {% for label, val in [
                 ('Compagnie', ship.insurance_company),
@@ -151,7 +196,7 @@
     </section>
 
     <section>
-        <h3 style="margin:0 0 10px;font-size:16px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Divers</h3>
+        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Divers</h3>
         <div style="background:#e8f4f9;border-radius:6px;padding:12px 16px;min-height:60px;color:#444">
             {{ ship.misc_notes or '' }}
         </div>
