@@ -2,10 +2,10 @@
 {% block title %}Nouveau navire — NautiBook{% endblock %}
 {% block content %}
 
+{# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
+   vide gardait son fond translucide et son min-width — une pastille creuse. #}
 <div class="section-bar">
-    <div class="section-bar-left">Navires</div>
     <div class="section-bar-title">Nouveau navire</div>
-    <div class="section-bar-right"></div>
 </div>
 
 <form method="POST" action="/ship/new" style="display:grid;gap:14px;max-width:400px">
