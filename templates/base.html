@@ -204,7 +204,10 @@
            le titre de la page Paramètres. */
         .icon-settings { width: 1em; height: 1em; vertical-align: -0.1em; }
 
-        @media (max-width: 780px) {
+        /* 980 et non 780 : six onglets pleine taille demandent ~960 px, sinon
+           « Gallerie » touche la roue crantée, puis sort de l'écran, au lieu de
+           passer en version compacte. */
+        @media (max-width: 980px) {
             nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
             .topbar { padding: 8px 10px; }
         }
@@ -254,19 +257,19 @@
                     <a href="/ship/select">Changer de navire</a>
                 </div>
             </li>
-            {# « crew » allume aussi cet onglet : les équipiers vivent dans ce
-               menu déroulant, sans être une croisière pour autant. #}
-            <li class="{{ 'active' if active_section in ('cruises', 'crew') else '' }}">
+            {# Les équipiers ont leur propre onglet, et non une entrée dans le
+               menu Croisières : ils ne dépendent ni du navire courant ni d'une
+               croisière (crew_members n'a pas de ship_id). #}
+            <li class="{{ 'active' if active_section == 'crew' else '' }}">
+                <a href="/crew">Équipiers</a>
+            </li>
+            <li class="{{ 'active' if active_section == 'cruises' else '' }}">
                 <a href="/cruises/current">Croisières</a>
                 <div class="dropdown-menu">
                     <a href="/cruises/new">Nouvelle croisière</a>
                     <a href="/cruises/current">Croisière en cours</a>
                     <a href="/cruises/stopovers">Escales</a>
                     <a href="/cruises/list">Liste des croisières</a>
-                    {# Les équipiers ne dépendent pas du navire courant, mais ils
-                       embarquent sur une croisière : l'entrée est ici plutôt que
-                       dans le menu Navire, et plutôt qu'un sixième onglet. #}
-                    <a href="/crew">Équipiers</a>
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'routes' else '' }}">

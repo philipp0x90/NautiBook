@@ -117,7 +117,7 @@ The cruise name uses the same one-field-form idiom on `cruises/detail.html`, but
 
 **Ship context** — `get_current_ship_id(request)` reads the `ship_id` cookie (defaulting to 1); `_fetch_ship(db, ship_id)` falls back to the first ship when that id is gone. Templates get the ship as `current_ship`, which `base.html` uses for the nav label.
 
-**Template context** — pass `active_section` (`ship`, `cruises`, `crew`, `routes`, `tools`, `gallery`, `settings`) so `base.html` highlights the right nav item. `crew` lights the Croisières tab, whose dropdown holds the Équipiers entry: crew are reached from there rather than as a sixth tab, but they are not a cruise.
+**Template context** — pass `active_section` (`ship`, `cruises`, `crew`, `routes`, `tools`, `gallery`, `settings`) so `base.html` highlights the right nav item. Each of the six tabs maps to one section, `crew` being Équipiers — its own tab between Navire and Croisières, since crew belong to neither (`crew_members` has no `ship_id`). Six full-size tabs need ~960 px, which is why the compact-nav media query breaks at 980 px rather than the 780 it used when there were five.
 
 **One form template for new *and* edit** — `crew/form.html` is the pattern to copy for anything with more than a handful of fields: it takes `member`, `None` meaning creation, and derives its action, title and button label from that. Compare `create_line` / `update_line`, whose twelve duplicated fields have to be kept in step by hand. The handlers still duplicate their `Form(None)` signatures, which is the house style — the saving is in the markup.
 
