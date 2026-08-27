@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ member.first_name or '' }} {{ member.last_name or 'Équipier' }} — NautiBook{% endblock %}
+{% block title %}{{ member.first_name or '' }} {{ member.last_name or (member.gender | equipier | capitalize) }} — NautiBook{% endblock %}
 
 {% block content %}
 
@@ -14,7 +14,7 @@
     <a href="/crew/{{ member.id }}/edit" class="btn btn-yellow">✎ Modifier</a>
     <div style="flex:1"></div>
     <form method="POST" action="/crew/{{ member.id }}/delete"
-          onsubmit="return confirm('Supprimer cette fiche d\'équipier ?')">
+          onsubmit="return confirm('Supprimer cette fiche d\'{{ member.gender | equipier }} ?')">
         <button type="submit" class="btn btn-orange">— Supprimer la fiche</button>
     </form>
 </div>
@@ -39,6 +39,7 @@
             ('Identité', [
                 ('Nom', (member.last_name or '') | upper),
                 ('Prénom', member.first_name),
+                ('Genre', member.gender),
                 ('Date de naissance', member.birth_date | datefr),
                 ('Âge', member.birth_date | age),
                 ('Lieu de naissance', member.birth_place),
@@ -77,13 +78,14 @@
    puisqu'un équipier n'est rattaché à aucun navire. Les embarquements se
    modifient depuis la page de la croisière, pas d'ici. #}
 <div class="card" style="margin-top:16px;padding:14px">
-    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Croisières</h4>
+    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;text-align:center">Embarquements</h4>
     {% if cruises %}
     <table class="data-table">
         <thead>
             <tr>
                 <th>Croisière</th>
                 <th>n°</th>
+                <th>Navire</th>
                 <th>Embarquement</th>
                 <th>Débarquement</th>
                 <th>Rôle</th>
@@ -95,6 +97,7 @@
                 onclick="rowLink(event, '/cruises/{{ c.cruise_id }}')">
                 <td style="font-weight:700;text-transform:uppercase">{{ c.cruise_name or '—' }}</td>
                 <td>{{ '%03d'|format(c.number) if c.number else '—' }}</td>
+                <td>{{ c.ship_name or '—' }}</td>
                 {# À défaut de date d'embarquement, celle de la croisière : la
                    personne était à bord, on ne sait juste pas depuis quand. #}
                 <td style="white-space:nowrap">
@@ -107,7 +110,7 @@
                     {% if c.role == 'skipper' %}
                     <span style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:700">Skipper</span>
                     {% else %}
-                    <span class="meta">Équipier</span>
+                    <span class="meta">{{ member.gender | equipier | capitalize }}</span>
                     {% endif %}
                 </td>
             </tr>
@@ -115,7 +118,7 @@
         </tbody>
     </table>
     {% else %}
-    <div class="meta">Cet équipier n'a embarqué sur aucune croisière.</div>
+    <div class="meta">{{ member.gender | equipier('cet') | capitalize }} n'a embarqué sur aucune croisière.</div>
     {% endif %}
 </div>
 

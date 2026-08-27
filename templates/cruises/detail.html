@@ -229,25 +229,25 @@
             <div style="flex:1;display:flex;align-items:center;gap:4px">
                 <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/embark_date">
                     <input type="date" name="value" class="date-edit" value="{{ m.embark_date[:10] if m.embark_date else '' }}"
-                           title="Date d'embarquement" onchange="this.form.submit()">
+                           title="Embarquement" onchange="this.form.submit()">
                 </form>
                 <span class="meta">→</span>
                 <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/disembark_date">
                     <input type="date" name="value" class="date-edit" value="{{ m.disembark_date[:10] if m.disembark_date else '' }}"
-                           title="Date de débarquement" onchange="this.form.submit()">
+                           title="Débarquement" onchange="this.form.submit()">
                 </form>
             </div>
 
             {% if m.role != 'skipper' %}
             <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/skipper" style="display:inline">
                 <button type="submit" class="btn btn-blue" style="padding:3px 10px;font-size:12px"
-                        title="Désigner cet équipier comme skipper">Skipper</button>
+                        title="Désigner {{ m.gender | equipier('cet') }} comme skipper">Skipper</button>
             </form>
             {% endif %}
             {# Débarquer ne touche pas la fiche de la personne, seulement son
                embarquement sur cette croisière. #}
             <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/delete" style="display:inline"
-                  onsubmit="return confirm('Retirer cet équipier de la croisière ?')">
+                  onsubmit="return confirm('Retirer {{ m.gender | equipier('cet') }} de la croisière ?')">
                 <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px"
                         title="Retirer de la croisière">✕</button>
             </form>

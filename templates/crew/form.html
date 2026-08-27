@@ -3,7 +3,7 @@
    de part et d'autre, qu'il aurait fallu maintenir en double. `member` est nul
    à la création. #}
 {% set edition = member is not none %}
-{% block title %}{{ 'Modifier un équipier' if edition else 'Nouvel équipier' }} — NautiBook{% endblock %}
+{% block title %}{{ 'Modifier ' ~ (member.gender | equipier('un')) if edition else 'Nouvel équipier' }} — NautiBook{% endblock %}
 
 {% block head %}
 <style>
@@ -16,7 +16,7 @@
 
 <div class="section-bar">
     <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Équipiers</a></div>
-    <div class="section-bar-title">{{ 'Modifier un équipier' if edition else 'Nouvel équipier' }}</div>
+    <div class="section-bar-title">{{ 'Modifier ' ~ (member.gender | equipier('un')) if edition else 'Nouvel équipier' }}</div>
 </div>
 
 {# enctype obligatoire dès qu'un champ envoie un fichier. #}
@@ -33,6 +33,18 @@
             <div>
                 <label>Prénom</label>
                 <input type="text" name="first_name" value="{{ member.first_name or '' if edition else '' }}" placeholder="Jean">
+            </div>
+            <div>
+                {# Option vide en premier, comme les selects du journal : sinon
+                   le navigateur présélectionne « Femme » et une fiche que
+                   personne n'a renseignée sort accordée au féminin. #}
+                <label>Genre</label>
+                <select name="gender">
+                    <option value="">—</option>
+                    {% for g in genders %}
+                    <option value="{{ g }}" {{ 'selected' if edition and member.gender == g else '' }}>{{ g }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div>
                 {# Pas de champ « âge » : il se déduit de la date de naissance,

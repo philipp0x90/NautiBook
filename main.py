@@ -378,6 +378,7 @@ async def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 first_name TEXT,
                 last_name TEXT,
+                gender TEXT,
                 age INTEGER,
                 birth_place TEXT,
                 birth_date TEXT,
@@ -441,6 +442,11 @@ async def _migrate(db):
             "UPDATE cruises SET ship_id = (SELECT MIN(id) FROM ship_info) WHERE ship_id IS NULL"
         )
         print("Migration: cruises.ship_id added")
+
+    cursor = await db.execute("PRAGMA table_info(crew_members)")
+    if "gender" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE crew_members ADD COLUMN gender TEXT")
+        print("Migration: crew_members.gender added")
 
     # Les tags de la To Do ont été retirés de l'interface : la colonne suit.
     cursor = await db.execute("PRAGMA table_info(todo_items)")
@@ -1169,7 +1175,44 @@ def _join_phone(code, number):
     return f"{code} {number}" if code else number
 
 
+GENDERS = ["Femme", "Homme", "Non-binaire"]
+
+
+def _equipier(gender, det=None):
+    """« équipier » accordé au genre, avec son déterminant : `gender | equipier('cet')`.
+
+    Le déterminant est demandé explicitement plutôt que collé devant le mot par
+    la template, parce que c'est lui qui s'accorde aussi (cet/cette, un/une).
+    Sans argument, le nom seul. `'le'` s'élide en « l' » aux trois genres, la
+    voyelle initiale ne laissant pas le choix.
+
+    « Non-binaire » prend l'écriture inclusive avec point médian (« cette·te »
+    n'existant pas, c'est la forme la plus lisible sans forme neutre établie en
+    français). Genre non renseigné : masculin, comme le reste de l'app (l'onglet
+    « Équipiers », le bouton « + Nouvel équipier »).
+
+    Le point médian « · » (U+00B7) et non un point ordinaire : c'est celui que
+    les lecteurs d'écran savent ignorer.
+    """
+    # Index dans les triplets ci-dessous : masculin, féminin, inclusif.
+    i = {"Femme": 1, "Non-binaire": 2}.get(gender, 0)
+    noun = ("équipier", "équipière", "équipier·ère")[i]
+    if det is None:
+        return noun
+    if det == "le":
+        return f"l'{noun}"
+    determiners = {
+        "un": ("un", "une", "un·e"),
+        "cet": ("cet", "cette", "cet·te"),
+    }
+    return f"{determiners[det][i]} {noun}"
+
+
 templates.env.filters["phoneparts"] = _phone_parts
+templates.env.filters["equipier"] = _equipier
+# Même raison que dial_codes : liste de référence fixe, exposée en global plutôt
+# que passée dans le contexte de chaque handler qui affiche le formulaire.
+templates.env.globals["genders"] = GENDERS
 # Exposed as a global rather than threaded through every handler's context: it is
 # a fixed reference list, and the next form that needs it gets it for free.
 templates.env.globals["dial_codes"] = DIAL_CODES
@@ -1202,6 +1245,7 @@ async def create_crew(
     request: Request,
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
+    gender: Optional[str] = Form(None),
     birth_date: Optional[str] = Form(None),
     birth_place: Optional[str] = Form(None),
     nationality: Optional[str] = Form(None),
@@ -1221,12 +1265,13 @@ async def create_crew(
     async with connect() as db:
         await db.execute(
             """INSERT INTO crew_members
-               (first_name, last_name, birth_date, birth_place, nationality,
+               (first_name, last_name, gender, birth_date, birth_place, nationality,
                 street, postal_code, city, id_type, id_number, phone, email, photo_path)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (first_name or None, last_name or None, birth_date or None, birth_place or None,
-             nationality or None, street or None, postal_code or None, city or None,
-             id_type or None, id_number or None, phone or None, email or None, photo),
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (first_name or None, last_name or None, gender or None, birth_date or None,
+             birth_place or None, nationality or None, street or None, postal_code or None,
+             city or None, id_type or None, id_number or None, phone or None, email or None,
+             photo),
         )
         await db.commit()
     return RedirectResponse(url="/crew", status_code=303)
@@ -1241,11 +1286,17 @@ async def crew_detail(request: Request, crew_id: int):
         # The other side of cruise_crew: not this cruise's crew, but this
         # person's cruises. Across every ship, since crew are not ship-scoped.
         cursor = await db.execute(
+            # LEFT JOIN sur le navire : c'est justement parce que la personne
+            # peut embarquer sur plusieurs bateaux que la colonne est utile, et
+            # cruises.ship_id peut être nul sur une croisière d'avant le
+            # rattachement aux navires.
             f"""SELECT cc.role, cc.embark_date, cc.disembark_date,
                        c.id AS cruise_id, c.name AS cruise_name,
-                       c.start_time, c.end_time, {CRUISE_NUMBER} AS number
+                       c.start_time, c.end_time, {CRUISE_NUMBER} AS number,
+                       s.name AS ship_name
                 FROM cruise_crew cc
                 JOIN cruises c ON cc.cruise_id = c.id
+                LEFT JOIN ship_info s ON c.ship_id = s.id
                 WHERE cc.crew_member_id = ?
                 ORDER BY COALESCE(c.start_time, c.created_at) DESC""",
             (crew_id,),
@@ -1284,6 +1335,7 @@ async def update_crew(
     crew_id: int,
     first_name: Optional[str] = Form(None),
     last_name: Optional[str] = Form(None),
+    gender: Optional[str] = Form(None),
     birth_date: Optional[str] = Form(None),
     birth_place: Optional[str] = Form(None),
     nationality: Optional[str] = Form(None),
@@ -1304,16 +1356,16 @@ async def update_crew(
     async with connect() as db:
         await db.execute(
             """UPDATE crew_members SET
-                   first_name = ?, last_name = ?, birth_date = ?, birth_place = ?,
+                   first_name = ?, last_name = ?, gender = ?, birth_date = ?, birth_place = ?,
                    nationality = ?, street = ?, postal_code = ?, city = ?,
                    id_type = ?, id_number = ?, phone = ?, email = ?,
                    -- COALESCE : soumettre le formulaire sans toucher à la photo
                    -- ne doit pas effacer celle déjà enregistrée.
                    photo_path = COALESCE(?, photo_path)
                WHERE id = ?""",
-            (first_name or None, last_name or None, birth_date or None, birth_place or None,
-             nationality or None, street or None, postal_code or None, city or None,
-             id_type or None, id_number or None, phone or None, email or None,
+            (first_name or None, last_name or None, gender or None, birth_date or None,
+             birth_place or None, nationality or None, street or None, postal_code or None,
+             city or None, id_type or None, id_number or None, phone or None, email or None,
              photo, crew_id),
         )
         await db.commit()
@@ -1346,7 +1398,7 @@ async def _cruise_crew(db, cruise_id: int):
     """
     cursor = await db.execute(
         """SELECT cc.id, cc.role, cc.embark_date, cc.disembark_date,
-                  m.id AS member_id, m.first_name, m.last_name, m.photo_path
+                  m.id AS member_id, m.first_name, m.last_name, m.gender, m.photo_path
            FROM cruise_crew cc
            JOIN crew_members m ON cc.crew_member_id = m.id
            WHERE cc.cruise_id = ?
