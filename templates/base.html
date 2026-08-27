@@ -175,6 +175,17 @@
         .meta { color: var(--muted); font-size: 13px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 
+        /* ── Photo agrandie ── */
+        /* Vignette cliquable : la classe suffit, le onclick appelle agrandirPhoto. */
+        .photo-zoom { cursor: zoom-in; }
+        #photo-lightbox {
+            display: none; position: fixed; inset: 0; z-index: 300;
+            background: rgba(0, 0, 0, .8); padding: 24px; cursor: zoom-out;
+            align-items: center; justify-content: center;
+        }
+        #photo-lightbox.open { display: flex; }
+        #photo-lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, .5); }
+
         /* ── Data table ── */
         .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .data-table th { padding: 8px 10px; text-align: left; font-weight: 700; color: #fff; background: #5bc8e0; border-bottom: 2px solid #3aaec8; }
@@ -298,6 +309,12 @@
     {% endblock %}
 </div>
 
+{# Agrandissement de photo, disponible sur toutes les pages : une seule boîte
+   dans base.html plutôt qu'une par écran qui affiche une vignette. #}
+<div id="photo-lightbox" onclick="this.classList.remove('open')" title="Fermer">
+    <img id="photo-lightbox-img" src="" alt="">
+</div>
+
 <script>
 // Whole-row links in tables: <tr onclick="rowLink(event, '/somewhere')">.
 // Ignores clicks that landed on something interactive, so the delete button
@@ -306,6 +323,20 @@ function rowLink(event, url) {
     if (event.target.closest('a, button, input, select, textarea, label, form')) return;
     location.href = url;
 }
+
+// Vignette agrandie en plein écran : <img onclick="agrandirPhoto(event, this)">.
+// stopPropagation, parce qu'une vignette vit souvent dans une ligne cliquable
+// (rowLink) qui ne doit pas s'ouvrir en même temps. La source est lue sur
+// l'image elle-même, ce qui évite d'interpoler un chemin dans du JavaScript.
+function agrandirPhoto(event, img) {
+    event.stopPropagation();
+    document.getElementById('photo-lightbox-img').src = img.src;
+    document.getElementById('photo-lightbox').classList.add('open');
+}
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') document.getElementById('photo-lightbox').classList.remove('open');
+});
 </script>
 
 </body>

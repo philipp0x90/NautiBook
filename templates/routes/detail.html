@@ -53,6 +53,11 @@
     .bottom-panel { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px; }
     .bottom-panel h4 { margin: 0 0 10px; font-size: 13px; font-weight: 700; text-align: center; border-bottom: 1px solid #dde5ee; padding-bottom: 6px; }
 
+    /* Ligne de tâche cliquable (rowLink) : le survol montre qu'elle mène
+       quelque part, comme les lignes du journal. */
+    .todo-row { cursor: pointer; }
+    .todo-row:hover { background: #f7fbfd; }
+
     /* Fenêtres modales de la page (Arrivée, première ligne). En classes plutôt
        qu'en identifiants, pour que la seconde n'ait pas à recopier le style ;
        les identifiants restent, ce sont eux que les onclick manipulent. */
@@ -306,23 +311,26 @@
 
     {# To Do List #}
     <div class="bottom-panel">
-        <h4>To Do List</h4>
+        {# Le bouton est positionné en absolu : le h4 garde toute la largeur,
+           donc le titre reste centré comme dans le panneau voisin. #}
+        <div style="position:relative">
+            <h4>To Do List</h4>
+            <a href="/ship/todo/new?next=/routes/{{ route.id }}" class="btn btn-yellow"
+               style="position:absolute;top:-2px;right:0;padding:2px 9px;font-size:11px">+ Nouvelle tâche</a>
+        </div>
         {% if todos %}
         <div style="max-height:220px;overflow-y:auto;display:grid;gap:2px">
             {% for item in todos %}
-            {% set tags = (item.tags or '').split(',') | select | list %}
-            <div style="font-size:12px;padding:5px 0;border-bottom:1px solid #edf2f7;display:flex;align-items:flex-start;gap:6px">
+            <div class="todo-row" onclick="rowLink(event, '/ship/todo/{{ item.id }}/edit?next=/routes/{{ route.id }}')"
+                 style="font-size:12px;padding:5px 0;border-bottom:1px solid #edf2f7;display:flex;align-items:flex-start;gap:6px">
                 <div style="flex:1;min-width:0">
+                    {# La pastille URGENT suit le titre, sur la même ligne, et
+                       remplace le « ! » qui le précédait. #}
                     <div style="{{ 'font-weight:700;color:#dc2626' if item.urgent else 'font-weight:600' }}">
-                        {% if item.urgent %}<span style="font-size:10px;margin-right:3px">!</span>{% endif %}{{ item.title or item.task }}
+                        {{ item.title or item.task }}{% if item.urgent %}
+                        <span style="background:#fee2e2;border:1px solid #fecaca;border-radius:8px;padding:0 6px;margin-left:5px;font-size:10px;font-weight:700;color:#991b1b;vertical-align:1px;white-space:nowrap">URGENT</span>
+                        {% endif %}
                     </div>
-                    {% if tags %}
-                    <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:2px">
-                        {% for tag in tags %}
-                        <span style="background:#f0f4f8;border:1px solid #dde5ee;border-radius:8px;padding:0 6px;font-size:10px;color:#666">{{ tag }}</span>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
                 </div>
                 <form method="POST" action="/ship/todo/{{ item.id }}/done" style="flex-shrink:0">
                     <input type="hidden" name="next" value="/routes/{{ route.id }}">

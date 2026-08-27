@@ -317,7 +317,6 @@ async def init_db():
                 status TEXT DEFAULT 'A faire',
                 due_date TEXT,
                 completed_at TEXT,
-                tags TEXT,
                 photo_path TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
@@ -442,6 +441,12 @@ async def _migrate(db):
             "UPDATE cruises SET ship_id = (SELECT MIN(id) FROM ship_info) WHERE ship_id IS NULL"
         )
         print("Migration: cruises.ship_id added")
+
+    # Les tags de la To Do ont été retirés de l'interface : la colonne suit.
+    cursor = await db.execute("PRAGMA table_info(todo_items)")
+    if "tags" in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE todo_items DROP COLUMN tags")
+        print("Migration: todo_items.tags dropped")
 
 
 TRACK_INTERVAL = 30  # seconds between automatic GPS recordings
@@ -868,13 +873,20 @@ async def ship_todo(request: Request):
 
 
 @app.get("/ship/todo/new", response_class=HTMLResponse)
-async def new_todo_form(request: Request):
+async def new_todo_form(request: Request, next: Optional[str] = None):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
     return templates.TemplateResponse(
         "ship/todo_new.html",
-        {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None},
+        {
+            "request": request,
+            "active_section": "ship",
+            "current_ship": dict(ship) if ship else None,
+            # Où renvoie « Annuler » : la page d'où l'on vient (une route),
+            # /ship/todo par défaut.
+            "next": next,
+        },
     )
 
 
@@ -885,23 +897,24 @@ async def create_todo_item(
     task: Optional[str] = Form(None),
     urgent: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None),
     photo_path: Optional[str] = Form(None),
     photo_file: Optional[UploadFile] = File(None),
+    next: Optional[str] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
     photo = await _save_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
-            "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, tags, photo_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (ship_id, title, task or None, 1 if urgent else 0, due_date or None, tags or None, photo),
+            "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, photo_path) VALUES (?, ?, ?, ?, ?, ?)",
+            (ship_id, title, task or None, 1 if urgent else 0, due_date or None, photo),
         )
         await db.commit()
-    return RedirectResponse(url="/ship/todo", status_code=303)
+    # Retour à la page appelante (une route) quand le formulaire en portait une.
+    return RedirectResponse(url=next or "/ship/todo", status_code=303)
 
 
 @app.get("/ship/todo/{item_id}/edit", response_class=HTMLResponse)
-async def edit_todo_form(request: Request, item_id: int):
+async def edit_todo_form(request: Request, item_id: int, next: Optional[str] = None):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
@@ -915,6 +928,8 @@ async def edit_todo_form(request: Request, item_id: int):
             "request": request, "active_section": "ship",
             "current_ship": dict(ship) if ship else None,
             "item": dict(item),
+            # Idem : « Annuler » revient à la page appelante.
+            "next": next,
         },
     )
 
@@ -928,21 +943,31 @@ async def update_todo_item(
     status: Optional[str] = Form(None),
     due_date: Optional[str] = Form(None),
     completed_at: Optional[str] = Form(None),
-    tags: Optional[str] = Form(None),
     photo_path: Optional[str] = Form(None),
     photo_file: Optional[UploadFile] = File(None),
+    next: Optional[str] = Form(None),
 ):
     # A newly chosen file wins over the text field, which still holds the old path.
     photo = await _save_photo(photo_file) or photo_path or None
+    status = status or 'A faire'
+    # Le statut commande la date de réalisation, et l'emporte sur la case du
+    # formulaire : « À faire » l'efface — une tâche rouverte n'a pas de date de
+    # réalisation — et « En cours » la met toujours à aujourd'hui. Seul
+    # « Terminé » laisse la date saisie à la main.
+    if status == 'A faire':
+        completed_at = None
+    elif status == 'En cours':
+        completed_at = datetime.now().strftime("%Y-%m-%d")
     async with connect() as db:
         await db.execute(
-            """UPDATE todo_items SET title=?, task=?, urgent=?, status=?, due_date=?, completed_at=?, tags=?, photo_path=?
+            """UPDATE todo_items SET title=?, task=?, urgent=?, status=?, due_date=?, completed_at=?, photo_path=?
                WHERE id=?""",
-            (title or None, task or None, 1 if urgent else 0, status or 'A faire', due_date or None,
-             completed_at or None, tags or None, photo, item_id),
+            (title or None, task or None, 1 if urgent else 0, status, due_date or None,
+             completed_at or None, photo, item_id),
         )
         await db.commit()
-    return RedirectResponse(url="/ship/todo", status_code=303)
+    # Idem : la route d'où l'on vient, /ship/todo sinon.
+    return RedirectResponse(url=next or "/ship/todo", status_code=303)
 
 
 @app.post("/ship/todo/{item_id}/done")

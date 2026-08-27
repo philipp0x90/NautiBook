@@ -34,19 +34,6 @@
     </div>
 
     <div>
-        <label>Tags</label>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px" id="tag-pills">
-            {% for tag in ['À faire ensuite', 'En attente de pièces', 'En attente devis', 'Récurrent', 'Hiver'] %}
-            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:#f0f4f8;border:1px solid #dde5ee;border-radius:20px;padding:4px 12px;font-size:13px;font-weight:500;color:#444">
-                <input type="checkbox" name="tag_{{ loop.index }}" value="{{ tag }}" style="width:auto" onchange="updateTags()">
-                {{ tag }}
-            </label>
-            {% endfor %}
-        </div>
-        <input type="hidden" name="tags" id="tags-hidden">
-    </div>
-
-    <div>
         <label>Photo</label>
         <input type="file" name="photo_file" accept="image/*">
         <div class="meta" style="margin-top:4px">La photo est copiée dans le dossier IMG du logiciel.</div>
@@ -54,18 +41,14 @@
                style="margin-top:8px">
     </div>
 
+    {# Où revenir après enregistrement ou annulation : la page appelante. #}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
     <div style="display:flex;gap:10px">
         <button type="submit" class="btn btn-primary">Enregistrer</button>
-        <a href="/ship/todo" class="btn" style="background:#eee;color:#333">Annuler</a>
+        <a href="{{ next or '/ship/todo' }}" class="btn" style="background:#eee;color:#333">Annuler</a>
     </div>
 
 </form>
-
-<script>
-function updateTags() {
-    const checked = [...document.querySelectorAll('#tag-pills input:checked')].map(el => el.value);
-    document.getElementById('tags-hidden').value = checked.join(',');
-}
-</script>
 
 {% endblock %}
