@@ -1,6 +1,6 @@
 # main.py
 from fastapi import FastAPI, HTTPException, Request, Form, Query, File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, date
@@ -586,6 +586,86 @@ async def attach_ship_name(request: Request, call_next):
             if ship is not None:
                 request.state.ship_name = ship["name"]
     return await call_next(request)
+
+
+# ── Mise à jour en direct ─────────────────────────────────────────────────────
+
+# Plusieurs appareils (iPad au cockpit, MacBook à la table à cartes) affichent le
+# même serveur. Les pages sont rendues côté serveur, donc une saisie faite
+# ailleurs n'apparaît pas tant qu'on ne recharge pas. Chaque page ouverte tient
+# donc un flux /api/changes, sur lequel le serveur pousse un numéro de révision ;
+# quand il change, le navigateur recharge.
+#
+# Un seul compteur global, sans granularité par écran : un bateau, une poignée de
+# pages, et un rechargement est exactement ce dont une page rendue côté serveur a
+# besoin. Ça suppose *un seul* processus uvicorn — c'est le cas ici (run.sh et
+# nautibook.service lancent un worker unique) ; avec plusieurs workers il faudrait
+# sortir le compteur du processus.
+_revision = 0
+_revision_changed = asyncio.Event()
+
+# Sans trafic, une ligne de commentaire toutes les 20 s garde la connexion
+# ouverte (et permet au navigateur de repérer un serveur tombé).
+LIVE_PING = 20
+
+
+def _bump_revision() -> None:
+    """Signale aux autres appareils que la base a changé."""
+    global _revision
+    _revision += 1
+    # set() puis clear() : un « pulse ». set() réveille tous les attendeurs
+    # présents de façon synchrone, donc le clear() qui suit ne les rendort pas,
+    # et l'événement repart à zéro pour le tour suivant.
+    _revision_changed.set()
+    _revision_changed.clear()
+
+
+@app.middleware("http")
+async def announce_changes(request: Request, call_next):
+    """Incrémente la révision dès qu'une écriture a eu lieu.
+
+    Toutes les mutations de l'app sont de simples posts de formulaire terminés
+    par une redirection 303 (aucune écriture ne passe par fetch()), donc un POST
+    redirigé est le signal « quelque chose a changé » — et il évite d'aller
+    poser un crochet dans la trentaine de handlers.
+
+    Le enregistreur GPS de fond n'appelle pas _bump_revision : un point toutes
+    les 30 s rechargerait toutes les pages ouvertes en permanence.
+    """
+    response = await call_next(request)
+    if request.method == "POST" and response.status_code == 303:
+        _bump_revision()
+    return response
+
+
+@app.get("/api/changes")
+async def changes_stream(request: Request):
+    """Flux Server-Sent Events poussant le numéro de révision courant."""
+    async def events():
+        # Le premier message donne au navigateur sa référence, pour qu'une page
+        # chargée juste après une saisie ne se recharge pas aussitôt.
+        sent = _revision
+        yield f"data: {sent}\n\n"
+        while True:
+            try:
+                await asyncio.wait_for(_revision_changed.wait(), timeout=LIVE_PING)
+            except asyncio.TimeoutError:
+                pass
+            if await request.is_disconnected():
+                break
+            # On compare au dernier numéro envoyé plutôt que de se fier au seul
+            # réveil : un bump tombé entre deux attentes serait sinon perdu.
+            if _revision != sent:
+                sent = _revision
+                yield f"data: {sent}\n\n"
+            else:
+                yield ": ping\n\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 # ── Home ──────────────────────────────────────────────────────────────────────

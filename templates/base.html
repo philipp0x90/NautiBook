@@ -204,6 +204,17 @@
            le titre de la page Paramètres. */
         .icon-settings { width: 1em; height: 1em; vertical-align: -0.1em; }
 
+        /* ── Bandeau « saisie sur un autre appareil » ── */
+        /* Affiché à la place du rechargement automatique quand une saisie est en
+           cours sur cet appareil : recharger effacerait ce qui est tapé. */
+        #maj-bandeau {
+            display: none; position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+            z-index: 400; background: var(--accent-dark); color: #fff; cursor: pointer;
+            padding: 10px 16px; border-radius: 8px; font-size: 14px; text-align: center;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+        }
+        #maj-bandeau.open { display: block; }
+
         /* 980 et non 780 : six onglets pleine taille demandent ~960 px, sinon
            « Gallerie » touche la roue crantée, puis sort de l'écran, au lieu de
            passer en version compacte. */
@@ -318,6 +329,10 @@
     <img id="photo-lightbox-img" src="" alt="">
 </div>
 
+<div id="maj-bandeau" onclick="location.reload()" title="Recharger la page">
+    Données saisies sur un autre appareil — toucher pour actualiser
+</div>
+
 <script>
 // Whole-row links in tables: <tr onclick="rowLink(event, '/somewhere')">.
 // Ignores clicks that landed on something interactive, so the delete button
@@ -340,6 +355,45 @@ function agrandirPhoto(event, img) {
 document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') document.getElementById('photo-lightbox').classList.remove('open');
 });
+
+// ── Mise à jour automatique entre appareils ──────────────────────────────────
+// Le serveur pousse un numéro de révision sur /api/changes (voir main.py) à
+// chaque enregistrement. Quand il change, c'est qu'un autre appareil a saisi
+// quelque chose : la page se recharge pour l'afficher. Rien n'est envoyé depuis
+// le navigateur — l'app n'écrit que par formulaire.
+(function () {
+    if (!window.EventSource) return;   // rien à faire sur un très vieux navigateur
+
+    // Recharger effacerait une saisie en cours, ou refermerait une fenêtre que
+    // l'on vient d'ouvrir : dans ces cas on propose le rechargement au lieu de
+    // l'imposer. Le drapeau ne retombe jamais, un champ touché restant à
+    // enregistrer jusqu'au prochain chargement de page.
+    var saisieCommencee = false;
+    document.addEventListener('input', function () { saisieCommencee = true; }, true);
+
+    function saisieEnCours() {
+        if (saisieCommencee) return true;
+        if (document.querySelector('.modal.open, #photo-lightbox.open, dialog[open]')) return true;
+        var actif = document.activeElement;
+        return !!(actif && actif.matches('input, select, textarea'));
+    }
+
+    var revision = null;
+    var flux = new EventSource('/api/changes');
+
+    flux.onmessage = function (event) {
+        if (revision === null) { revision = event.data; return; }   // référence
+        if (event.data === revision) return;
+        revision = event.data;
+        if (saisieEnCours()) {
+            document.getElementById('maj-bandeau').classList.add('open');
+            return;
+        }
+        location.reload();
+    };
+    // Pas de flux.onerror : EventSource se reconnecte tout seul, et un serveur
+    // relancé renvoie un numéro différent, donc la page se remet à jour d'elle-même.
+})();
 </script>
 
 </body>
