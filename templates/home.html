@@ -25,6 +25,14 @@
         letter-spacing: 3px;
         text-transform: uppercase;
     }
+    /* Le footer de base.html se sépare du contenu par un filet et 40 px de
+       marge : de trop sur une page qui n'est qu'un logo centré. On ne garde
+       que la signature, discrète, en bas. */
+    footer.splash-footer {
+        border-top: none;
+        margin-top: 0;
+        padding-top: 0;
+    }
 </style>
 {% endblock %}
 
@@ -44,5 +52,9 @@
 </div>
 {% endblock %}
 
-{# Pas de footer sur la page d'accueil. #}
-{% block footer %}{% endblock %}
+{# Ni le nom du navire ni « — Nautibook — » du footer habituel : le logo tient
+   déjà ce rôle. Seule la signature figure ici. Le & est écrit &amp;, un & nu
+   étant une entité HTML incomplète. #}
+{% block footer %}
+<footer class="splash-footer">©Benoit &amp; Tom Mansion 2026</footer>
+{% endblock %}

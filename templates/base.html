@@ -93,6 +93,10 @@
             text-decoration: none;
             border-radius: 8px;
             margin: 2px 6px;
+            /* « Liste des croisières » et « Carnet d'adresses » dépassent les
+               210 px de min-width et se coupaient en deux lignes. Le menu
+               s'élargit à la place, min-width n'étant qu'un minimum. */
+            white-space: nowrap;
         }
         nav .dropdown-menu a:hover { background: #e8f4f9; }
 
@@ -277,10 +281,11 @@
             <li class="{{ 'active' if active_section == 'cruises' else '' }}">
                 <a href="/cruises/current">Croisières</a>
                 <div class="dropdown-menu">
-                    <a href="/cruises/new">Nouvelle croisière</a>
                     <a href="/cruises/current">Croisière en cours</a>
-                    <a href="/cruises/stopovers">Escales</a>
                     <a href="/cruises/list">Liste des croisières</a>
+                    <a href="/cruises/new">Nouvelle croisière</a>
+                    <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
+                    <a href="/cruises/stopovers">Escales</a>
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'routes' else '' }}">
