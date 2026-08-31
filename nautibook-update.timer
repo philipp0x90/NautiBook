@@ -1,0 +1,17 @@
+[Unit]
+Description=NautiBook — contrôle périodique de la branche production
+
+[Timer]
+# Minuteries monotones, comptées depuis le démarrage et depuis le dernier
+# passage : c'est ce qu'il faut à bord, où le Pi s'éteint souvent et où
+# l'heure n'a pas d'importance. (Persistent= ne sert qu'avec OnCalendar=, il
+# serait ignoré ici.)
+OnBootSec=2min
+OnUnitActiveSec=5min
+# Un fetch sur un dépôt public coûte quelques kilo-octets ; inutile pour autant
+# de laisser systemd regrouper le réveil avec d'autres à la minute près.
+AccuracySec=30s
+Unit=nautibook-update.service
+
+[Install]
+WantedBy=timers.target

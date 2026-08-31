@@ -1,0 +1,18 @@
+[Unit]
+Description=NautiBook — mise à jour depuis la branche production
+# Sans réseau le script ressort immédiatement, mais autant ne pas le lancer
+# pour rien juste après le démarrage du Pi.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Même utilisateur que l'app : le dépôt lui appartient, et git lancé en root
+# laisserait des fichiers root dans /home/pi. Le redémarrage du service, lui,
+# passe par la règle sudoers dédiée (voir notes_papa.md).
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/NautiBook
+ExecStart=/home/pi/NautiBook/deploy.sh
+StandardOutput=journal
+StandardError=journal

@@ -6,6 +6,8 @@ claude_todo.md
 config.yaml
 *.pdf
 logbook.db.backup-*
+# Écrit par deploy.sh sur le Pi quand un commit refuse de démarrer
+.deploy-failed
 
 # Photos uploaded into IMG/ stay local; the folder itself is tracked
 IMG/*
