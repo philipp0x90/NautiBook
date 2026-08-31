@@ -9,6 +9,23 @@
 <style>
     /* Code pays et numéro sur une ligne, la liste à sa largeur naturelle. */
     .tel-row { display: flex; gap: 6px; align-items: center; }
+
+    /* Tous les champs à la hauteur du champ « Nom », mesurée à 32 px : 16 px de
+       ligne + 2×7 px de marge intérieure + 2×1 px de bordure (voir input,
+       select dans base.html). Sans consigne, le navigateur impose ses propres
+       métriques et la grille part en escalier — les listes déroulantes et le
+       champ date faisaient 34 px, le sélecteur de fichier 38.
+       Valeur fixe et non calculée : la hauteur naturelle d'un input dépend de
+       la police du système, donc elle varierait entre l'iPad et le Mac.
+       box-sizing: border-box étant déjà posé, ces 32 px englobent la marge
+       intérieure et la bordure. */
+    .crew-form input,
+    .crew-form select {
+        height: 32px;
+    }
+    /* Le bouton « Choisir un fichier » vit *dans* le champ : il lui faut un
+       peu moins de marge pour tenir dans les 33 px. */
+    .crew-form input[type="file"] { padding: 5px 8px; }
 </style>
 {% endblock %}
 
@@ -20,7 +37,7 @@
 </div>
 
 {# enctype obligatoire dès qu'un champ envoie un fichier. #}
-<form method="POST" enctype="multipart/form-data" class="card" style="display:grid;gap:16px"
+<form method="POST" enctype="multipart/form-data" class="card crew-form" style="display:grid;gap:16px"
       action="{{ '/crew/' ~ member.id ~ '/edit' if edition else '/crew/new' }}">
 
     <section>
