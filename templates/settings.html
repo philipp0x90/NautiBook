@@ -94,6 +94,39 @@
         color: #dc2626;
         font-weight: 600;
     }
+    /* Le bloc de sauvegarde dans le pied de page. Détaché du filet du footer
+       par une marge, pour ne pas se lire comme la signature. */
+    .footer-backup { margin-top: 18px; }
+    .btn-backup {
+        padding: 9px 22px;
+        background: #fff;
+        color: var(--accent-dark);
+        font-size: 13px;
+        font-weight: 700;
+        border: 1.5px solid #dde5ee;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .btn-backup:hover { border-color: var(--accent); background: #f8fafc; }
+    .footer-backup-hint {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 7px;
+    }
+    /* Le compte rendu du dernier clic. Il ne survit pas au rechargement, le
+       message arrivant par l'URL. */
+    .backup-result {
+        margin: 12px auto 0;
+        max-width: 520px;
+        padding: 9px 14px;
+        border-radius: 9px;
+        font-size: 12px;
+        line-height: 1.5;
+        text-align: left;
+    }
+    .backup-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .backup-err { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
 </style>
 {% endblock %}
 
@@ -138,4 +171,46 @@
         </form>
     </div>
 </div>
+{% endblock %}
+
+{# Le pied de page habituel de base.html, augmenté du bouton de sauvegarde :
+   il n'a de sens que sur cette page, d'où la surcharge du bloc plutôt qu'un
+   ajout dans base.html qui l'aurait mis partout. #}
+{% block footer %}
+<footer>
+    {% if request.state.ship_name %}
+    <div class="footer-ship">{{ request.state.ship_name }}</div>
+    {% endif %}
+    — Nautibook —
+
+    <div class="footer-backup">
+        <form method="post" action="/settings/backup" onsubmit="return demarrerSauvegarde(this)">
+            <button type="submit" class="btn-backup">Sauvegarder maintenant</button>
+        </form>
+        <div class="footer-backup-hint">
+            Copie le journal et les photos vers iCloud
+        </div>
+    </div>
+
+    {% if sauvegarde %}
+    <div class="backup-result {{ 'backup-ok' if sauvegarde == 'ok' else 'backup-err' }}">
+        {% if sauvegarde == 'ok' %}✓{% else %}✕{% endif %}
+        {{ sauvegarde_message }}
+    </div>
+    {% endif %}
+</footer>
+
+<script>
+// La sauvegarde prend une à deux secondes sans que rien ne bouge à l'écran :
+// sans ce retour, un second clic lancerait une deuxième copie. Le drapeau sur
+// le formulaire suffit, le rechargement de la page le remettant à zéro.
+function demarrerSauvegarde(form) {
+    if (form.dataset.encours) return false;
+    form.dataset.encours = "1";
+    const bouton = form.querySelector("button");
+    bouton.textContent = "Sauvegarde en cours…";
+    bouton.style.opacity = "0.6";
+    return true;
+}
+</script>
 {% endblock %}

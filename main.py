@@ -6,10 +6,12 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime, date
 import asyncio
 import re
+import subprocess
 import aiosqlite
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 from utils import get_sensor_data, get_position
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
 
@@ -2661,7 +2663,13 @@ async def setup_save(ikommunicate_url: str = Form(...)):
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 @app.get("/settings", response_class=HTMLResponse)
-async def settings_form(request: Request):
+async def settings_form(request: Request, sauvegarde: str = "", message: str = ""):
+    """Les deux paramètres viennent de settings_backup, qui redirige ici.
+
+    Le compte rendu de la sauvegarde voyage dans l'URL plutôt que dans un état
+    côté serveur : il s'affiche une fois et disparaît au rechargement, ce qu'on
+    attend d'un message ponctuel.
+    """
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
@@ -2672,6 +2680,9 @@ async def settings_form(request: Request):
             "active_section": "settings",
             "current_ship": dict(ship) if ship else None,
             "ikommunicate_host": get_ikommunicate_host() or "",
+            # Toute autre valeur que 'ok' ou 'erreur' n'affiche rien.
+            "sauvegarde": sauvegarde if sauvegarde in ("ok", "erreur") else "",
+            "sauvegarde_message": message,
         },
     )
 
@@ -2683,6 +2694,69 @@ async def settings_save(
 ):
     save_config({"ikommunicate_url": (ikommunicate_url or "").strip()})
     return RedirectResponse(url="/settings", status_code=303)
+
+
+# Le script vit à côté de main.py. Il sait se repérer seul, mais on le désigne
+# par son chemin absolu : le dossier courant d'uvicorn n'est pas garanti.
+BACKUP_SCRIPT = Path(__file__).resolve().parent / "backup.sh"
+
+
+def _retour_sauvegarde(etat: str, message: str) -> RedirectResponse:
+    """Renvoie sur /settings avec l'état et le message en clair dans l'URL."""
+    return RedirectResponse(
+        # Tronqué : le message finit dans une URL, et seul le résumé compte.
+        url=f"/settings?sauvegarde={etat}&message={quote(message[:300])}",
+        status_code=303,
+    )
+
+
+@app.post("/settings/backup")
+async def settings_backup():
+    """Lance backup.sh depuis le bouton du pied de page des paramètres.
+
+    Rien n'est dupliqué ici : le script reste la seule définition de ce qu'est
+    une sauvegarde (destination, vérification, élagage), et ce handler ne fait
+    que le lancer et rapporter ce qu'il a dit. Il tourne aussi bien à la main
+    dans un terminal.
+    """
+    if not BACKUP_SCRIPT.exists():
+        return _retour_sauvegarde("erreur", "backup.sh est introuvable à côté de main.py.")
+
+    # subprocess.run bloque, et le script copie la base puis synchronise les
+    # photos — quelques secondes, davantage au premier lancement. Même raison
+    # que get_position() dans le traqueur : on le sort de la boucle d'événements.
+    def _lancer():
+        return subprocess.run(
+            [str(BACKUP_SCRIPT)],
+            cwd=str(BACKUP_SCRIPT.parent),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+    try:
+        resultat = await asyncio.to_thread(_lancer)
+    except subprocess.TimeoutExpired:
+        return _retour_sauvegarde("erreur", "La sauvegarde a dépassé 5 minutes et a été interrompue.")
+    # Un bouton ne doit jamais renvoyer une page d'erreur 500 : même un script
+    # non exécutable ou absent du disque se raconte dans le pied de page.
+    except Exception as exc:
+        return _retour_sauvegarde("erreur", f"Lancement impossible : {exc}")
+
+    lignes = [ligne.strip() for ligne in resultat.stdout.splitlines() if ligne.strip()]
+
+    if resultat.returncode == 0:
+        # Les lignes « base : » et « photos : » sont le résumé utile ; le reste
+        # (en-tête, élagage) n'apprend rien à qui vient de cliquer.
+        resume = " · ".join(l for l in lignes if l.startswith(("base", "photos")))
+        return _retour_sauvegarde("ok", resume or "Sauvegarde effectuée.")
+
+    # Le script annonce ses échecs sur la sortie standard, préfixés ERREUR.
+    echec = next((l for l in lignes if l.startswith("ERREUR")), "")
+    return _retour_sauvegarde(
+        "erreur",
+        echec or resultat.stderr.strip() or f"Échec sans message (code {resultat.returncode}).",
+    )
 
 
 # Run with: uvicorn main:app --reload --host 0.0.0.0 --port 8000
