@@ -14,9 +14,17 @@ NautiBook is a web-based boat logbook (FastAPI + SQLite + server-rendered Jinja2
 source .venv/bin/activate     # the venv is .venv (run.sh depends on this name)
 pip install -r requirements.txt
 ./run.sh                      # uvicorn main:app --reload --host 0.0.0.0 --port 8000
+./backup.sh                   # logbook.db + IMG/ → iCloud (Mac only, run by hand)
+GARDER=30 ./backup.sh         # keep 30 snapshots instead of the default 10
 ```
 
 `--reload` picks up Python and template edits without a restart. There are no tests, linters, or migration tooling.
+
+`backup.sh` needs no venv — only the system `sqlite3` and `rsync` — and locates the repo from its own path, so it can be called from anywhere. It exists because **`logbook.db` and `IMG/*` are gitignored, so they are the one thing GitHub does not carry between machines**; the code needs no backup, it is on the remote. Three decisions in it are deliberate and easy to undo by accident:
+
+- **The database is copied with `sqlite3 .backup`, never `cp`.** That is SQLite's online-backup API, the only safe way while the app is writing; a `cp` of a live database yields a file that looks fine and fails on the day you need it. Each snapshot is then checked with `integrity_check` and deleted if it fails.
+- **Photos go to one cumulative mirror, not a snapshot per run, and `rsync` runs without `--delete`.** `_save_photo` timestamps every filename so none is ever reused, and nothing in the app deletes from `IMG/` — photos only ever accumulate, so rsync copies just the new ones. Keeping files the local `IMG/` no longer has is the point: restoring an old database means restoring paths to photos since removed. Only the `.db` snapshots are pruned.
+- **It is Mac-only.** The destination is `~/Library/Mobile Documents/com~apple~CloudDocs/NautiBook/Sauvegardes`, which does not exist on the Pi. It exits with an error there rather than inventing a path, but the Pi — where the real navigation data lives — still has no backup of its own.
 
 ## Domain model
 
