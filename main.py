@@ -2663,12 +2663,19 @@ async def setup_save(ikommunicate_url: str = Form(...)):
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 @app.get("/settings", response_class=HTMLResponse)
-async def settings_form(request: Request, sauvegarde: str = "", message: str = ""):
-    """Les deux paramètres viennent de settings_backup, qui redirige ici.
+async def settings_form(
+    request: Request,
+    sauvegarde: str = "",
+    message_sauvegarde: str = "",
+    signalk: str = "",
+    message_signalk: str = "",
+):
+    """Les quatre paramètres viennent de settings_backup et settings_test_signalk.
 
-    Le compte rendu de la sauvegarde voyage dans l'URL plutôt que dans un état
-    côté serveur : il s'affiche une fois et disparaît au rechargement, ce qu'on
-    attend d'un message ponctuel.
+    Les comptes rendus voyagent dans l'URL plutôt que dans un état côté serveur :
+    ils s'affichent une fois et disparaissent au rechargement, ce qu'on attend
+    d'un message ponctuel. Deux paires distinctes parce que les deux messages
+    n'apparaissent pas au même endroit de la page.
     """
     async with connect() as db:
         db.row_factory = aiosqlite.Row
@@ -2682,7 +2689,9 @@ async def settings_form(request: Request, sauvegarde: str = "", message: str = "
             "ikommunicate_host": get_ikommunicate_host() or "",
             # Toute autre valeur que 'ok' ou 'erreur' n'affiche rien.
             "sauvegarde": sauvegarde if sauvegarde in ("ok", "erreur") else "",
-            "sauvegarde_message": message,
+            "sauvegarde_message": message_sauvegarde,
+            "signalk": signalk if signalk in ("ok", "erreur") else "",
+            "signalk_message": message_signalk,
         },
     )
 
@@ -2701,11 +2710,15 @@ async def settings_save(
 BACKUP_SCRIPT = Path(__file__).resolve().parent / "backup.sh"
 
 
-def _retour_sauvegarde(etat: str, message: str) -> RedirectResponse:
-    """Renvoie sur /settings avec l'état et le message en clair dans l'URL."""
+def _retour_settings(cle: str, etat: str, message: str) -> RedirectResponse:
+    """Renvoie sur /settings avec l'état et le message en clair dans l'URL.
+
+    `cle` vaut 'sauvegarde' ou 'signalk' : chaque compte rendu a son
+    emplacement dans la page, d'où deux paires de paramètres.
+    """
     return RedirectResponse(
         # Tronqué : le message finit dans une URL, et seul le résumé compte.
-        url=f"/settings?sauvegarde={etat}&message={quote(message[:300])}",
+        url=f"/settings?{cle}={etat}&message_{cle}={quote(message[:300])}",
         status_code=303,
     )
 
@@ -2720,7 +2733,7 @@ async def settings_backup():
     dans un terminal.
     """
     if not BACKUP_SCRIPT.exists():
-        return _retour_sauvegarde("erreur", "backup.sh est introuvable à côté de main.py.")
+        return _retour_settings("sauvegarde", "erreur", "backup.sh est introuvable à côté de main.py.")
 
     # subprocess.run bloque, et le script copie la base puis synchronise les
     # photos — quelques secondes, davantage au premier lancement. Même raison
@@ -2737,11 +2750,11 @@ async def settings_backup():
     try:
         resultat = await asyncio.to_thread(_lancer)
     except subprocess.TimeoutExpired:
-        return _retour_sauvegarde("erreur", "La sauvegarde a dépassé 5 minutes et a été interrompue.")
+        return _retour_settings("sauvegarde", "erreur", "La sauvegarde a dépassé 5 minutes et a été interrompue.")
     # Un bouton ne doit jamais renvoyer une page d'erreur 500 : même un script
     # non exécutable ou absent du disque se raconte dans le pied de page.
     except Exception as exc:
-        return _retour_sauvegarde("erreur", f"Lancement impossible : {exc}")
+        return _retour_settings("sauvegarde", "erreur", f"Lancement impossible : {exc}")
 
     lignes = [ligne.strip() for ligne in resultat.stdout.splitlines() if ligne.strip()]
 
@@ -2749,14 +2762,78 @@ async def settings_backup():
         # Les lignes « base : » et « photos : » sont le résumé utile ; le reste
         # (en-tête, élagage) n'apprend rien à qui vient de cliquer.
         resume = " · ".join(l for l in lignes if l.startswith(("base", "photos")))
-        return _retour_sauvegarde("ok", resume or "Sauvegarde effectuée.")
+        return _retour_settings("sauvegarde", "ok", resume or "Sauvegarde effectuée.")
 
     # Le script annonce ses échecs sur la sortie standard, préfixés ERREUR.
     echec = next((l for l in lignes if l.startswith("ERREUR")), "")
-    return _retour_sauvegarde(
+    return _retour_settings(
+        "sauvegarde",
         "erreur",
         echec or resultat.stderr.strip() or f"Échec sans message (code {resultat.returncode}).",
     )
+
+
+# Étiquettes françaises des mesures, pour nommer celles que le serveur ne
+# publie pas. Les clés sont celles de get_sensor_data ; lat et long en sont
+# absentes, la position étant rapportée à part.
+SIGNALK_LABELS = {
+    "aws": "vent apparent",
+    "awa": "angle du vent",
+    "water_temp": "température de l'eau",
+    "heading": "cap",
+    "cog": "route fond",
+    "log": "loch",
+    "trip": "loch journalier",
+    "depth": "sonde",
+    "stw": "vitesse surface",
+    "sog": "vitesse fond",
+}
+
+
+@app.post("/settings/test-signalk")
+async def settings_test_signalk(ikommunicate_url: Optional[str] = Form(None)):
+    """Interroge SignalK et rapporte le résultat dans la page.
+
+    Le bouton partage le formulaire du champ d'adresse via `formaction`, donc
+    la valeur tapée arrive ici et est enregistrée avant d'être testée :
+    personne ne veut tester une adresse et découvrir ensuite qu'il fallait
+    aussi l'enregistrer.
+
+    Ce test existe parce que le badge « configuré » ne vérifie que la présence
+    d'une chaîne, jamais la connexion — une adresse fausse s'affichait donc
+    comme correcte, et les échecs ne partaient que dans le terminal du serveur.
+    """
+    # Enregistré tel quel, comme settings_save : une case vidée et un champ
+    # absent arrivent tous deux à None avec Form(None), donc impossible de les
+    # distinguer — et « Tester » sur une case effacée doit bien effacer.
+    save_config({"ikommunicate_url": (ikommunicate_url or "").strip()})
+
+    host = get_ikommunicate_host()
+    if not host:
+        return _retour_settings("signalk", "erreur", "Aucune adresse enregistrée.")
+
+    # requests bloquant, comme get_position() dans le traqueur. Un hôte muet
+    # coûte les 5 s du timeout de découverte, pas la somme des endpoints :
+    # get_sensor_data() renonce d'emblée si la découverte échoue.
+    data = await asyncio.to_thread(get_sensor_data)
+
+    if not data:
+        return _retour_settings(
+            "signalk",
+            "erreur",
+            f"Aucune réponse de {host}. Vérifiez l'adresse et le port — "
+            "SignalK écoute sur 3000 par défaut, et l'app interroge le 80 "
+            "si aucun port n'est indiqué.",
+        )
+
+    mesures = [k for k in data if k not in ("lat", "long")]
+    detail = f"{len(mesures)} mesure(s)"
+    if data.get("lat") is not None and data.get("long") is not None:
+        detail += f", position {data['lat']:.4f} / {data['long']:.4f}"
+    absents = [nom for cle, nom in SIGNALK_LABELS.items() if cle not in data]
+    if absents:
+        detail += f". Non publié par le serveur : {', '.join(absents)}"
+    return _retour_settings("signalk", "ok", f"Connecté à {host} — {detail}.")
 
 
 # Run with: uvicorn main:app --reload --host 0.0.0.0 --port 8000

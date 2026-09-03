@@ -94,6 +94,31 @@
         color: #dc2626;
         font-weight: 600;
     }
+    /* Second bouton du formulaire, en retrait par rapport à « Enregistrer » :
+       c'est une vérification, pas l'action principale. */
+    .btn-test {
+        padding: 10px 20px;
+        background: #fff;
+        color: var(--accent-dark);
+        font-size: 13px;
+        font-weight: 700;
+        border: 1.5px solid #dde5ee;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .btn-test:hover { border-color: var(--accent); background: #f8fafc; }
+    /* Compte rendu du test, au-dessus des boutons plutôt qu'en dessous : le
+       message pousserait sinon les boutons hors de vue à chaque essai. */
+    .test-result {
+        margin-bottom: 16px;
+        padding: 10px 14px;
+        border-radius: 9px;
+        font-size: 12px;
+        line-height: 1.55;
+    }
+    .test-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .test-err { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
     /* Le bloc de sauvegarde dans le pied de page. Détaché du filet du footer
        par une marge, pour ne pas se lire comme la signature. */
     .footer-backup { margin-top: 18px; }
@@ -151,10 +176,13 @@
                     id="ik_url"
                     name="ikommunicate_url"
                     value="{{ ikommunicate_host }}"
-                    placeholder="192.168.1.1"
+                    placeholder="192.168.1.102:3000"
                 >
                 <div class="field-hint">
-                    Adresse IP ou nom d'hôte uniquement — ex.&nbsp;: <code>192.168.1.1</code>
+                    Adresse IP, <strong>avec le port</strong> si le serveur n'est pas sur le
+                    port&nbsp;80 — ex.&nbsp;: <code>192.168.1.102:3000</code>.
+                    SignalK écoute sur <code>3000</code> par défaut&nbsp;; sans le port,
+                    l'adresse est enregistrée mais aucun capteur ne répond.
                     &nbsp;·&nbsp;
                     {% if ikommunicate_host %}
                     <span class="badge-ok">✓ configuré</span>
@@ -165,8 +193,19 @@
                     <span style="color: var(--text-muted, #888);">Pour tester sans capteurs&nbsp;: <code>demo.signalk.org</code></span>
                 </div>
             </div>
+            {% if signalk %}
+            <div class="test-result {{ 'test-ok' if signalk == 'ok' else 'test-err' }}">
+                {% if signalk == 'ok' %}✓{% else %}✕{% endif %}
+                {{ signalk_message }}
+            </div>
+            {% endif %}
             <div class="settings-actions">
                 <button type="submit" class="btn-save">Enregistrer</button>
+                {# formaction envoie le même formulaire ailleurs : le test reçoit
+                   donc l'adresse telle qu'elle est dans la case, et l'enregistre
+                   avant d'essayer. #}
+                <button type="submit" class="btn-test"
+                        formaction="/settings/test-signalk">Tester la connexion</button>
             </div>
         </form>
     </div>
