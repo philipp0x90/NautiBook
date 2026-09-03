@@ -156,7 +156,12 @@
                lecteur de cartes. Le stockage reste en degrés décimaux signés :
                le handler recompose via _dmm_to_dd, et l'hémisphère y porte le
                signe. Les filtres latdmm / londmm font la découpe inverse. #}
-            {% set p = (data.lat if data else none) | latdmm %}
+            {# .get() et non data.lat : get_sensor_data() retire les clés que
+               SignalK n'a pas publiées, et data.lat vaudrait alors Undefined,
+               sur quoi le float() de _dmm_parts lève une UndefinedError que son
+               « except (TypeError, ValueError) » n'attrape pas. .get() rend
+               None, que le filtre sait traduire en boîtes vides. #}
+            {% set p = (data.get('lat') if data else none) | latdmm %}
             <div>
                 <label>Latitude</label>
                 <div class="dmm-row">
@@ -170,7 +175,7 @@
                     </select>
                 </div>
             </div>
-            {% set p = (data.long if data else none) | londmm %}
+            {% set p = (data.get('long') if data else none) | londmm %}
             <div>
                 <label>Longitude</label>
                 <div class="dmm-row">
@@ -186,7 +191,12 @@
             </div>
             <div>
                 <label>Sonde (m)</label>
-                <input type="number" step="0.1" name="depth" value="{{ '%.1f'|format(data.depth) if data and data.depth is not none else '' }}">
+                {# Même piège que la position, en pire : « data.depth is not
+                   none » est vrai pour un Undefined, donc le garde-fou laissait
+                   passer et format() éclatait — la page entière rendait 500 dès
+                   que SignalK ne publiait pas depth/belowKeel. #}
+                {% set profondeur = data.get('depth') if data else none %}
+                <input type="number" step="0.1" name="depth" value="{{ '%.1f'|format(profondeur) if profondeur is not none else '' }}">
             </div>
             <div>
                 <label>Position (visuelle)</label>
