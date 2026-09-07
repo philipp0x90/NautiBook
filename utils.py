@@ -5,14 +5,18 @@ from config import get_ikommunicate_url, get_keel_offset
 DATABASE_URL = "logbook.db"
 VESSEL = "self"
 
-# SignalK serves everything in SI units (m/s, radians, Kelvin, meters).
-# The logbook stores and displays knots, degrees, Celsius and nautical miles.
+# SignalK serves everything in SI units (m/s, radians, Kelvin, meters, Pascals).
+# The logbook stores and displays knots, degrees, Celsius, nautical miles and
+# hectopascals.
 MS_TO_KNOTS = 1.9438444924406
 METERS_PER_NM = 1852
 
 endpoints = {
     "AWS": f"vessels/{VESSEL}/environment/wind/speedApparent",
     "AWA": f"vessels/{VESSEL}/environment/wind/angleApparent",
+    # outside et non inside : le baromètre du journal est la pression ambiante,
+    # celle des cartes météo — inside donne la température du compartiment.
+    "pressure": f"vessels/{VESSEL}/environment/outside/pressure",
     "water_temp": f"vessels/{VESSEL}/environment/water/temperature",
     # Cap magnétique, celui que lit le compas de route — et non headingTrue,
     # que l'iKommunicate du bord ne publie pas de toute façon.
@@ -49,6 +53,13 @@ def _nm(value):
 
 def _celsius(value):
     return round(value - 273.15, 1)
+
+
+def _hpa(value):
+    """Pressure: whole hectopascals, what a barometer shows. The 100 is written
+    out like the 273.15 above — the prefix *is* the constant, so naming it would
+    only add an indirection."""
+    return round(value / 100)
 
 
 def _signed_deg(value):
@@ -143,6 +154,7 @@ def get_sensor_data() -> dict:
             "awa": _read(signalk_url, "AWA", _signed_deg),     # rad  → °
             "tws": _read(signalk_url, "tws", _knots),          # m/s  → nds
             "twa": _read(signalk_url, "twa", _signed_deg),     # rad  → °
+            "pressure": _read(signalk_url, "pressure", _hpa),  # Pa   → hPa
             "water_temp": _read(signalk_url, "water_temp", _celsius),  # K → °C
             "heading": _read(signalk_url, "heading", _bearing_deg),  # rad → °
             "cog": _read(signalk_url, "cog", _bearing_deg),    # rad  → °

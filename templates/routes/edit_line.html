@@ -85,7 +85,11 @@
             </div>
             <div>
                 <label>P° Atmo. (hPa)</label>
-                <input type="number" step="any" name="pressure" value="{{ line.pressure if line.pressure is not none else '' }}">
+                {# Formaté comme depth plus bas : la colonne est REAL, donc un hPa
+                   entier en revient en 1030.0 et s'afficherait tel quel dans la
+                   case. Le step reste « any » — le contraindre à 1 ferait refuser
+                   une valeur collée avec décimales, que le handler sait arrondir. #}
+                <input type="number" step="any" name="pressure" value="{{ '%.0f'|format(line.pressure) if line.pressure is not none else '' }}">
             </div>
             <div>
                 <label>T° eau (°C)</label>

@@ -74,6 +74,17 @@ def _deg(value):
         return value
 
 
+def _hpa(value):
+    """Pressure is whole hPa, but REAL columns hand it back as a float (1030.0).
+    Same reason `deg` exists; `unit('hPa')` would print the trailing .0."""
+    if value is None or value == "":
+        return "—"
+    try:
+        return f"{round(float(value))} hPa"
+    except (TypeError, ValueError):
+        return value
+
+
 def _unit(value, suffix):
     """Append a unit to a measurement. Falsy values show an em-dash, so a
     recorded 0 reads as "no value" — same as before this filter existed."""
@@ -154,6 +165,7 @@ templates.env.filters["datefr"] = _datefr
 templates.env.filters["jourfr"] = _jourfr
 templates.env.filters["age"] = _age
 templates.env.filters["deg"] = _deg
+templates.env.filters["hpa"] = _hpa
 templates.env.filters["unit"] = _unit
 templates.env.filters["lat"] = _lat
 templates.env.filters["lon"] = _lon
@@ -2313,6 +2325,9 @@ async def create_line(
     twa = round(twa) if twa is not None else None
     heading = round(heading) if heading is not None else None
     cog = round(cog) if cog is not None else None
+    # Pressure too: whole hPa, like a barometer. The field is step="any", so a
+    # value pasted with decimals is normalised here rather than refused.
+    pressure = round(pressure) if pressure is not None else None
     position_lat = _dmm_to_dd(lat_deg, lat_min, lat_hem)
     position_lon = _dmm_to_dd(lon_deg, lon_min, lon_hem)
     async with connect() as db:
@@ -2552,11 +2567,13 @@ async def update_line(
 ):
     if depth is not None:
         depth = round(depth, 1)
-    # Same rounding as create_line: whole degrees, lat/lon keep full precision.
+    # Same rounding as create_line: whole degrees, whole hPa, lat/lon keep full
+    # precision.
     awa = round(awa) if awa is not None else None
     twa = round(twa) if twa is not None else None
     heading = round(heading) if heading is not None else None
     cog = round(cog) if cog is not None else None
+    pressure = round(pressure) if pressure is not None else None
     # <input type="datetime-local"> submits "YYYY-MM-DDTHH:MM"; rows written by
     # create_line hold str(datetime.now()), so normalise to that shape rather
     # than leaving two formats in the column.
@@ -2778,7 +2795,10 @@ async def settings_backup():
 # absentes, la position étant rapportée à part.
 SIGNALK_LABELS = {
     "aws": "vent apparent",
-    "awa": "angle du vent",
+    "awa": "angle du vent apparent",
+    "tws": "vent réel",
+    "twa": "angle du vent réel",
+    "pressure": "pression atmosphérique",
     "water_temp": "température de l'eau",
     "heading": "cap",
     "cog": "route fond",
