@@ -63,7 +63,7 @@ Several "current" pointers resolve implicitly rather than via a flag, and all ar
 
 - **`main.py`** (~2150 lines) — the whole app: `init_db()` schema creation, all routes grouped by section with `# ── Section ──` comment banners, and the map JSON API. Route order matters: literal paths like `/cruises/new` and `/cruises/list` are declared *before* `/cruises/{cruise_id}`.
 - **`utils.py`** — SignalK HTTP client. Discovers the data endpoint from the configured host, then reads one path per field.
-- **`config.py`** — reads/writes `config.yaml` (gitignored, holds only `ikommunicate_url`). `is_configured()` drives the first-run flow.
+- **`config.py`** — reads/writes `config.yaml` (gitignored, holds `ikommunicate_url` and the optional `keel_offset`). `is_configured()` drives the first-run flow. **`ikommunicate_url` needs the port** unless the server is on 80: the app builds `http://{host}/signalk`, and SignalK's own default is 3000, so a bare IP silently reaches nothing.
 - **`templates/`** — Jinja2, all extending `base.html`, which holds the entire stylesheet inline and the nav bar.
 - **`tables.sql`** — a translation of the original FileMaker schema (French table names, `ta_*`). It is *reference material only*, not the live schema and not kept in sync with `init_db()`.
 
@@ -86,6 +86,13 @@ Replacing a to-do photo leaves the previous file in `IMG/`; nothing prunes orpha
 SignalK serves SI units (m/s, radians, Kelvin, meters); the logbook stores and displays knots, degrees, °C, and nautical miles. **All conversion happens in `utils.py`** via the small `_knots` / `_nm` / `_celsius` / `_signed_deg` / `_bearing_deg` helpers — nothing downstream converts. Wind angles are signed (−180..180, negative = port); headings and courses are normalised 0..360.
 
 Angles are whole degrees and depth is one decimal. This is enforced in **four** places, so keep them consistent: the converters in `utils.py`, the explicit `round()` calls in `create_line()`, the identical ones in `update_line()`, and the `deg` Jinja filter used for display.
+
+**Two fields have a fallback path, because not every server publishes them.** The boat's own iKommunicate serves neither `navigation/headingTrue` nor `environment/depth/belowKeel`, so `_read_heading` and `_read_depth` each try the ideal path first and then derive it:
+
+- Heading falls back to `headingMagnetic` + `magneticVariation`, **added in radians before conversion** so `_bearing_deg` handles the wrap past north. A missing variation counts as zero rather than as failure — the magnetic heading alone beats an empty box by a few degrees.
+- Depth falls back to `belowTransducer`, which is **not the same measurement**: it is read from the sounder, so it is *larger* than the clearance under the keel. `config.yaml`'s optional `keel_offset` (metres) is subtracted to correct it. Unset it is 0, and the reported depth then overstates the water available — the dangerous direction, which is why `get_keel_offset()` also clamps negatives away.
+
+`get_sensor_data()` **drops keys whose value is `None`**, so a field the server does not publish is absent from the dict entirely, not present-and-empty. Templates must therefore reach it with `data.get('x')`: `data.x` yields Jinja's `Undefined`, which passes an `is not none` guard and then breaks `format()` and `float()`. That cost a 500 on the whole new-line form once.
 
 **Positions cross a second boundary, in the forms.** The new-line and edit-line forms take degrees, decimal minutes and a hemisphere in three boxes (`lat_deg` / `lat_min` / `lat_hem`, same for `lon_*`) — the format on charts and plotters. The column still holds signed decimal degrees, and only two functions convert: `_dmm_parts` splits a stored value into the three boxes (reachable from templates as the `latdmm` / `londmm` filters), `_dmm_to_dd` recomposes. Two rules live in `_dmm_to_dd` and nowhere else: **the hemisphere carries the sign**, so a minus typed into the degrees box is dropped rather than flipping the value twice, and both boxes empty means `None`, not zero. Minutes are shown to three decimals like the display filters, so re-saving an untouched form can move a position by ~30 cm.
 

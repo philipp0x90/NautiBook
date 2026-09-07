@@ -43,5 +43,23 @@ def get_ikommunicate_url() -> str | None:
     return f"http://{host}/signalk"
 
 
+def get_keel_offset() -> float:
+    """Distance en mètres entre le capteur de sonde et le bas de la quille.
+
+    Sert uniquement quand SignalK ne publie pas `depth/belowKeel` et qu'il faut
+    se rabattre sur `depth/belowTransducer`, mesuré depuis le capteur : le
+    dégagement réel sous la quille est plus petit de cet écart. Non réglé, la
+    valeur vaut 0 et la profondeur reportée **surestime** le fond disponible.
+    """
+    try:
+        offset = float(load_config().get("keel_offset") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    # Un écart négatif *augmenterait* la profondeur reportée, c'est-à-dire
+    # dans le sens qui rassure à tort. Le capteur est au-dessus du bas de la
+    # quille ou au même niveau, jamais en dessous : la valeur est donc positive.
+    return max(offset, 0.0)
+
+
 def is_configured() -> bool:
     return bool(get_ikommunicate_host())
