@@ -27,7 +27,11 @@ endpoints = {
     "stw": f"vessels/{VESSEL}/navigation/speedThroughWater",
     "sog": f"vessels/{VESSEL}/navigation/speedOverGround",
     "tws": f"vessels/{VESSEL}/environment/wind/speedTrue",
-    "twa": f"vessels/{VESSEL}/environment/wind/directionTrue",
+    # angleTrueWater et non directionTrue : le journal veut l'angle du vent
+    # *par rapport au bateau*, signé bâbord/tribord comme l'AWA, là où
+    # directionTrue est un relèvement absolu 0..360 — et l'iKommunicate du bord
+    # ne le publie pas.
+    "twa": f"vessels/{VESSEL}/environment/wind/angleTrueWater",
 }
 
 
@@ -137,6 +141,8 @@ def get_sensor_data() -> dict:
         readings = {
             "aws": _read(signalk_url, "AWS", _knots),          # m/s  → nds
             "awa": _read(signalk_url, "AWA", _signed_deg),     # rad  → °
+            "tws": _read(signalk_url, "tws", _knots),          # m/s  → nds
+            "twa": _read(signalk_url, "twa", _signed_deg),     # rad  → °
             "water_temp": _read(signalk_url, "water_temp", _celsius),  # K → °C
             "heading": _read(signalk_url, "heading", _bearing_deg),  # rad → °
             "cog": _read(signalk_url, "cog", _bearing_deg),    # rad  → °
