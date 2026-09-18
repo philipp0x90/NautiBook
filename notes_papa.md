@@ -62,3 +62,10 @@ systemctl list-timers nautibook-update.timer   # prochain passage
 journalctl -u nautibook-update -n 30           # ce qu'il a trouvé
 sudo systemctl start nautibook-update.service  # forcer un contrôle tout de suite
 ```
+
+## Synchronisation des bases de données
+
+Pour télécharger le fichier `logbook.db` depuis le Pi (qui doit etre sur le meme réseau local):
+```bash
+./copy_db.sh
+```
