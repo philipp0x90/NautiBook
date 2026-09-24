@@ -1396,8 +1396,17 @@ async def crew_detail(request: Request, crew_id: int):
             (crew_id,),
         )
         cruises = await cursor.fetchall()
+        # Précédent / Suivant dans l'ordre de la liste /crew — même ORDER BY,
+        # sinon les boutons sauteraient d'une fiche à l'autre dans un ordre que
+        # l'écran ne montre nulle part. Ids triés en Python plutôt qu'en SQL :
+        # un nom nul ou deux homonymes rendent un « WHERE nom > ? » faux.
+        cursor = await db.execute(
+            "SELECT id FROM crew_members ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE"
+        )
+        ids = [r[0] for r in await cursor.fetchall()]
     if member is None:
         raise HTTPException(status_code=404, detail="Crew member not found")
+    i = ids.index(crew_id)
     return templates.TemplateResponse(
         "crew/detail.html",
         {
@@ -1405,6 +1414,8 @@ async def crew_detail(request: Request, crew_id: int):
             "active_section": "crew",
             "member": dict(member),
             "cruises": [dict(c) for c in cruises],
+            "prev_id": ids[i - 1] if i > 0 else None,
+            "next_id": ids[i + 1] if i + 1 < len(ids) else None,
         },
     )
 

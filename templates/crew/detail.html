@@ -4,7 +4,7 @@
 {% block content %}
 
 <div class="section-bar">
-    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Équipiers</a></div>
+    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Liste des équipiers</a></div>
     <div class="section-bar-title">
         {{ member.first_name or '' }} <span style="text-transform:uppercase">{{ member.last_name or '' }}</span>
     </div>
@@ -12,7 +12,21 @@
 
 <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center">
     <a href="/crew/{{ member.id }}/edit" class="btn btn-yellow">✎ Modifier</a>
-    <div style="flex:1"></div>
+    {# Aux extrémités de la liste, le bouton reste en place, grisé : masqué, il
+       décalerait « + Nouvel équipier » d'une fiche à l'autre. #}
+    <div style="flex:1;display:flex;gap:8px;justify-content:center">
+        {% if prev_id %}
+        <a href="/crew/{{ prev_id }}" class="btn btn-blue">← Précédent</a>
+        {% else %}
+        <span class="btn btn-blue" style="opacity:.4;pointer-events:none">← Précédent</span>
+        {% endif %}
+        <a href="/crew/new" class="btn btn-yellow">+ Nouvel équipier</a>
+        {% if next_id %}
+        <a href="/crew/{{ next_id }}" class="btn btn-blue">Suivant →</a>
+        {% else %}
+        <span class="btn btn-blue" style="opacity:.4;pointer-events:none">Suivant →</span>
+        {% endif %}
+    </div>
     <form method="POST" action="/crew/{{ member.id }}/delete"
           onsubmit="return confirm('Supprimer cette fiche d\'{{ member.gender | equipier }} ?')">
         <button type="submit" class="btn btn-orange">— Supprimer la fiche</button>
@@ -34,32 +48,47 @@
     <div style="display:grid;gap:16px">
         {# Âge calculé, jamais stocké — voir le filtre age dans main.py. Le nom
            est en capitales ici comme dans le titre et dans la liste, ainsi
-           qu'il figure sur les pièces d'identité. #}
-        {% for titre, champs in [
-            ('Identité', [
-                ('Nom', (member.last_name or '') | upper),
-                ('Prénom', member.first_name),
-                ('Genre', member.gender),
-                ('Date de naissance', member.birth_date | datefr),
-                ('Âge', member.birth_date | age),
-                ('Lieu de naissance', member.birth_place),
-                ('Nationalité', member.nationality)
+           qu'il figure sur les pièces d'identité. Une section peut porter
+           plusieurs lignes : la pièce d'identité suit la naissance sous le même
+           titre. #}
+        {% for titre, lignes in [
+            (member.gender | equipier | capitalize, [
+                ('repeat(4,1fr)', [
+                    ('Prénom', member.first_name),
+                    ('Nom', (member.last_name or '') | upper),
+                    ('Genre', member.gender),
+                    ('Âge', member.birth_date | age)
+                ])
+            ]),
+            ('Contact', [
+                ('1fr 1fr', [
+                    ('Téléphone', member.phone),
+                    ('Email', member.email)
+                ])
             ]),
             ('Adresse', [
-                ('Rue et numéro', member.street),
-                ('Code postal', member.postal_code),
-                ('Localité', member.city)
+                ('2fr 1fr 2fr', [
+                    ('Rue et numéro', member.street),
+                    ('Code postal', member.postal_code),
+                    ('Localité', member.city)
+                ])
             ]),
-            ('Pièce d\'identité et contact', [
-                ('Type de pièce', member.id_type),
-                ('Numéro', member.id_number),
-                ('Téléphone', member.phone),
-                ('Email', member.email)
+            ('Identité', [
+                ('1fr 1fr', [
+                    ('Date de naissance', member.birth_date | datefr),
+                    ('Lieu de naissance', member.birth_place)
+                ]),
+                ('repeat(3,1fr)', [
+                    ('Nationalité', member.nationality),
+                    ('Type de pièce d\'identité', member.id_type),
+                    ('Numéro', member.id_number)
+                ])
             ])
         ] %}
-        <section>
-            <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">{{ titre }}</h3>
-            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+        <section style="display:grid;gap:12px">
+            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">{{ titre }}</h3>
+            {% for colonnes, champs in lignes %}
+            <div class="grid" style="grid-template-columns:{{ colonnes }};gap:12px">
                 {% for label, val in champs %}
                 <div>
                     <div class="meta">{{ label }}</div>
@@ -69,6 +98,7 @@
                 </div>
                 {% endfor %}
             </div>
+            {% endfor %}
         </section>
         {% endfor %}
     </div>
