@@ -2,13 +2,12 @@
 {% block title %}Carnet d'adresses — NautiBook{% endblock %}
 {% block content %}
 
-{# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
-   vide gardait son fond translucide et son min-width — une pastille creuse. #}
+{# Le bouton dans la barre, à droite. Pas de .section-bar-right, dont le fond
+   translucide ferait une pastille autour du bouton ; à gauche, son double
+   invisible occupe la même largeur pour que le titre reste centré. #}
 <div class="section-bar">
+    <span class="btn btn-yellow" style="visibility:hidden" aria-hidden="true">+ Nouveau contact</span>
     <div class="section-bar-title">Carnet d'adresses</div>
-</div>
-
-<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
     <a href="/ship/contacts/new" class="btn btn-yellow">+ Nouveau contact</a>
 </div>
 

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Nouveau contact — NautiBook{% endblock %}
+{% from "ship/_place_select.html" import place_select %}
 {% block content %}
 
 {# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
@@ -53,9 +54,23 @@
         <input type="text" name="website" placeholder="https://...">
     </div>
 
-    <div>
-        <label>Adresse</label>
-        <textarea name="address" rows="2" placeholder="1 rue de la Mer, 13000 Marseille"></textarea>
+    <div class="grid" style="grid-template-columns:2fr 1fr 2fr 1.5fr">
+        <div>
+            <label>Rue et numéro</label>
+            <input type="text" name="street" placeholder="1 rue de la Mer">
+        </div>
+        <div>
+            <label>Code postal</label>
+            <input type="text" name="postal_code" placeholder="13000">
+        </div>
+        <div>
+            <label>Localité</label>
+            {{ place_select('city', cities) }}
+        </div>
+        <div>
+            <label>Pays</label>
+            {{ place_select('country', countries) }}
+        </div>
     </div>
 
     <div>

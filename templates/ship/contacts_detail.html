@@ -15,19 +15,20 @@
 </style>
 {% endblock %}
 
+{% from "ship/_place_select.html" import place_select %}
 {% block content %}
 
+{# Pas de badge du navire : son nom figure déjà en pied de page. À sa place,
+   un retour vers chacune des deux listes d'où l'on arrive sur une fiche
+   contact — le carnet, ou les comptes par un clic sur le fournisseur. Les
+   boutons reprennent le fond translucide des badges de la barre. #}
 <div class="section-bar">
-    <div class="section-bar-left">{{ current_ship.name if current_ship else 'Navire' }}</div>
+    <div style="display:flex;gap:8px">
+        <a href="/ship/contacts" class="btn" style="background:rgba(255,255,255,0.25);color:#fff">Contacts</a>
+        <a href="/ship/expenses" class="btn" style="background:rgba(255,255,255,0.25);color:#fff">Dépenses</a>
+    </div>
     <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
     <div class="section-bar-right">{{ contact.category or '' }}</div>
-</div>
-
-{# On arrive sur une fiche contact depuis le carnet ou depuis la liste des
-   comptes (clic sur le fournisseur) : un retour vers chacune. #}
-<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px">
-    <a href="/ship/contacts" class="btn" style="background:#eee;color:#333">Contacts</a>
-    <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Dépenses</a>
 </div>
 
 <div style="display:grid;gap:20px">
@@ -76,13 +77,30 @@
             </form>
             {% endfor %}
         </div>
-        {% for field, label, rows in [('address', 'Adresse', 2), ('notes', 'Notes', 3)] %}
-        <form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}" style="margin-top:12px">
-            <div class="meta">{{ label }}</div>
-            <textarea name="value" class="field-edit" rows="{{ rows }}" placeholder="—"
-                      onchange="this.form.submit()">{{ contact[field] or '' }}</textarea>
+        {# Adresse en quatre champs, dans l'ordre de la fiche équipier. #}
+        <div class="grid" style="grid-template-columns:2fr 1fr 2fr 1.5fr;margin-top:12px">
+            {% for field, label in [
+                ('street', 'Rue et numéro'),
+                ('postal_code', 'Code postal'),
+                ('city', 'Localité'),
+                ('country', 'Pays'),
+            ] %}
+            <form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}">
+                <div class="meta">{{ label }}</div>
+                {% if field in ('city', 'country') %}
+                {{ place_select('value', cities if field == 'city' else countries, contact[field], 'field-edit', true) }}
+                {% else %}
+                <input type="text" name="value" class="field-edit" value="{{ contact[field] or '' }}"
+                       placeholder="—" onchange="this.form.submit()">
+                {% endif %}
+            </form>
+            {% endfor %}
+        </div>
+        <form method="POST" action="/ship/contacts/{{ contact.id }}/field/notes" style="margin-top:12px">
+            <div class="meta">Notes</div>
+            <textarea name="value" class="field-edit" rows="3" placeholder="—"
+                      onchange="this.form.submit()">{{ contact.notes or '' }}</textarea>
         </form>
-        {% endfor %}
     </section>
 
     <section>

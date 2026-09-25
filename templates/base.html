@@ -347,6 +347,19 @@ function rowLink(event, url) {
     location.href = url;
 }
 
+// « Autre… » d'une liste déroulante (ship/_place_select.html) : la liste cède
+// la place, et son name, au champ texte qui la suit, pour taper une valeur
+// qu'elle ne propose pas encore.
+function choixAutre(select) {
+    if (select.value !== '__autre__') return;
+    const input = select.nextElementSibling;
+    input.name = select.name;
+    select.removeAttribute('name');
+    select.style.display = 'none';
+    input.style.display = '';
+    input.focus();
+}
+
 // Vignette agrandie en plein écran : <img onclick="agrandirPhoto(event, this)">.
 // stopPropagation, parce qu'une vignette vit souvent dans une ligne cliquable
 // (rowLink) qui ne doit pas s'ouvrir en même temps. La source est lue sur

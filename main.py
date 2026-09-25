@@ -365,7 +365,10 @@ async def init_db():
                 phone TEXT,
                 email TEXT,
                 website TEXT,
-                address TEXT,
+                street TEXT,
+                postal_code TEXT,
+                city TEXT,
+                country TEXT,
                 notes TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
@@ -467,6 +470,19 @@ async def _migrate(db):
     if "description" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE expenses ADD COLUMN description TEXT")
         print("Migration: expenses.description added")
+
+    # L'adresse d'un contact, un seul texte libre, devient quatre champs comme
+    # celle d'un équipier. Un texte libre ne se redécoupe pas sûrement : il
+    # passe tel quel dans street, à reprendre à la main. La colonne address
+    # reste en base (plus rien ne la lit), ce qui garde l'original.
+    cursor = await db.execute("PRAGMA table_info(contacts)")
+    columns = {row[1] for row in await cursor.fetchall()}
+    if "street" not in columns:
+        for col in ("street", "postal_code", "city", "country"):
+            await db.execute(f"ALTER TABLE contacts ADD COLUMN {col} TEXT")
+        if "address" in columns:
+            await db.execute("UPDATE contacts SET street = address WHERE address IS NOT NULL")
+        print("Migration: contacts street / postal_code / city / country added")
 
     # Les tags de la To Do ont été retirés de l'interface : la colonne suit.
     cursor = await db.execute("PRAGMA table_info(todo_items)")
@@ -1223,16 +1239,33 @@ async def ship_contacts(request: Request):
     )
 
 
+async def _contact_places(db, ship_id: int) -> dict:
+    """Localités et pays déjà saisis dans le carnet du navire, pour les listes
+    déroulantes des fiches contact. Une valeur nouvelle, tapée via « Autre… »,
+    y figure dès qu'elle est enregistrée."""
+    places = {}
+    for col, key in (("city", "cities"), ("country", "countries")):
+        cursor = await db.execute(
+            f"SELECT DISTINCT {col} FROM contacts WHERE ship_id = ? AND {col} IS NOT NULL "
+            f"ORDER BY {col} COLLATE NOCASE",
+            (ship_id,),
+        )
+        places[key] = [row[0] for row in await cursor.fetchall()]
+    return places
+
+
 @app.get("/ship/contacts/new", response_class=HTMLResponse)
 async def new_contact_form(request: Request, expense_id: Optional[int] = None):
     """expense_id : on vient d'une dépense, qui recevra ce contact pour fournisseur."""
+    ship_id = get_current_ship_id(request)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        ship = await _fetch_ship(db, get_current_ship_id(request))
+        ship = await _fetch_ship(db, ship_id)
+        places = await _contact_places(db, ship_id)
     return templates.TemplateResponse(
         "ship/contacts_new.html",
         {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None,
-         "expense_id": expense_id},
+         "expense_id": expense_id, **places},
     )
 
 
@@ -1245,17 +1278,22 @@ async def create_contact(
     phone: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     website: Optional[str] = Form(None),
-    address: Optional[str] = Form(None),
+    street: Optional[str] = Form(None),
+    postal_code: Optional[str] = Form(None),
+    city: Optional[str] = Form(None),
+    country: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     expense_id: Optional[int] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
     async with connect() as db:
         await db.execute(
-            """INSERT INTO contacts (ship_id, company, contact_name, category, phone, email, website, address, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO contacts (ship_id, company, contact_name, category, phone, email, website,
+                                     street, postal_code, city, country, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (ship_id, company or None, contact_name or None, category or None, phone or None,
-             email or None, website or None, address or None, notes or None),
+             email or None, website or None, street or None, postal_code or None, city or None,
+             country or None, notes or None),
         )
         if expense_id is not None:
             # expenses.supplier est un nom, pas un id : le même que celui que
@@ -1288,6 +1326,7 @@ async def contact_detail(request: Request, contact_id: int):
             (ship_id, name_filter),
         )
         purchases = await cursor.fetchall()
+        places = await _contact_places(db, ship_id)
     return templates.TemplateResponse(
         "ship/contacts_detail.html",
         {
@@ -1295,6 +1334,7 @@ async def contact_detail(request: Request, contact_id: int):
             "current_ship": dict(ship) if ship else None,
             "contact": contact,
             "purchases": [dict(p) for p in purchases],
+            **places,
         },
     )
 
@@ -1311,7 +1351,8 @@ templates.env.globals["contact_categories"] = CONTACT_CATEGORIES
 # l'UPDATE : il doit venir de cet ensemble, jamais directement de l'URL — même
 # parti que EDITABLE_LINE_FIELDS.
 EDITABLE_CONTACT_FIELDS = {
-    "company", "contact_name", "category", "phone", "email", "website", "address", "notes",
+    "company", "contact_name", "category", "phone", "email", "website",
+    "street", "postal_code", "city", "country", "notes",
 }
 
 

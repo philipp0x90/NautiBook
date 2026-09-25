@@ -1,0 +1,20 @@
+{# Liste déroulante des valeurs déjà saisies, plus « Autre… » qui la remplace
+   par un champ texte pour en taper une nouvelle (choixAutre, dans base.html).
+   Un seul des deux porte le name à un instant donné : le formulaire n'envoie
+   que celui qu'on voit.
+   autosubmit : la fiche contact enregistre chaque champ dès qu'on le quitte ;
+   le formulaire de création, lui, attend son bouton. #}
+{% macro place_select(name, options, current=none, cls='', autosubmit=false) %}
+<select name="{{ name }}" class="{{ cls }}" onchange="choixAutre(this){{ '; if (this.name) this.form.submit()' if autosubmit else '' }}">
+    <option value="">—</option>
+    {% for opt in options %}
+    <option value="{{ opt }}" {{ 'selected' if current == opt else '' }}>{{ opt }}</option>
+    {% endfor %}
+    <option value="__autre__">Autre…</option>
+</select>
+{# L'attribut en {% if %} et non en {{ '…' if … }} : une chaîne passée par
+   {{ }} est échappée, ses guillemets deviennent &#34; et le navigateur ne lit
+   plus l'onchange — le champ ne s'enregistrait qu'avec la touche Entrée. #}
+<input type="text" data-name="{{ name }}" class="{{ cls }}" style="display:none" placeholder="Nouvelle valeur"
+       {% if autosubmit %}onchange="this.form.submit()"{% endif %}>
+{% endmacro %}
