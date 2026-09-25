@@ -342,6 +342,7 @@ async def init_db():
                 ship_id INTEGER NOT NULL DEFAULT 1,
                 date TEXT,
                 designation TEXT,
+                description TEXT,
                 unit_type TEXT,
                 unit_price REAL,
                 paid REAL,
@@ -461,6 +462,11 @@ async def _migrate(db):
     if "gender" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE crew_members ADD COLUMN gender TEXT")
         print("Migration: crew_members.gender added")
+
+    cursor = await db.execute("PRAGMA table_info(expenses)")
+    if "description" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE expenses ADD COLUMN description TEXT")
+        print("Migration: expenses.description added")
 
     # Les tags de la To Do ont été retirés de l'interface : la colonne suit.
     cursor = await db.execute("PRAGMA table_info(todo_items)")
@@ -876,18 +882,56 @@ async def ship_expenses(request: Request):
             "SELECT * FROM expenses WHERE ship_id = ? ORDER BY date DESC", (ship_id,)
         )
         entries = await cursor.fetchall()
+        # Nom du fournisseur → id de sa fiche. expenses.supplier retient un nom,
+        # le même que celui que propose le formulaire (société, à défaut nom du
+        # contact) ; un nom sans fiche dans le carnet reste sans lien.
+        cursor = await db.execute(
+            "SELECT id, COALESCE(company, contact_name) FROM contacts WHERE ship_id = ?", (ship_id,)
+        )
+        supplier_ids = {name: cid for cid, name in await cursor.fetchall() if name}
     return templates.TemplateResponse(
         "ship/expenses.html",
         {
             "request": request, "active_section": "ship",
             "current_ship": dict(ship) if ship else None,
             "entries": [dict(e) for e in entries],
+            "supplier_ids": supplier_ids,
         },
     )
 
 
-@app.get("/ship/expenses/new", response_class=HTMLResponse)
-async def new_expense_form(request: Request):
+# Types de frais proposés dans le formulaire des comptes. Valeurs *stockées* :
+# en renommer un laisse les lignes existantes sur l'ancien libellé, que le
+# formulaire d'édition continue d'afficher (voir expenses_form.html). None
+# marque le séparateur entre les types et « Autre ».
+EXPENSE_TYPES = ["Equipement", "Entretien", "Stationnement", "Administratif", None, "Autre"]
+
+# Valeur de l'option « Saisir manuellement » du fournisseur. Ce n'est pas un
+# nom : la dépense est enregistrée sans fournisseur, puis le formulaire de
+# contact s'ouvre et lui impute le contact créé (voir create_contact).
+NEW_CONTACT = "__nouveau__"
+
+
+def _after_expense_save(entry_id: int, supplier: Optional[str]) -> RedirectResponse:
+    """Liste des comptes, ou création du contact si c'est ce qu'on a demandé."""
+    if supplier == NEW_CONTACT:
+        return RedirectResponse(url=f"/ship/contacts/new?expense_id={entry_id}", status_code=303)
+    return RedirectResponse(url="/ship/expenses", status_code=303)
+
+
+def _expense_balance(unit_price, paid):
+    """Solde et montant payé, recalculés à chaque enregistrement.
+
+    Sans montant il n'y a pas de solde ; avec un montant, un payé vide vaut 0.
+    """
+    if unit_price is None:
+        return None, paid
+    paid = paid or 0
+    return unit_price - paid, paid
+
+
+async def _expense_form(request: Request, entry: Optional[dict]):
+    """Formulaire des comptes, en création (entry=None) comme en modification."""
     ship_id = get_current_ship_id(request)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
@@ -898,13 +942,23 @@ async def new_expense_form(request: Request):
         )
         contacts = await cursor.fetchall()
     return templates.TemplateResponse(
-        "ship/expenses_new.html",
+        "ship/expenses_form.html",
         {
             "request": request, "active_section": "ship",
             "current_ship": dict(ship) if ship else None,
             "contacts": [dict(c) for c in contacts],
+            "entry": entry,
+            "expense_types": EXPENSE_TYPES,
+            "new_contact": NEW_CONTACT,
+            # Date du jour préremplie, en heure locale comme le reste du journal.
+            "today": datetime.now().strftime("%Y-%m-%d"),
         },
     )
+
+
+@app.get("/ship/expenses/new", response_class=HTMLResponse)
+async def new_expense_form(request: Request):
+    return await _expense_form(request, None)
 
 
 @app.post("/ship/expenses/new")
@@ -912,29 +966,66 @@ async def create_expense(
     request: Request,
     date: Optional[str] = Form(None),
     designation: Optional[str] = Form(None),
-    unit_type: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
     unit_price: Optional[float] = Form(None),
     paid: Optional[float] = Form(None),
     expense_type: Optional[str] = Form(None),
-    category: Optional[str] = Form(None),
     payment: Optional[str] = Form(None),
     supplier: Optional[str] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
-    balance = None
-    if unit_price is not None:
-        if paid is None:
-            paid = 0
-        balance = unit_price - paid
+    balance, paid = _expense_balance(unit_price, paid)
+    async with connect() as db:
+        cursor = await db.execute(
+            """INSERT INTO expenses (ship_id, date, designation, description, unit_price, paid, balance,
+                                     expense_type, payment, supplier)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ship_id, date or None, designation or None, description or None, unit_price, paid, balance,
+             expense_type or None, payment or None,
+             None if supplier == NEW_CONTACT else supplier or None),
+        )
+        entry_id = cursor.lastrowid
+        await db.commit()
+    return _after_expense_save(entry_id, supplier)
+
+
+@app.get("/ship/expenses/{entry_id}", response_class=HTMLResponse)
+async def expense_detail(request: Request, entry_id: int):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM expenses WHERE id = ?", (entry_id,))
+        entry = await cursor.fetchone()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return await _expense_form(request, dict(entry))
+
+
+# unit_type et category restent en base mais ne sont plus saisis : l'UPDATE ne
+# les touche pas, si bien qu'une ligne ancienne garde ce qu'elle avait.
+@app.post("/ship/expenses/{entry_id}/edit")
+async def update_expense(
+    entry_id: int,
+    date: Optional[str] = Form(None),
+    designation: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    unit_price: Optional[float] = Form(None),
+    paid: Optional[float] = Form(None),
+    expense_type: Optional[str] = Form(None),
+    payment: Optional[str] = Form(None),
+    supplier: Optional[str] = Form(None),
+):
+    balance, paid = _expense_balance(unit_price, paid)
     async with connect() as db:
         await db.execute(
-            """INSERT INTO expenses (ship_id, date, designation, unit_type, unit_price, paid, balance, expense_type, category, payment, supplier)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (ship_id, date or None, designation or None, unit_type or None, unit_price, paid, balance,
-             expense_type or None, category or None, payment or None, supplier or None),
+            """UPDATE expenses SET date = ?, designation = ?, description = ?, unit_price = ?, paid = ?,
+                   balance = ?, expense_type = ?, payment = ?, supplier = ?
+               WHERE id = ?""",
+            (date or None, designation or None, description or None, unit_price, paid, balance,
+             expense_type or None, payment or None,
+             None if supplier == NEW_CONTACT else supplier or None, entry_id),
         )
         await db.commit()
-    return RedirectResponse(url="/ship/expenses", status_code=303)
+    return _after_expense_save(entry_id, supplier)
 
 
 @app.post("/ship/expenses/{entry_id}/delete")
@@ -1133,13 +1224,15 @@ async def ship_contacts(request: Request):
 
 
 @app.get("/ship/contacts/new", response_class=HTMLResponse)
-async def new_contact_form(request: Request):
+async def new_contact_form(request: Request, expense_id: Optional[int] = None):
+    """expense_id : on vient d'une dépense, qui recevra ce contact pour fournisseur."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
     return templates.TemplateResponse(
         "ship/contacts_new.html",
-        {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None},
+        {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None,
+         "expense_id": expense_id},
     )
 
 
@@ -1154,6 +1247,7 @@ async def create_contact(
     website: Optional[str] = Form(None),
     address: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    expense_id: Optional[int] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
     async with connect() as db:
@@ -1163,7 +1257,17 @@ async def create_contact(
             (ship_id, company or None, contact_name or None, category or None, phone or None,
              email or None, website or None, address or None, notes or None),
         )
+        if expense_id is not None:
+            # expenses.supplier est un nom, pas un id : le même que celui que
+            # le formulaire des comptes propose pour ce contact, et que
+            # contact_detail recherche pour son historique des achats.
+            await db.execute(
+                "UPDATE expenses SET supplier = ? WHERE id = ? AND ship_id = ?",
+                (company or contact_name or None, expense_id, ship_id),
+            )
         await db.commit()
+    if expense_id is not None:
+        return RedirectResponse(url=f"/ship/expenses/{expense_id}", status_code=303)
     return RedirectResponse(url="/ship/contacts", status_code=303)
 
 
@@ -1193,6 +1297,56 @@ async def contact_detail(request: Request, contact_id: int):
             "purchases": [dict(p) for p in purchases],
         },
     )
+
+
+# Catégories proposées pour un contact, à la création comme sur la fiche.
+# Valeurs *stockées*, comme EXPENSE_TYPES.
+CONTACT_CATEGORIES = [
+    "Gréement / Voiles", "Moteur", "Électronique", "Accastillage", "Chantier naval",
+    "Port / Capitainerie", "Assurance", "Carburant", "Autre",
+]
+templates.env.globals["contact_categories"] = CONTACT_CATEGORIES
+
+# Champs de la fiche contact modifiables sur place. Le nom est interpolé dans
+# l'UPDATE : il doit venir de cet ensemble, jamais directement de l'URL — même
+# parti que EDITABLE_LINE_FIELDS.
+EDITABLE_CONTACT_FIELDS = {
+    "company", "contact_name", "category", "phone", "email", "website", "address", "notes",
+}
+
+
+@app.post("/ship/contacts/{contact_id}/field/{field}")
+async def update_contact_field(contact_id: int, field: str, value: Optional[str] = Form(None)):
+    """Modification sur place d'un champ de la fiche contact."""
+    if field not in EDITABLE_CONTACT_FIELDS:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    value = (value or "").strip() or None
+    async with connect() as db:
+        cursor = await db.execute(
+            "SELECT ship_id, company, contact_name FROM contacts WHERE id = ?", (contact_id,)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        ship_id, company, contact_name = row
+        old_name = company or contact_name
+        await db.execute(f"UPDATE contacts SET {field} = ? WHERE id = ?", (value, contact_id))
+        # expenses.supplier retient le *nom* du contact (société, à défaut
+        # nom du contact), pas son id. Renommer sans reporter le nom sur ses
+        # dépenses viderait son historique des achats.
+        if field in ("company", "contact_name"):
+            if field == "company":
+                company = value
+            else:
+                contact_name = value
+            new_name = company or contact_name
+            if old_name and new_name and new_name != old_name:
+                await db.execute(
+                    "UPDATE expenses SET supplier = ? WHERE ship_id = ? AND supplier = ?",
+                    (new_name, ship_id, old_name),
+                )
+        await db.commit()
+    return RedirectResponse(url=f"/ship/contacts/{contact_id}", status_code=303)
 
 
 # ── Crew (équipiers) ──────────────────────────────────────────────────────────

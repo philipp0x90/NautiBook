@@ -9,6 +9,12 @@
 </div>
 
 <form method="POST" action="/ship/contacts/new" style="display:grid;gap:14px;max-width:600px">
+    {# Ouvert depuis « Saisir manuellement » d'une dépense : elle est déjà
+       enregistrée, et prendra ce contact pour fournisseur. #}
+    {% if expense_id %}
+    <input type="hidden" name="expense_id" value="{{ expense_id }}">
+    <div class="meta">La dépense est enregistrée ; ce contact en deviendra le fournisseur.</div>
+    {% endif %}
 
     <div class="grid">
         <div>
@@ -25,15 +31,9 @@
         <label>Catégorie</label>
         <select name="category">
             <option value="">— Choisir —</option>
-            <option value="Gréement / Voiles">Gréement / Voiles</option>
-            <option value="Moteur">Moteur</option>
-            <option value="Électronique">Électronique</option>
-            <option value="Accastillage">Accastillage</option>
-            <option value="Chantier naval">Chantier naval</option>
-            <option value="Port / Capitainerie">Port / Capitainerie</option>
-            <option value="Assurance">Assurance</option>
-            <option value="Carburant">Carburant</option>
-            <option value="Autre">Autre</option>
+            {% for cat in contact_categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
         </select>
     </div>
 
@@ -65,7 +65,7 @@
 
     <div style="display:flex;gap:10px">
         <button type="submit" class="btn btn-primary">Enregistrer</button>
-        <a href="/ship/contacts" class="btn" style="background:#eee;color:#333">Annuler</a>
+        <a href="{{ '/ship/expenses/' ~ expense_id if expense_id else '/ship/contacts' }}" class="btn" style="background:#eee;color:#333">Annuler</a>
     </div>
 
 </form>

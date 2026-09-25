@@ -22,20 +22,19 @@
                 <th>Catégorie</th>
                 <th>Téléphone</th>
                 <th>Email</th>
-                <th></th>
             </tr>
         </thead>
         <tbody>
             {% for c in contacts %}
-            <tr>
+            {# Toute la ligne ouvre la fiche ; rowLink laisse passer le clic sur
+               le lien mailto. #}
+            <tr style="cursor:pointer" title="Ouvrir ce contact"
+                onclick="rowLink(event, '/ship/contacts/{{ c.id }}')">
                 <td><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
                 <td>{{ c.contact_name or '' }}</td>
                 <td>{{ c.category or '' }}</td>
                 <td>{{ c.phone or '' }}</td>
                 <td>{% if c.email %}<a href="mailto:{{ c.email }}" style="color:var(--accent)">{{ c.email }}</a>{% endif %}</td>
-                <td>
-                    <a href="/ship/contacts/{{ c.id }}" class="btn btn-blue" style="padding:3px 12px;font-size:12px">Voir</a>
-                </td>
             </tr>
             {% endfor %}
         </tbody>

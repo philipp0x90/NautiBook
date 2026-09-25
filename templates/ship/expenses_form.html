@@ -1,118 +1,129 @@
 {% extends "base.html" %}
-{% block title %}Nouvelle dépense — NautiBook{% endblock %}
+{# Un seul gabarit pour la création et la fiche, sur le modèle de crew/form.html :
+   `entry` est nul à la création. #}
+{% set edition = entry is not none %}
+{# Titre de la fiche : l'objet, suivi de la date. #}
+{% set titre = ([entry.designation or 'Dépense', entry.date | datefr if entry.date else none] | select | join(' — ')) if edition else 'Nouvelle dépense' %}
+{% block title %}{{ titre }} — NautiBook{% endblock %}
 {% block content %}
 
-{# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
-   vide gardait son fond translucide et son min-width — une pastille creuse. #}
 <div class="section-bar">
-    <div class="section-bar-title">Nouvelle dépense</div>
+    <div class="section-bar-left"><a href="/ship/expenses" style="color:#fff;text-decoration:none">← Comptes</a></div>
+    <div class="section-bar-title">{{ titre }}</div>
 </div>
 
-<form method="POST" action="/ship/expenses/new" style="display:grid;gap:14px;max-width:680px">
+<form method="POST" style="display:grid;gap:14px;max-width:680px"
+      action="{{ '/ship/expenses/' ~ entry.id ~ '/edit' if edition else '/ship/expenses/new' }}">
 
-    <div class="grid" style="grid-template-columns:1fr 2fr">
+    <div class="grid" style="grid-template-columns:1fr 1fr 2fr">
         <div>
+            {# Date du jour par défaut à la création ; une fiche existante garde
+               la sienne, même vide. #}
             <label>Date</label>
-            <input type="date" name="date" value="{{ today }}">
+            <input type="date" name="date" value="{{ (entry.date or '')[:10] if edition else today }}">
         </div>
         <div>
-            <label>Désignation</label>
-            <input type="text" name="designation" placeholder="Remplacement winch tribord" required>
+            <label>Montant (€)</label>
+            <input type="number" name="unit_price" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
+                   value="{{ '%.2f'|format(entry.unit_price) if edition and entry.unit_price is not none else '' }}">
+        </div>
+        <div>
+            <label>Objet</label>
+            <input type="text" name="designation" value="{{ entry.designation or '' if edition else '' }}"
+                   placeholder="Remplacement winch tribord" required>
         </div>
     </div>
 
-    <div class="grid">
+    <div class="grid" style="grid-template-columns:1fr 1fr">
         <div>
             <label>Type de frais</label>
             <select name="expense_type">
                 <option value="">—</option>
-                <option value="Matériel">Matériel</option>
-                <option value="Main d'œuvre">Main d'œuvre</option>
-                <option value="Carburant">Carburant</option>
-                <option value="Port">Port</option>
-                <option value="Assurance">Assurance</option>
-                <option value="Divers">Divers</option>
+                {% for t in expense_types %}
+                {% if t is none %}
+                <option disabled>──────</option>
+                {% else %}
+                <option value="{{ t }}" {{ 'selected' if edition and entry.expense_type == t else '' }}>{{ t }}</option>
+                {% endif %}
+                {% endfor %}
+                {# Une ligne saisie avant le changement de liste garde son type :
+                   sans cette option, le simple fait d'enregistrer la fiche
+                   l'effacerait. #}
+                {% if edition and entry.expense_type and entry.expense_type not in expense_types %}
+                <option value="{{ entry.expense_type }}" selected>{{ entry.expense_type }}</option>
+                {% endif %}
             </select>
         </div>
         <div>
-            <label>Catégorie</label>
-            <select name="category">
+            {# « Saisir manuellement » enregistre la dépense telle qu'elle est
+               remplie, puis ouvre la création du contact, qui lui sera imputé
+               (voir NEW_CONTACT dans main.py). Enregistrer d'abord : rien de
+               ce qui est déjà saisi n'est perdu en quittant la page.
+               requestSubmit() plutôt que submit() pour que le navigateur
+               vérifie l'objet obligatoire avant de partir. #}
+            <label>Fournisseur</label>
+            {% set fournisseurs = contacts | map(attribute='company') | list + contacts | map(attribute='contact_name') | list %}
+            <select name="supplier" onchange="if (this.value === '{{ new_contact }}') this.form.requestSubmit()">
                 <option value="">—</option>
-                <option value="Gréement">Gréement</option>
-                <option value="Moteur">Moteur</option>
-                <option value="Électronique">Électronique</option>
-                <option value="Coque / Structure">Coque / Structure</option>
-                <option value="Sécurité">Sécurité</option>
-                <option value="Voiles">Voiles</option>
-                <option value="Pont / Cockpit">Pont / Cockpit</option>
-                <option value="Intérieur">Intérieur</option>
-                <option value="Divers">Divers</option>
+                {% for c in contacts %}
+                {% set nom = c.company or c.contact_name %}
+                <option value="{{ nom }}" {{ 'selected' if edition and entry.supplier == nom else '' }}>{{ nom }}</option>
+                {% endfor %}
+                {# Même raison que pour le type de frais : un fournisseur absent
+                   du carnet ne doit pas disparaître à l'enregistrement. #}
+                {% if edition and entry.supplier and entry.supplier not in fournisseurs %}
+                <option value="{{ entry.supplier }}" selected>{{ entry.supplier }}</option>
+                {% endif %}
+                <option disabled>──────</option>
+                <option value="{{ new_contact }}">+ Saisir manuellement (nouveau contact)</option>
             </select>
         </div>
     </div>
 
     <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
         <div>
-            <label>Unité</label>
-            <select name="unit_type">
-                <option value="">—</option>
-                <option value="Forfait">Forfait</option>
-                <option value="Pièce">Pièce</option>
-                <option value="Heure">Heure</option>
-                <option value="Litre">Litre</option>
-                <option value="Mètre">Mètre</option>
-            </select>
-        </div>
-        <div>
-            <label>PU TVAc (€)</label>
-            <input type="number" name="unit_price" step="0.01" min="0" placeholder="0.00"
-                   oninput="calcBalance()">
-        </div>
-        <div>
             <label>Payé (€)</label>
-            <input type="number" name="paid" id="paid" step="0.01" min="0" placeholder="0.00"
-                   oninput="calcBalance()">
+            <input type="number" name="paid" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
+                   value="{{ '%.2f'|format(entry.paid) if edition and entry.paid is not none else '' }}">
         </div>
-    </div>
-
-    <div class="grid" style="grid-template-columns:1fr 1fr">
         <div>
             <label>Mode de paiement</label>
             <select name="payment">
                 <option value="">—</option>
-                <option value="Carte">Carte</option>
-                <option value="Espèces">Espèces</option>
-                <option value="Virement">Virement</option>
-                <option value="Chèque">Chèque</option>
+                {% for opt in ['Carte', 'Espèces', 'Virement', 'Chèque'] %}
+                <option value="{{ opt }}" {{ 'selected' if edition and entry.payment == opt else '' }}>{{ opt }}</option>
+                {% endfor %}
             </select>
         </div>
         <div>
-            <label>Fournisseur</label>
-            {% if contacts %}
-            <select name="supplier">
-                <option value="">— Saisir manuellement —</option>
-                {% for c in contacts %}
-                <option value="{{ c.company or c.contact_name }}">{{ c.company or c.contact_name }}</option>
-                {% endfor %}
-            </select>
-            {% else %}
-            <input type="text" name="supplier" placeholder="Voilerie Dupont">
-            {% endif %}
+            {# Affiché, pas saisi : le serveur recalcule le solde à chaque
+               enregistrement (_expense_balance). Sans name, il n'est pas envoyé. #}
+            <label>Solde (€)</label>
+            <input type="text" id="solde" disabled>
         </div>
     </div>
 
+    <div>
+        <label>Description</label>
+        <textarea name="description" rows="4" placeholder="Détails, références, remarques…">{{ entry.description or '' if edition else '' }}</textarea>
+    </div>
+
     <div style="display:flex;gap:10px">
-        <button type="submit" class="btn btn-primary">Enregistrer</button>
+        <button type="submit" class="btn btn-primary">{{ 'Enregistrer les modifications' if edition else 'Enregistrer' }}</button>
         <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
     </div>
 
 </form>
 
 <script>
-function calcBalance() {
-    const up = parseFloat(document.querySelector('[name=unit_price]').value) || 0;
-    const paid = parseFloat(document.querySelector('[name=paid]').value) || 0;
+// Même règle que _expense_balance : sans montant pas de solde, payé vide = 0.
+function majSolde() {
+    const montant = document.querySelector('[name=unit_price]').value;
+    const paye = parseFloat(document.querySelector('[name=paid]').value) || 0;
+    document.getElementById('solde').value =
+        montant === '' ? '' : (parseFloat(montant) - paye).toFixed(2);
 }
+majSolde();
 </script>
 
 {% endblock %}

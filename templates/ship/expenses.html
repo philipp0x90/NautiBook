@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Dépenses — NautiBook{% endblock %}
+{% block title %}Comptes — NautiBook{% endblock %}
 {% block content %}
 
 {# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
    vide gardait son fond translucide et son min-width — une pastille creuse. #}
 <div class="section-bar">
-    <div class="section-bar-title">Dépenses</div>
+    <div class="section-bar-title">Comptes</div>
 </div>
 
 <div style="margin-bottom:14px;display:flex;justify-content:flex-end">
@@ -18,35 +18,37 @@
         <thead>
             <tr>
                 <th>Date</th>
-                <th>Désignation</th>
-                <th>Unité</th>
-                <th>Type frais</th>
-                <th>Catégorie</th>
-                <th>Paiement</th>
+                <th style="text-align:right">Montant</th>
+                <th>Objet</th>
+                <th>Type de frais</th>
                 <th>Fournisseur</th>
-                <th style="text-align:right">PU TVAc</th>
                 <th style="text-align:right">Payé</th>
+                <th>Paiement</th>
                 <th style="text-align:right">Solde</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
             {% for e in entries %}
-            <tr>
+            {# Toute la ligne ouvre la fiche ; rowLink laisse passer les clics
+               sur le lien du fournisseur et le bouton de suppression. #}
+            <tr style="cursor:pointer" title="Ouvrir cette dépense"
+                onclick="rowLink(event, '/ship/expenses/{{ e.id }}')">
                 <td style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ ('%.2f €'|format(e.unit_price)) if e.unit_price is not none else '' }}</td>
                 <td>{{ e.designation or '' }}</td>
-                <td>{{ e.unit_type or '' }}</td>
                 <td>{{ e.expense_type or '' }}</td>
-                <td>{{ e.category or '' }}</td>
-                <td>{{ e.payment or '' }}</td>
                 <td>
-                    {% if e.supplier %}
-                    <a href="/ship/contacts?q={{ e.supplier }}" style="color:var(--accent);text-decoration:none">{{ e.supplier }}</a>
+                    {% if e.supplier in supplier_ids %}
+                    <a href="/ship/contacts/{{ supplier_ids[e.supplier] }}" title="Ouvrir la fiche du fournisseur"
+                       style="color:var(--accent);text-decoration:none">{{ e.supplier }}</a>
+                    {% else %}
+                    {{ e.supplier or '' }}
                     {% endif %}
                 </td>
-                <td style="text-align:right">{{ ('%.2f €'|format(e.unit_price)) if e.unit_price is not none else '' }}</td>
-                <td style="text-align:right">{{ ('%.2f €'|format(e.paid)) if e.paid is not none else '' }}</td>
-                <td style="text-align:right">{{ ('%.2f €'|format(e.balance)) if e.balance is not none else '' }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ ('%.2f €'|format(e.paid)) if e.paid is not none else '' }}</td>
+                <td>{{ e.payment or '' }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ ('%.2f €'|format(e.balance)) if e.balance is not none else '' }}</td>
                 <td>
                     <form method="POST" action="/ship/expenses/{{ e.id }}/delete"
                           onsubmit="return confirm('Supprimer cette dépense ?')">
@@ -57,11 +59,15 @@
             {% endfor %}
         </tbody>
         <tfoot>
+            {# Total général : la somme des montants de toutes les dépenses du
+               navire, avec en regard ce qui en est payé et ce qui reste dû. #}
             <tr>
-                <td colspan="7">Total</td>
+                <td style="white-space:nowrap">Total général</td>
+                <td style="text-align:right;white-space:nowrap">{{ '%.2f €'|format((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) }}</td>
+                <td colspan="3"></td>
+                <td style="text-align:right;white-space:nowrap">{{ '%.2f €'|format((entries | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) }}</td>
                 <td></td>
-                <td style="text-align:right">{{ '%.2f €'|format((entries | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) }}</td>
-                <td style="text-align:right">{{ '%.2f €'|format((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ '%.2f €'|format((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) }}</td>
                 <td></td>
             </tr>
         </tfoot>
@@ -69,7 +75,6 @@
 </div>
 {% else %}
 <div class="stub">
-    <div style="font-size:36px;margin-bottom:12px">💰</div>
     <div>Aucune dépense enregistrée.</div>
     <div style="margin-top:16px">
         <a href="/ship/expenses/new" class="btn btn-yellow">+ Première dépense</a>
