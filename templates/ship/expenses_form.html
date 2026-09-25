@@ -5,6 +5,45 @@
 {# Titre de la fiche : l'objet, suivi de la date. #}
 {% set titre = ([entry.designation or 'Dépense', entry.date | datefr if entry.date else none] | select | join(' — ')) if edition else 'Nouvelle dépense' %}
 {% block title %}{{ titre }} — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* Une seule grille de quatre colonnes pour tout le formulaire, et non une
+       grille par rangée : les champs s'alignent d'une rangée à l'autre. Chaque
+       champ déclare sa largeur en colonnes (.span-2, .span-4). */
+    .expense-form {
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 16px;
+        max-width: 820px;
+    }
+    .expense-form .span-2 { grid-column: span 2; }
+    .expense-form .span-4 { grid-column: 1 / -1; }
+    .expense-form label { margin-bottom: 4px; }
+    /* Même hauteur pour tous les champs d'une ligne, comme crew/form.html :
+       sans consigne, listes et date prennent 34 px et les champs texte 32. */
+    .expense-form input,
+    .expense-form select { height: 32px; }
+    /* Safari (iPad surtout) dessine le champ date en contrôle natif, qui
+       ignore la hauteur demandée et ajoute ses propres marges : il sortait
+       plus haut que ses voisins. Sans l'apparence native, il se plie aux
+       32 px ; la valeur, centrée par défaut sur iOS, revient à gauche. */
+    .expense-form input[type="date"] {
+        -webkit-appearance: none; appearance: none;
+        line-height: 16px;
+    }
+    .expense-form input[type="date"]::-webkit-date-and-time-value {
+        margin: 0; text-align: left;
+    }
+    /* Les montants se lisent alignés à droite, comme dans la liste. */
+    .expense-form .money { text-align: right; }
+    /* Le solde est calculé, pas saisi : il ne doit pas passer pour un champ
+       vide à remplir. */
+    .expense-form #solde {
+        background: #e8f4f9; border-color: transparent; color: inherit;
+        font-weight: 600; opacity: 1;
+    }
+    .expense-form .actions { display: flex; gap: 10px; margin-top: 4px; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="section-bar">
@@ -12,10 +51,9 @@
     <div class="section-bar-title">{{ titre }}</div>
 </div>
 
-<form method="POST" style="display:grid;gap:14px;max-width:680px"
+<form method="POST" class="card expense-form"
       action="{{ '/ship/expenses/' ~ entry.id ~ '/edit' if edition else '/ship/expenses/new' }}">
 
-    <div class="grid" style="grid-template-columns:1fr 1fr 2fr">
         <div>
             {# Date du jour par défaut à la création ; une fiche existante garde
                la sienne, même vide. #}
@@ -24,18 +62,16 @@
         </div>
         <div>
             <label>Montant (€)</label>
-            <input type="number" name="unit_price" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
+            <input type="number" name="unit_price" class="money" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
                    value="{{ '%.2f'|format(entry.unit_price) if edition and entry.unit_price is not none else '' }}">
         </div>
-        <div>
+        <div class="span-2">
             <label>Objet</label>
             <input type="text" name="designation" value="{{ entry.designation or '' if edition else '' }}"
                    placeholder="Remplacement winch tribord" required>
         </div>
-    </div>
 
-    <div class="grid" style="grid-template-columns:1fr 1fr">
-        <div>
+        <div class="span-2">
             <label>Type de frais</label>
             <select name="expense_type">
                 <option value="">—</option>
@@ -54,7 +90,7 @@
                 {% endif %}
             </select>
         </div>
-        <div>
+        <div class="span-2">
             {# « Saisir manuellement » enregistre la dépense telle qu'elle est
                remplie, puis ouvre la création du contact, qui lui sera imputé
                (voir NEW_CONTACT dans main.py). Enregistrer d'abord : rien de
@@ -78,12 +114,10 @@
                 <option value="{{ new_contact }}">+ Saisir manuellement (nouveau contact)</option>
             </select>
         </div>
-    </div>
 
-    <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
         <div>
             <label>Payé (€)</label>
-            <input type="number" name="paid" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
+            <input type="number" name="paid" class="money" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
                    value="{{ '%.2f'|format(entry.paid) if edition and entry.paid is not none else '' }}">
         </div>
         <div>
@@ -99,16 +133,15 @@
             {# Affiché, pas saisi : le serveur recalcule le solde à chaque
                enregistrement (_expense_balance). Sans name, il n'est pas envoyé. #}
             <label>Solde (€)</label>
-            <input type="text" id="solde" disabled>
+            <input type="text" id="solde" class="money" disabled>
         </div>
-    </div>
 
-    <div>
+    <div class="span-4">
         <label>Description</label>
         <textarea name="description" rows="4" placeholder="Détails, références, remarques…">{{ entry.description or '' if edition else '' }}</textarea>
     </div>
 
-    <div style="display:flex;gap:10px">
+    <div class="span-4 actions">
         <button type="submit" class="btn btn-primary">{{ 'Enregistrer les modifications' if edition else 'Enregistrer' }}</button>
         <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
     </div>
@@ -120,8 +153,10 @@
 function majSolde() {
     const montant = document.querySelector('[name=unit_price]').value;
     const paye = parseFloat(document.querySelector('[name=paid]').value) || 0;
-    document.getElementById('solde').value =
-        montant === '' ? '' : (parseFloat(montant) - paye).toFixed(2);
+    // Virgule décimale, comme les champs Montant et Payé que le navigateur
+    // affiche à la française ; toFixed() donnerait un point.
+    document.getElementById('solde').value = montant === '' ? '' :
+        (parseFloat(montant) - paye).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 majSolde();
 </script>
