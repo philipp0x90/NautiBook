@@ -27,6 +27,8 @@
         </div>
         {% else %}
         <form method="POST" action="/ship/select/{{ ship.id }}">
+            {# La page d'où l'on vient : on y retourne, pour le nouveau navire. #}
+            {% if from_page %}<input type="hidden" name="from_page" value="{{ from_page }}">{% endif %}
             <button type="submit" class="btn btn-blue" style="width:100%">Sélectionner</button>
         </form>
         {% endif %}

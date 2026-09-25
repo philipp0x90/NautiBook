@@ -757,8 +757,50 @@ async def ship_index(request: Request):
     return RedirectResponse(url="/ship/info", status_code=302)
 
 
+# Où revenir après « Changer de navire » : la page équivalente pour le nouveau
+# navire. Une page qui montre *un* enregistrement (/ship/contacts/5,
+# /routes/12…) ne se rouvre pas telle quelle — il appartient à l'ancien
+# navire — mais retombe sur la liste de sa rubrique. None garde la page telle
+# quelle : elle ne dépend pas du navire (équipiers, outils…) ou se recalcule
+# pour lui (/search?q=… relance la recherche). Premier préfixe qui convient,
+# donc les plus précis d'abord.
+SHIP_SWITCH_TARGETS = [
+    ("/ship/todo", "/ship/todo"),
+    ("/ship/fuel", "/ship/fuel"),
+    ("/ship/expenses", "/ship/expenses"),
+    ("/ship/contacts", "/ship/contacts"),
+    ("/cruises/list", "/cruises/list"),
+    ("/cruises/stopovers", "/cruises/stopovers"),
+    ("/cruises/new", "/cruises/new"),
+    ("/cruises", "/cruises/current"),
+    ("/stopovers", "/cruises/stopovers"),
+    ("/routes", "/routes/current"),
+    ("/logbook", "/routes/current"),
+    ("/gallery", "/gallery"),
+    ("/search", None),
+    ("/crew", None),
+    ("/tools", None),
+    ("/settings", None),
+]
+
+
+def _page_for_ship(from_page: Optional[str]) -> str:
+    """Page où atterrir après un changement de navire, depuis `from_page`."""
+    # Un chemin de l'app seulement : « //ailleurs.com » ou une URL complète
+    # feraient de ce paramètre une redirection vers n'importe quel site.
+    if not from_page or not from_page.startswith("/") or from_page.startswith("//"):
+        return "/ship/info"
+    path = from_page.split("?", 1)[0]
+    if path == "/":   # l'accueil ne dépend d'aucun navire
+        return "/"
+    for prefix, target in SHIP_SWITCH_TARGETS:
+        if path == prefix or path.startswith(prefix + "/"):
+            return target or from_page
+    return "/ship/info"
+
+
 @app.get("/ship/select", response_class=HTMLResponse)
-async def ship_select(request: Request):
+async def ship_select(request: Request, from_page: Optional[str] = Query(None, alias="from")):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM ship_info ORDER BY id")
@@ -770,13 +812,14 @@ async def ship_select(request: Request):
             "active_section": "ship",
             "ships": [dict(s) for s in ships],
             "current_ship_id": get_current_ship_id(request),
+            "from_page": from_page,
         },
     )
 
 
 @app.post("/ship/select/{ship_id}")
-async def set_current_ship(ship_id: int):
-    response = RedirectResponse(url="/ship/info", status_code=303)
+async def set_current_ship(ship_id: int, from_page: Optional[str] = Form(None)):
+    response = RedirectResponse(url=_page_for_ship(from_page), status_code=303)
     response.set_cookie(key="ship_id", value=str(ship_id), max_age=365 * 24 * 3600, httponly=True)
     return response
 

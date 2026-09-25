@@ -269,7 +269,11 @@
                     <a href="/ship/expenses">Comptes</a>
                     <a href="/ship/contacts">Carnet d'adresses</a>
                     <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
-                    <a href="/ship/select">Changer de navire</a>
+                    {# Emporte la page courante, pour y revenir une fois le navire
+                       changé (voir SHIP_SWITCH_TARGETS). Pas depuis le choix
+                       lui-même, qui n'a pas d'équivalent où revenir. #}
+                    {% set ici = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+                    <a href="/ship/select{{ '?from=' ~ (ici | urlencode) if request.url.path != '/ship/select' else '' }}">Changer de navire</a>
                 </div>
             </li>
             {# Les équipiers ont leur propre onglet, et non une entrée dans le
@@ -410,7 +414,16 @@ document.addEventListener('keydown', function (e) {
     var revision = null;
     var flux = new EventSource('/api/changes');
 
+    // Une page qu'on quitte n'écoute plus. Sans cela, un formulaire envoyé
+    // annonce lui-même une modification ; la page de départ la reçoit pendant
+    // que le navigateur charge la suivante, et son location.reload() annule
+    // cette navigation : on restait sur la page d'où l'on venait (« Changer
+    // de navire » revenait sur le choix du navire).
+    var depart = false;
+    window.addEventListener('beforeunload', function () { depart = true; flux.close(); });
+
     flux.onmessage = function (event) {
+        if (depart) return;
         if (revision === null) { revision = event.data; return; }   // référence
         if (event.data === revision) return;
         revision = event.data;
