@@ -12,7 +12,7 @@
        champ déclare sa largeur en colonnes (.span-2, .span-4). */
     .expense-form {
         display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 16px;
-        max-width: 820px;
+        flex: 1 1 560px; max-width: 820px;
     }
     .expense-form .span-2 { grid-column: span 2; }
     .expense-form .span-4 { grid-column: 1 / -1; }
@@ -41,6 +41,28 @@
         font-weight: 600; opacity: 1;
     }
     .expense-form .actions { display: flex; gap: 10px; margin-top: 4px; }
+
+    /* Le formulaire et, à sa droite, la facture. Sous 816 px (iPad en
+       portrait) la facture passe dessous plutôt que d'écraser le formulaire. */
+    .expense-page { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .expense-doc { flex: 0 0 240px; display: grid; gap: 10px; }
+    .expense-doc h3 { margin: 0; font-size: 13px; color: var(--muted); }
+    .doc-drop {
+        min-height: 240px; border: 2px dashed #cfe3ef; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        color: var(--muted); font-size: 13px; padding: 10px; overflow: hidden;
+    }
+    .doc-drop.survol { border-color: var(--accent); background: #e8f4f9; }
+    .doc-drop img { max-width: 100%; max-height: 320px; border-radius: 4px; cursor: zoom-in; display: block; }
+    .doc-pdf {
+        display: grid; gap: 6px; justify-items: center; color: inherit; text-decoration: none;
+        word-break: break-all;
+    }
+    .doc-pdf .icone {
+        width: 72px; height: 92px; border-radius: 6px; background: #c0392b; color: #fff;
+        font-weight: 700; display: flex; align-items: center; justify-content: center;
+    }
+    .expense-doc .note { font-size: 12px; color: var(--muted); }
 </style>
 {% endblock %}
 
@@ -51,7 +73,9 @@
     <div class="section-bar-title">{{ titre }}</div>
 </div>
 
-<form method="POST" class="card expense-form"
+{# multipart : le document part avec le reste de la fiche. #}
+<div class="expense-page">
+<form method="POST" enctype="multipart/form-data" class="card expense-form" id="expense-form"
       action="{{ '/ship/expenses/' ~ entry.id ~ '/edit' if edition else '/ship/expenses/new' }}">
 
         <div>
@@ -148,6 +172,36 @@
 
 </form>
 
+{# La facture. Hors du <form> dans la page, pour se placer à sa droite, mais
+   rattachée à lui par l'attribut form= : elle est enregistrée par le même
+   bouton que le reste de la fiche, et un document déposé sur une dépense pas
+   encore créée part avec elle. Un seul document par dépense : en choisir un
+   autre le remplace, l'ancien fichier restant dans IMG/factures/. #}
+<aside class="card expense-doc">
+    <h3>Facture / reçu</h3>
+    <div class="doc-drop" id="doc-drop">
+        {% if edition and entry.document_path %}
+            {% if entry.document_path.lower().endswith('.pdf') %}
+            <a class="doc-pdf" href="{{ entry.document_path }}" target="_blank" rel="noopener" title="Ouvrir le document">
+                <span class="icone">PDF</span>
+                <span>{{ entry.document_path.rsplit('/', 1)[-1] }}</span>
+            </a>
+            {% else %}
+            <img src="{{ entry.document_path }}" alt="Facture" title="Afficher en grand" onclick="agrandirPhoto(event, this)">
+            {% endif %}
+        {% else %}
+        <span>Déposer ici une facture ou un reçu<br>(image ou PDF)</span>
+        {% endif %}
+    </div>
+    <input type="file" name="document_file" id="doc-file" form="expense-form" hidden
+           accept="image/*,application/pdf,{{ doc_accept }}" onchange="montrerDocument(this.files[0])">
+    <label for="doc-file" class="btn btn-yellow" style="text-align:center;cursor:pointer">
+        {{ 'Remplacer le document' if edition and entry.document_path else 'Ajouter document' }}
+    </label>
+    <div class="note" id="doc-note"></div>
+</aside>
+</div>
+
 <script>
 // Même règle que _expense_balance : sans montant pas de solde, payé vide = 0.
 function majSolde() {
@@ -159,6 +213,55 @@ function majSolde() {
         (parseFloat(montant) - paye).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 majSolde();
+
+// ── Facture ──
+// Le glisser-déposer ne fait que remplir le champ fichier : l'envoi reste celui
+// du formulaire, au bouton « Enregistrer », comme toute écriture de l'app.
+const DOC_MAX = {{ doc_max_bytes }};
+const zone = document.getElementById('doc-drop');
+const champ = document.getElementById('doc-file');
+
+function montrerDocument(fichier) {
+    if (!fichier) return;
+    if (fichier.size > DOC_MAX) {
+        alert('Fichier trop volumineux (plus de ' + Math.round(DOC_MAX / 1048576) + ' Mo).');
+        champ.value = '';
+        return;
+    }
+    // Aperçu local du fichier choisi, avant même qu'il soit enregistré.
+    const url = URL.createObjectURL(fichier);
+    zone.replaceChildren();
+    if (fichier.type === 'application/pdf' || /\.pdf$/i.test(fichier.name)) {
+        const lien = document.createElement('a');
+        lien.className = 'doc-pdf'; lien.href = url; lien.target = '_blank';
+        lien.innerHTML = '<span class="icone">PDF</span>';
+        const nom = document.createElement('span'); nom.textContent = fichier.name;
+        lien.appendChild(nom);
+        zone.appendChild(lien);
+    } else {
+        const img = document.createElement('img');
+        img.src = url; img.alt = fichier.name; img.title = 'Afficher en grand';
+        img.onclick = (e) => agrandirPhoto(e, img);
+        zone.appendChild(img);
+    }
+    document.getElementById('doc-note').textContent =
+        'Le document sera enregistré avec la fiche.';
+}
+
+['dragenter', 'dragover'].forEach(t => zone.addEventListener(t, e => {
+    e.preventDefault(); zone.classList.add('survol');
+}));
+['dragleave', 'drop'].forEach(t => zone.addEventListener(t, () => zone.classList.remove('survol')));
+zone.addEventListener('drop', e => {
+    e.preventDefault();
+    const fichier = e.dataTransfer.files[0];
+    if (!fichier) return;
+    // Un seul document par dépense : seul le premier fichier déposé compte.
+    const dt = new DataTransfer();
+    dt.items.add(fichier);
+    champ.files = dt.files;
+    montrerDocument(fichier);
+});
 </script>
 
 {% endblock %}

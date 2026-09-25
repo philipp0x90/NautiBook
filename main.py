@@ -343,6 +343,7 @@ async def init_db():
                 date TEXT,
                 designation TEXT,
                 description TEXT,
+                document_path TEXT,
                 unit_type TEXT,
                 unit_price REAL,
                 paid REAL,
@@ -471,6 +472,11 @@ async def _migrate(db):
         await db.execute("ALTER TABLE expenses ADD COLUMN description TEXT")
         print("Migration: expenses.description added")
 
+    cursor = await db.execute("PRAGMA table_info(expenses)")
+    if "document_path" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE expenses ADD COLUMN document_path TEXT")
+        print("Migration: expenses.document_path added")
+
     # L'adresse d'un contact, un seul texte libre, devient quatre champs comme
     # celle d'un équipier. Un texte libre ne se redécoupe pas sûrement : il
     # passe tel quel dans street, à reprendre à la main. La colonne address
@@ -564,27 +570,57 @@ IMG_DIR.mkdir(exist_ok=True)
 app.mount(IMG_URL, StaticFiles(directory=IMG_DIR), name="img")
 
 
-async def _save_photo(upload: Optional[UploadFile]) -> Optional[str]:
-    """Store an uploaded image in IMG/ and return the URL to use as photo_path.
-    Returns None when the form was submitted without choosing a file, so the
-    caller can fall back to a manually typed path or URL."""
+# Factures et reçus des comptes : un sous-dossier d'IMG/, et non un dossier à
+# part, pour que backup.sh (rsync de tout IMG/) et copy_db.sh (scp -r IMG/)
+# les emportent sans changement, et que le montage /IMG les serve déjà.
+# Comme les photos, rien ne les supprime : remplacer le document d'une dépense
+# ou supprimer la dépense laisse le fichier, qu'une base restaurée peut encore
+# désigner.
+DOC_SUBDIR = "factures"
+DOC_SUFFIXES = IMG_SUFFIXES | {".pdf"}
+# Plafond par fichier : un ticket photographié fait 3 à 5 Mo, un PDF scanné
+# rarement plus de 10. Au-delà c'est une erreur, qui remplirait la carte SD.
+DOC_MAX_BYTES = 20 * 1024 * 1024
+(IMG_DIR / DOC_SUBDIR).mkdir(exist_ok=True)
+
+
+async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str = "",
+                       max_bytes: Optional[int] = None) -> Optional[str]:
+    """Store an uploaded file under IMG/ (or one of its subfolders) and return
+    its URL. Returns None when the form was submitted without choosing a file,
+    so the caller can fall back to what it already had."""
     if upload is None or not upload.filename:
         return None
     suffix = Path(upload.filename).suffix.lower()
-    if suffix not in IMG_SUFFIXES:
-        raise HTTPException(status_code=400, detail=f"Format d'image non supporté : {suffix or 'inconnu'}")
+    if suffix not in suffixes:
+        raise HTTPException(status_code=400, detail=f"Format de fichier non supporté : {suffix or 'inconnu'}")
+    folder = IMG_DIR / subdir if subdir else IMG_DIR
     # Keep a readable name but drop anything that could escape IMG/ or need
     # URL-encoding, and stamp it so two "coucher.jpg" can coexist.
-    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(upload.filename).stem).strip("-")[:40] or "photo"
+    stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(upload.filename).stem).strip("-")[:40] or "fichier"
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     name = f"{stamp}_{stem}{suffix}"
     counter = 1
-    while (IMG_DIR / name).exists():
+    while (folder / name).exists():
         name = f"{stamp}_{stem}-{counter}{suffix}"
         counter += 1
-    data = await upload.read()
-    await asyncio.to_thread((IMG_DIR / name).write_bytes, data)
-    return f"{IMG_URL}/{name}"
+    # Un octet de plus que le plafond suffit à savoir qu'il est dépassé, sans
+    # charger tout un fichier démesuré en mémoire.
+    data = await upload.read(max_bytes + 1 if max_bytes else -1)
+    if max_bytes and len(data) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (plus de {max_bytes // (1024 * 1024)} Mo)")
+    await asyncio.to_thread((folder / name).write_bytes, data)
+    return f"{IMG_URL}/{subdir + '/' if subdir else ''}{name}"
+
+
+async def _save_photo(upload: Optional[UploadFile]) -> Optional[str]:
+    """Store an uploaded image in IMG/ and return the URL to use as photo_path."""
+    return await _save_upload(upload, IMG_SUFFIXES)
+
+
+async def _save_document(upload: Optional[UploadFile]) -> Optional[str]:
+    """Facture ou reçu d'une dépense (image ou PDF), dans IMG/factures/."""
+    return await _save_upload(upload, DOC_SUFFIXES, DOC_SUBDIR, DOC_MAX_BYTES)
 
 
 # ── Ship helpers ──────────────────────────────────────────────────────────────
@@ -968,6 +1004,8 @@ async def _expense_form(request: Request, entry: Optional[dict]):
             "new_contact": NEW_CONTACT,
             # Date du jour préremplie, en heure locale comme le reste du journal.
             "today": datetime.now().strftime("%Y-%m-%d"),
+            "doc_accept": ",".join(sorted(DOC_SUFFIXES)),
+            "doc_max_bytes": DOC_MAX_BYTES,
         },
     )
 
@@ -988,15 +1026,17 @@ async def create_expense(
     expense_type: Optional[str] = Form(None),
     payment: Optional[str] = Form(None),
     supplier: Optional[str] = Form(None),
+    document_file: Optional[UploadFile] = File(None),
 ):
     ship_id = get_current_ship_id(request)
     balance, paid = _expense_balance(unit_price, paid)
+    document = await _save_document(document_file)
     async with connect() as db:
         cursor = await db.execute(
-            """INSERT INTO expenses (ship_id, date, designation, description, unit_price, paid, balance,
-                                     expense_type, payment, supplier)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (ship_id, date or None, designation or None, description or None, unit_price, paid, balance,
+            """INSERT INTO expenses (ship_id, date, designation, description, document_path, unit_price, paid,
+                                     balance, expense_type, payment, supplier)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ship_id, date or None, designation or None, description or None, document, unit_price, paid, balance,
              expense_type or None, payment or None,
              None if supplier == NEW_CONTACT else supplier or None),
         )
@@ -1029,14 +1069,19 @@ async def update_expense(
     expense_type: Optional[str] = Form(None),
     payment: Optional[str] = Form(None),
     supplier: Optional[str] = Form(None),
+    document_file: Optional[UploadFile] = File(None),
 ):
     balance, paid = _expense_balance(unit_price, paid)
+    document = await _save_document(document_file)
     async with connect() as db:
+        # COALESCE : enregistrer la fiche sans choisir de fichier garde le
+        # document déjà là, comme la photo d'un équipier.
         await db.execute(
-            """UPDATE expenses SET date = ?, designation = ?, description = ?, unit_price = ?, paid = ?,
+            """UPDATE expenses SET date = ?, designation = ?, description = ?,
+                   document_path = COALESCE(?, document_path), unit_price = ?, paid = ?,
                    balance = ?, expense_type = ?, payment = ?, supplier = ?
                WHERE id = ?""",
-            (date or None, designation or None, description or None, unit_price, paid, balance,
+            (date or None, designation or None, description or None, document, unit_price, paid, balance,
              expense_type or None, payment or None,
              None if supplier == NEW_CONTACT else supplier or None, entry_id),
         )

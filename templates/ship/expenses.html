@@ -36,7 +36,16 @@
                 onclick="rowLink(event, '/ship/expenses/{{ e.id }}')">
                 <td style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
                 <td style="text-align:right;white-space:nowrap">{{ ('%.2f €'|format(e.unit_price)) if e.unit_price is not none else '' }}</td>
-                <td>{{ e.designation or '' }}</td>
+                {# Le trombone signale une facture et l'ouvre dans un nouvel
+                   onglet ; rowLink laisse passer ce clic, le reste de la ligne
+                   ouvre la fiche. #}
+                <td>
+                    {{ e.designation or '' }}
+                    {% if e.document_path %}
+                    <a href="{{ e.document_path }}" target="_blank" rel="noopener" title="Ouvrir la facture"
+                       style="text-decoration:none;margin-left:4px">📎</a>
+                    {% endif %}
+                </td>
                 <td>{{ e.expense_type or '' }}</td>
                 <td>
                     {% if e.supplier in supplier_ids %}
