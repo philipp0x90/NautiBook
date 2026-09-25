@@ -64,8 +64,8 @@
                     </span>
                     {% endif %}
                 </td>
-                <td style="text-align:right">{{ ('%.2f €'|format(s.cost_per_night)) if s.cost_per_night else '—' }}</td>
-                <td style="text-align:right">{{ ('%.2f €'|format(s.cost)) if s.cost else '—' }}</td>
+                <td style="text-align:right">{{ s.cost_per_night | euros if s.cost_per_night else '—' }}</td>
+                <td style="text-align:right">{{ s.cost | euros if s.cost else '—' }}</td>
                 <td style="white-space:nowrap">
                     <form method="POST" action="/stopovers/{{ s.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette escale ?')">
@@ -78,7 +78,7 @@
         <tfoot>
             <tr>
                 <td colspan="9" style="text-align:right">Total</td>
-                <td style="text-align:right">{{ '%.2f €'|format((stopovers | selectattr('cost', 'ne', none) | sum(attribute='cost')) or 0) }}</td>
+                <td style="text-align:right">{{ ((stopovers | selectattr('cost', 'ne', none) | sum(attribute='cost')) or 0) | euros }}</td>
                 <td></td>
             </tr>
         </tfoot>

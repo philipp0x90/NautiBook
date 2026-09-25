@@ -310,13 +310,13 @@
                 {% endif %}
                 <span class="meta" style="margin-left:8px">{{ s.arrival_date | datefr if s.arrival_date else '' }}{% if s.arrival_date and s.departure_date %} → {{ s.departure_date | datefr }}{% endif %}</span>
             </div>
-            {% if s.cost and s.cost > 0 %}<span style="font-weight:600">{{ '%.2f €'|format(s.cost) }}</span>{% endif %}
+            {% if s.cost and s.cost > 0 %}<span style="font-weight:600">{{ s.cost | euros }}</span>{% endif %}
         </div>
         {% endfor %}
     </div>
     {% if stopovers | selectattr('cost') | selectattr('cost', 'gt', 0) | list %}
     <div style="text-align:right;font-size:13px;font-weight:700;margin-top:8px">
-        Total : {{ '%.2f €'|format(stopovers | selectattr('cost', 'ne', none) | selectattr('cost', 'gt', 0) | sum(attribute='cost')) }}
+        Total : {{ (stopovers | selectattr('cost', 'ne', none) | selectattr('cost', 'gt', 0) | sum(attribute='cost')) | euros }}
     </div>
     {% endif %}
 </div>

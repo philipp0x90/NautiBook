@@ -68,9 +68,12 @@
 
 {% block content %}
 
+{# Le double invisible du badge « ← Comptes », à droite, garde le titre
+   centré dans la barre et non dans l'espace laissé à droite du badge. #}
 <div class="section-bar">
     <div class="section-bar-left"><a href="/ship/expenses" style="color:#fff;text-decoration:none">← Comptes</a></div>
     <div class="section-bar-title">{{ titre }}</div>
+    <div class="section-bar-left" style="visibility:hidden" aria-hidden="true">← Comptes</div>
 </div>
 
 {# multipart : le document part avec le reste de la fiche. #}
@@ -148,9 +151,14 @@
             <label>Mode de paiement</label>
             <select name="payment">
                 <option value="">—</option>
-                {% for opt in ['Carte', 'Espèces', 'Virement', 'Chèque'] %}
+                {% for opt in payment_modes %}
                 <option value="{{ opt }}" {{ 'selected' if edition and entry.payment == opt else '' }}>{{ opt }}</option>
                 {% endfor %}
+                {# Un mode hors liste (importé d'un tableur, par exemple) reste
+                   affiché : sans cette option, enregistrer la fiche l'effacerait. #}
+                {% if edition and entry.payment and entry.payment not in payment_modes %}
+                <option value="{{ entry.payment }}" selected>{{ entry.payment }}</option>
+                {% endif %}
             </select>
         </div>
         <div>
@@ -207,10 +215,10 @@
 function majSolde() {
     const montant = document.querySelector('[name=unit_price]').value;
     const paye = parseFloat(document.querySelector('[name=paid]').value) || 0;
-    // Virgule décimale, comme les champs Montant et Payé que le navigateur
-    // affiche à la française ; toFixed() donnerait un point.
+    // Même format que le filtre euros : point des milliers, virgule décimale
+    // (1.234,56) — c'est celui de l'allemand ; fr-FR mettrait une espace.
     document.getElementById('solde').value = montant === '' ? '' :
-        (parseFloat(montant) - paye).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        (parseFloat(montant) - paye).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 majSolde();
 

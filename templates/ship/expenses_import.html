@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Importer des dépenses — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    .import-steps { display: grid; gap: 16px; max-width: 980px; }
+    .import-steps h3 { margin: 0 0 8px; font-size: 15px; }
+    .import-steps ul { margin: 6px 0 0; padding-left: 20px; font-size: 14px; }
+    .import-steps li { margin: 3px 0; }
+    .import-error { background: #fee2e2; color: #991b1b; border-radius: 8px; padding: 10px 14px; }
+    .import-table td.num { text-align: right; white-space: nowrap; }
+    .import-table tr.duplicate td { color: var(--muted); }
+    .import-table tr.error td { background: #fef2f2; }
+    .statut { font-size: 12px; font-weight: 600; border-radius: 10px; padding: 1px 8px; white-space: nowrap; }
+    .statut.ok { background: #dcfce7; color: #166534; }
+    .statut.duplicate { background: #eee; color: #555; }
+    .statut.error { background: #fee2e2; color: #991b1b; }
+    .remarque { font-size: 12px; color: var(--muted); }
+    .remarque.erreur { color: #991b1b; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left"><a href="/ship/expenses" style="color:#fff;text-decoration:none">← Comptes</a></div>
+    <div class="section-bar-title">Importer des dépenses</div>
+    <div class="section-bar-left" style="visibility:hidden" aria-hidden="true">← Comptes</div>
+</div>
+
+<div class="import-steps">
+
+    {% if error %}<div class="import-error">{{ error }}</div>{% endif %}
+
+    {% if not preview %}
+    <section class="card">
+        <h3>1. Préparer le tableur</h3>
+        <div>
+            Téléchargez le modèle, remplissez une ligne par dépense, puis revenez ici.
+            <div style="display:flex;gap:10px;margin-top:10px">
+                <a href="/ship/expenses/import/modele.xlsx" class="btn btn-blue">Modèle Excel</a>
+                <a href="/ship/expenses/import/modele.csv" class="btn btn-blue">Modèle CSV</a>
+            </div>
+        </div>
+        <ul>
+            <li>Colonnes : {{ columns | join(', ') }}. Seuls <strong>Date</strong> et <strong>Objet</strong> sont obligatoires ;
+                un tableur existant convient s'il porte ces titres, dans n'importe quel ordre.</li>
+            <li>Dates en <code>24/09/2026</code> (ou cellules date d'Excel), montants en <code>1.250,00</code> ou <code>250,00</code> — le « € » est accepté.</li>
+            <li>Un <strong>type de frais</strong> ou un <strong>mode de paiement</strong> hors liste est gardé tel quel.</li>
+            <li>Un <strong>fournisseur</strong> absent du carnet d'adresses y est créé.</li>
+            <li>Une dépense déjà enregistrée (même date, même objet, même montant) est ignorée :
+                réimporter le même fichier ne crée pas de doublons.</li>
+        </ul>
+    </section>
+
+    <form method="POST" action="/ship/expenses/import" enctype="multipart/form-data" class="card">
+        <h3>2. Choisir le fichier</h3>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            {# Pas d'attribut accept : sur iPad, Safari traduit la liste en types de
+               documents et, faute de reconnaître .xlsx ou .csv, grise tous les
+               fichiers — le bouton semblait mort. Le serveur vérifie le format
+               de toute façon (_read_sheet). #}
+            <input type="file" name="file" required style="flex:1;min-width:240px">
+            <button type="submit" class="btn btn-primary">Lire le fichier</button>
+        </div>
+        <div class="meta" style="margin-top:6px">Rien n'est enregistré à cette étape : un aperçu s'affiche d'abord.</div>
+    </form>
+
+    {% else %}
+    {% set nb_ok = preview.lines | selectattr('status', 'equalto', 'ok') | list | length %}
+    {% set nb_dup = preview.lines | selectattr('status', 'equalto', 'duplicate') | list | length %}
+    {% set nb_err = preview.lines | selectattr('status', 'equalto', 'error') | list | length %}
+    <section class="card">
+        <h3>Aperçu de « {{ filename }} »</h3>
+        <div>
+            <strong>{{ nb_ok }}</strong> dépense{{ 's' if nb_ok > 1 else '' }} à importer
+            {%- if nb_dup %}, {{ nb_dup }} déjà enregistrée{{ 's' if nb_dup > 1 else '' }} (ignorée{{ 's' if nb_dup > 1 else '' }}){% endif %}
+            {%- if nb_err %}, <span style="color:#991b1b">{{ nb_err }} en erreur (ignorée{{ 's' if nb_err > 1 else '' }})</span>{% endif %}.
+            {% if preview.new_suppliers %}
+            <div class="meta" style="margin-top:4px">Contacts créés : {{ preview.new_suppliers | join(', ') }}.</div>
+            {% endif %}
+        </div>
+
+        <div style="overflow-x:auto;margin-top:12px">
+        <table class="data-table import-table">
+            <thead>
+                <tr>
+                    <th>Ligne</th><th></th><th>Date</th><th style="text-align:right">Montant</th><th>Objet</th>
+                    <th>Type de frais</th><th>Fournisseur</th><th style="text-align:right">Payé</th><th>Paiement</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for l in preview.lines %}
+                <tr class="{{ l.status }}">
+                    <td>{{ l.line }}</td>
+                    <td><span class="statut {{ l.status }}">{{ {'ok': 'À importer', 'duplicate': 'Déjà là', 'error': 'Erreur'}[l.status] }}</span></td>
+                    <td style="white-space:nowrap">{{ l.date | datefr if l.date else '—' }}</td>
+                    <td class="num">{{ l.unit_price | euros }}</td>
+                    <td>
+                        {{ l.designation or '—' }}
+                        {% for e in l.errors %}<div class="remarque erreur">{{ e }}</div>{% endfor %}
+                        {% for n in l.notes %}<div class="remarque">{{ n }}</div>{% endfor %}
+                    </td>
+                    <td>{{ l.expense_type or '' }}</td>
+                    <td>{{ l.supplier or '' }}</td>
+                    <td class="num">{{ l.paid | euros }}</td>
+                    <td>{{ l.payment or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+            {% if nb_ok %}
+            <form method="POST" action="/ship/expenses/import/confirm">
+                <input type="hidden" name="payload" value="{{ payload }}">
+                <button type="submit" class="btn btn-primary">Importer {{ nb_ok }} dépense{{ 's' if nb_ok > 1 else '' }}</button>
+            </form>
+            {% endif %}
+            <a href="/ship/expenses/import" class="btn" style="background:#eee;color:#333">Choisir un autre fichier</a>
+            <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
+        </div>
+        {% if nb_err %}
+        <div class="meta" style="margin-top:8px">Les lignes en erreur ne sont pas importées : corrigez-les dans le tableur et importez-le de nouveau —
+            celles déjà importées seront reconnues et ignorées.</div>
+        {% endif %}
+    </section>
+    {% endif %}
+
+</div>
+
+{% endblock %}

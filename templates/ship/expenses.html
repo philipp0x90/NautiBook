@@ -1,19 +1,43 @@
 {% extends "base.html" %}
 {% block title %}Comptes — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* En-tête et totaux restent visibles pendant le défilement. Le tableau
+       défile dans son propre cadre, à la hauteur de l'écran : un sticky ne
+       s'accroche qu'au conteneur qui défile, et le défilement horizontal
+       (écran étroit) en crée un autour du tableau — accroché à la page, il ne
+       tiendrait pas. 100dvh plutôt que 100vh : sur iPad, vh compte la barre
+       d'adresse de Safari, et le bas du tableau passerait dessous. */
+    .comptes-scroll {
+        overflow: auto;
+        max-height: calc(100vh - 170px);
+        max-height: calc(100dvh - 170px);
+        border-radius: 6px;
+    }
+    .comptes-scroll thead th { position: sticky; top: 0; z-index: 2; }
+    .comptes-scroll tfoot td {
+        position: sticky; bottom: 0; z-index: 2; background: #fff;
+        /* border-collapse ne colle pas les bordures avec la cellule : le trait
+           au-dessus des totaux est redessiné en ombre. */
+        box-shadow: inset 0 2px 0 #5bc8e0;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 {# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
    vide gardait son fond translucide et son min-width — une pastille creuse. #}
 <div class="section-bar">
-    {# Le bouton dans la barre, comme sur le carnet d'adresses : son double
-       invisible à gauche garde le titre centré. #}
-    <span class="btn btn-yellow" style="visibility:hidden" aria-hidden="true">+ Nouvelle dépense</span>
+    {# Un bouton de chaque côté, de même largeur, pour que le titre reste
+       centré ; l'import à gauche, la saisie à droite comme sur les autres listes. #}
+    <a href="/ship/expenses/import" class="btn" style="min-width:180px;text-align:center;background:#fff;color:#0f3a4a">⇪ Importer</a>
     <div class="section-bar-title">Comptes</div>
-    <a href="/ship/expenses/new" class="btn btn-yellow">+ Nouvelle dépense</a>
+    <a href="/ship/expenses/new" class="btn btn-yellow" style="min-width:180px;text-align:center">+ Nouvelle dépense</a>
 </div>
 
 {% if entries %}
-<div style="overflow-x:auto">
+<div class="comptes-scroll">
     <table class="data-table">
         <thead>
             <tr>
@@ -35,7 +59,7 @@
             <tr style="cursor:pointer" title="Ouvrir cette dépense"
                 onclick="rowLink(event, '/ship/expenses/{{ e.id }}')">
                 <td style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
-                <td style="text-align:right;white-space:nowrap">{{ ('%.2f €'|format(e.unit_price)) if e.unit_price is not none else '' }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ e.unit_price | euros }}</td>
                 {# Le trombone signale une facture et l'ouvre dans un nouvel
                    onglet ; rowLink laisse passer ce clic, le reste de la ligne
                    ouvre la fiche. #}
@@ -55,9 +79,9 @@
                     {{ e.supplier or '' }}
                     {% endif %}
                 </td>
-                <td style="text-align:right;white-space:nowrap">{{ ('%.2f €'|format(e.paid)) if e.paid is not none else '' }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ e.paid | euros }}</td>
                 <td>{{ e.payment or '' }}</td>
-                <td style="text-align:right;white-space:nowrap">{{ ('%.2f €'|format(e.balance)) if e.balance is not none else '' }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ e.balance | euros }}</td>
                 <td>
                     <form method="POST" action="/ship/expenses/{{ e.id }}/delete"
                           onsubmit="return confirm('Supprimer cette dépense ?')">
@@ -72,11 +96,11 @@
                navire, avec en regard ce qui en est payé et ce qui reste dû. #}
             <tr>
                 <td style="white-space:nowrap">Total général</td>
-                <td style="text-align:right;white-space:nowrap">{{ '%.2f €'|format((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) | euros }}</td>
                 <td colspan="3"></td>
-                <td style="text-align:right;white-space:nowrap">{{ '%.2f €'|format((entries | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) | euros }}</td>
                 <td></td>
-                <td style="text-align:right;white-space:nowrap">{{ '%.2f €'|format((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) }}</td>
+                <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
                 <td></td>
             </tr>
         </tfoot>

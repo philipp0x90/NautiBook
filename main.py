@@ -1,10 +1,13 @@
 # main.py
 from fastapi import FastAPI, HTTPException, Request, Form, Query, File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import asyncio
+import csv
+import io
+import json
 import re
 import unicodedata
 import subprocess
@@ -162,7 +165,23 @@ def _dmm_to_dd(degrees, minutes, hemisphere):
     return round(dd, 6)
 
 
+def _euros(value):
+    """Montant en euros : 1100000 → « 1.100.000,00 € » ; vide → ''.
+
+    Point entre les milliers, virgule décimale. Espace insécable avant
+    l'euro, pour qu'un montant ne se coupe jamais en fin de ligne. Tout
+    montant en euros de l'app passe par ce filtre, qui est seul à décider
+    de ce format."""
+    if value is None or value == "":
+        return ""
+    # Python sait mettre la virgule des milliers et le point décimal : on
+    # échange les deux, en passant par un caractère intermédiaire.
+    text = f"{float(value):,.2f}".replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+    return f"{text}\u00a0€"
+
+
 templates.env.filters["datefr"] = _datefr
+templates.env.filters["euros"] = _euros
 templates.env.filters["jourfr"] = _jourfr
 templates.env.filters["age"] = _age
 templates.env.filters["deg"] = _deg
@@ -1087,6 +1106,352 @@ async def create_expense(
         entry_id = cursor.lastrowid
         await db.commit()
     return _after_expense_save(entry_id, supplier)
+
+
+# ── Import des comptes ────────────────────────────────────────────────────────
+# Un tableur (CSV ou Excel .xlsx) devient une série de dépenses, en deux temps :
+# lecture et aperçu d'abord, sans rien écrire, puis enregistrement sur
+# confirmation. Déclaré avant /ship/expenses/{entry_id}, qui prendrait
+# « import » pour un id.
+
+PAYMENT_MODES = ["Carte", "Espèces", "Virement", "Chèque"]
+templates.env.globals["payment_modes"] = PAYMENT_MODES
+
+# Colonnes du fichier modèle, dans l'ordre de la fiche, et la colonne qu'elles
+# remplissent. L'import reconnaît aussi les variantes de IMPORT_ALIASES : un
+# tableur existant n'a pas à reprendre les titres exacts.
+IMPORT_COLUMNS = [
+    ("Date", "date"), ("Montant", "unit_price"), ("Objet", "designation"),
+    ("Type de frais", "expense_type"), ("Fournisseur", "supplier"), ("Payé", "paid"),
+    ("Paiement", "payment"), ("Description", "description"),
+]
+IMPORT_ALIASES = {
+    "date": "date",
+    "montant": "unit_price", "montant (€)": "unit_price", "montant €": "unit_price",
+    "prix": "unit_price", "pu tvac": "unit_price", "total": "unit_price",
+    "objet": "designation", "designation": "designation", "libelle": "designation",
+    "type de frais": "expense_type", "type frais": "expense_type", "type": "expense_type",
+    "fournisseur": "supplier",
+    "paye": "paid", "paye (€)": "paid", "paye €": "paid",
+    "paiement": "payment", "mode de paiement": "payment",
+    "description": "description", "notes": "description", "remarques": "description",
+}
+IMPORT_MAX_BYTES = 5 * 1024 * 1024   # un tableur de comptes pèse quelques Ko
+
+
+def _import_amount(value):
+    """« 1 234,56 € », « 1.234,56 », 1234.56 → 1234.56 ; vide → None.
+    Lève ValueError si ce n'est pas un nombre."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return round(float(value), 2)
+    text = re.sub(r"[\s  €]", "", str(value))
+    if not text:
+        return None
+    # Des deux séparateurs, le dernier est la décimale : « 1.234,56 » comme
+    # « 1,234.56 ». Un seul, quel qu'il soit, est la décimale.
+    if "," in text and "." in text:
+        thousands = "." if text.rfind(",") > text.rfind(".") else ","
+        text = text.replace(thousands, "")
+    text = text.replace(",", ".")
+    return round(float(text), 2)
+
+
+def _import_date(value):
+    """Cellule date d'Excel, « 24/09/2026 », « 24/09/26 », « 2026-09-24 »… →
+    « 2026-09-24 » ; vide → None. Lève ValueError sinon."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, (int, float)):
+        # Numéro de série Excel, quand la cellule n'est pas typée date.
+        return (date(1899, 12, 30) + timedelta(days=int(value))).isoformat()
+    text = str(value).strip().split(" ")[0]
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d", "%d-%m-%Y", "%d.%m.%Y", "%d.%m.%y"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    raise ValueError(text)
+
+
+def _read_sheet(filename: str, data: bytes) -> list:
+    """Le fichier en liste de lignes (listes de cellules), titres compris."""
+    # Le champ fichier n'impose aucun type (voir expenses_import.html) : c'est
+    # ici qu'une photo ou un PDF choisi par erreur est refusé, clairement.
+    suffix = Path(filename).suffix.lower()
+    if suffix not in (".csv", ".txt", ".xlsx", ".xls"):
+        raise ValueError(f"Format non reconnu ({suffix or 'sans extension'}) : "
+                         "choisissez un fichier Excel (.xlsx) ou CSV.")
+    if filename.lower().endswith(".xlsx"):
+        try:
+            # Importé ici et non en tête : si la bibliothèque manquait (pip
+            # hors réseau sur le Pi), l'app démarre quand même, seul l'import
+            # Excel est refusé.
+            from openpyxl import load_workbook
+        except ImportError:
+            raise ValueError("L'import Excel n'est pas disponible ici : enregistrez le fichier en CSV.")
+        sheet = load_workbook(io.BytesIO(data), read_only=True, data_only=True).worksheets[0]
+        return [list(row) for row in sheet.iter_rows(values_only=True)]
+    if filename.lower().endswith(".xls"):
+        raise ValueError("L'ancien format .xls n'est pas lu : enregistrez le fichier en .xlsx ou en CSV.")
+    # CSV : UTF-8 (avec ou sans BOM) d'abord, puis l'encodage Windows d'Excel.
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            text = data.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    # Excel en français sépare par « ; », d'autres par « , » ou tabulation.
+    first = text.splitlines()[0] if text else ""
+    delimiter = max(";,\t", key=first.count)
+    return [row for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+
+
+def _cell(value):
+    """Cellule nettoyée : texte sans espaces autour, vide → None."""
+    if isinstance(value, str):
+        value = value.strip()
+    return None if value == "" else value
+
+
+async def _parse_expense_import(db, ship_id: int, filename: str, data: bytes) -> dict:
+    """Lit le fichier et prépare l'aperçu : lignes valides, doublons ignorés,
+    erreurs, et avertissements (type remplacé, contact à créer)."""
+    rows = _read_sheet(filename, data)
+    # La ligne de titres est la première qui en contient au moins un connu :
+    # un tableur a parfois un intitulé ou une ligne vide au-dessus.
+    header_index, mapping = None, {}
+    for i, row in enumerate(rows[:10]):
+        found = {}
+        for j, cell in enumerate(row):
+            key = _fold(str(cell or "")).strip()
+            if key in IMPORT_ALIASES and IMPORT_ALIASES[key] not in found.values():
+                found[j] = IMPORT_ALIASES[key]
+        if "designation" in found.values():
+            header_index, mapping = i, found
+            break
+    if header_index is None:
+        raise ValueError("Colonne « Objet » introuvable : la première ligne doit porter les titres "
+                         "du fichier modèle (Date, Montant, Objet…).")
+
+    cursor = await db.execute(
+        "SELECT id, COALESCE(company, contact_name) FROM contacts WHERE ship_id = ?", (ship_id,)
+    )
+    contacts = {_fold(name): name for _, name in await cursor.fetchall() if name}
+    cursor = await db.execute(
+        "SELECT date, designation, unit_price FROM expenses WHERE ship_id = ?", (ship_id,)
+    )
+    existing = {
+        (d, _fold(o or ""), round(m, 2) if m is not None else None)
+        for d, o, m in await cursor.fetchall()
+    }
+    types = {_fold(t): t for t in EXPENSE_TYPES if t}
+    payments = {_fold(m): m for m in PAYMENT_MODES}
+
+    lines, new_suppliers = [], {}
+    for number, row in enumerate(rows[header_index + 1:], start=header_index + 2):
+        raw = {col: _cell(row[j]) if j < len(row) else None for j, col in mapping.items()}
+        if all(v is None for v in raw.values()):
+            continue   # ligne vide
+        line = {"line": number, "errors": [], "notes": [], "status": "ok"}
+        try:
+            line["date"] = _import_date(raw.get("date"))
+        except ValueError as exc:
+            line["date"] = None
+            line["errors"].append(f"date illisible « {exc} »")
+        for col, label in (("unit_price", "montant"), ("paid", "payé")):
+            try:
+                line[col] = _import_amount(raw.get(col))
+            except ValueError:
+                line[col] = None
+                line["errors"].append(f"{label} illisible « {raw.get(col)} »")
+        line["designation"] = str(raw["designation"]) if raw.get("designation") is not None else None
+        line["description"] = str(raw["description"]) if raw.get("description") is not None else None
+        if not line["designation"]:
+            line["errors"].append("objet manquant")
+        if not line["date"] and not any("date" in e for e in line["errors"]):
+            line["errors"].append("date manquante")
+
+        # Type de frais et mode de paiement : une valeur de la liste est
+        # ramenée à son orthographe exacte (« entretien » → « Entretien ») ;
+        # une autre (« Refit », « Ricci ») est gardée telle quelle, et la fiche
+        # sait l'afficher.
+        for col, known, label in (("expense_type", types, "type"), ("payment", payments, "paiement")):
+            value = raw.get(col)
+            if value is None:
+                line[col] = None
+            elif _fold(str(value)) in known:
+                line[col] = known[_fold(str(value))]
+            else:
+                line[col] = str(value)
+                line["notes"].append(f"{label} « {value} » hors liste, gardé tel quel")
+
+        supplier = raw.get("supplier")
+        if supplier is None:
+            line["supplier"] = None
+        elif _fold(str(supplier)) in contacts:
+            line["supplier"] = contacts[_fold(str(supplier))]
+        else:
+            # Le même fournisseur nouveau sur plusieurs lignes n'est créé
+            # qu'une fois, sous l'orthographe de sa première apparition.
+            line["supplier"] = new_suppliers.setdefault(_fold(str(supplier)), str(supplier))
+            line["notes"].append(f"contact « {line['supplier']} » créé")
+
+        if line["errors"]:
+            line["status"] = "error"
+        elif (line["date"], _fold(line["designation"]), line["unit_price"]) in existing:
+            line["status"] = "duplicate"
+        lines.append(line)
+
+    return {
+        "lines": lines,
+        "valid": [l for l in lines if l["status"] == "ok"],
+        "new_suppliers": sorted({
+            l["supplier"] for l in lines
+            if l["status"] == "ok" and l["supplier"] and _fold(l["supplier"]) not in contacts
+        }),
+    }
+
+
+@app.get("/ship/expenses/import", response_class=HTMLResponse)
+async def expense_import_form(request: Request):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+    return templates.TemplateResponse(
+        "ship/expenses_import.html",
+        {"request": request, "active_section": "ship",
+         "current_ship": dict(ship) if ship else None,
+         "columns": [c for c, _ in IMPORT_COLUMNS], "preview": None, "error": None},
+    )
+
+
+@app.get("/ship/expenses/import/modele.{fmt}")
+async def expense_import_template(fmt: str):
+    """Fichier modèle vide : les titres de colonnes, rien d'autre — une ligne
+    d'exemple risquerait d'être importée avec le reste."""
+    headers = [c for c, _ in IMPORT_COLUMNS]
+    if fmt == "csv":
+        out = io.StringIO()
+        csv.writer(out, delimiter=";").writerow(headers)
+        # BOM : sans lui, Excel ouvre l'UTF-8 comme du Windows et « Payé »
+        # devient « PayÃ© ».
+        return Response(
+            ("﻿" + out.getvalue()).encode("utf-8"), media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="modele-comptes.csv"'},
+        )
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from openpyxl.worksheet.datavalidation import DataValidation
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Comptes"
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for letter, width in zip("ABCDEFGH", (12, 12, 32, 16, 24, 12, 14, 40)):
+            ws.column_dimensions[letter].width = width
+        ws.freeze_panes = "A2"
+        # Listes déroulantes dans le tableur même, pour taper les valeurs
+        # que l'app connaît ; une autre reste possible (erreur non bloquante).
+        for column, values in (("D", [t for t in EXPENSE_TYPES if t]), ("G", PAYMENT_MODES)):
+            dv = DataValidation(type="list", formula1='"' + ",".join(values) + '"',
+                                showErrorMessage=False)
+            dv.add(f"{column}2:{column}1000")
+            ws.add_data_validation(dv)
+        for row in range(2, 1001):
+            ws[f"A{row}"].number_format = "DD/MM/YYYY"
+            for column in ("B", "F"):
+                ws[f"{column}{row}"].number_format = "#,##0.00"
+        out = io.BytesIO()
+        wb.save(out)
+        return Response(
+            out.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": 'attachment; filename="modele-comptes.xlsx"'},
+        )
+    raise HTTPException(status_code=404, detail="Format inconnu")
+
+
+@app.post("/ship/expenses/import", response_class=HTMLResponse)
+async def expense_import_preview(request: Request, file: Optional[UploadFile] = File(None)):
+    """Premier temps : lire et montrer, sans rien enregistrer."""
+    ship_id = get_current_ship_id(request)
+    preview, error = None, None
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, ship_id)
+        db.row_factory = None
+        if file is None or not file.filename:
+            error = "Choisissez d'abord un fichier."
+        else:
+            data = await file.read(IMPORT_MAX_BYTES + 1)
+            if len(data) > IMPORT_MAX_BYTES:
+                error = "Fichier trop volumineux pour un tableau de comptes (plus de 5 Mo)."
+            else:
+                try:
+                    preview = await _parse_expense_import(db, ship_id, file.filename, data)
+                except ValueError as exc:
+                    error = str(exc)
+                except Exception:
+                    error = "Ce fichier n'a pas pu être lu comme un tableur CSV ou Excel."
+    return templates.TemplateResponse(
+        "ship/expenses_import.html",
+        {"request": request, "active_section": "ship",
+         "current_ship": dict(ship) if ship else None,
+         "columns": [c for c, _ in IMPORT_COLUMNS], "preview": preview, "error": error,
+         "filename": file.filename if file else None,
+         # Les lignes valides repartent avec la confirmation, déjà lues et
+         # nettoyées : le fichier n'est ni gardé sur le Pi ni renvoyé.
+         "payload": json.dumps(preview["valid"], ensure_ascii=False) if preview else None},
+    )
+
+
+@app.post("/ship/expenses/import/confirm")
+async def expense_import_confirm(request: Request, payload: str = Form(...)):
+    """Second temps : enregistrer les lignes confirmées."""
+    ship_id = get_current_ship_id(request)
+    lines = json.loads(payload)
+    async with connect() as db:
+        # Revérifiés ici : entre l'aperçu et la confirmation, une autre
+        # saisie a pu créer le contact ou la dépense.
+        cursor = await db.execute(
+            "SELECT COALESCE(company, contact_name) FROM contacts WHERE ship_id = ?", (ship_id,)
+        )
+        known = {_fold(n) for (n,) in await cursor.fetchall() if n}
+        cursor = await db.execute(
+            "SELECT date, designation, unit_price FROM expenses WHERE ship_id = ?", (ship_id,)
+        )
+        existing = {(d, _fold(o or ""), round(m, 2) if m is not None else None)
+                    for d, o, m in await cursor.fetchall()}
+        for line in lines:
+            key = (line.get("date"), _fold(line.get("designation") or ""), line.get("unit_price"))
+            if key in existing or not line.get("designation"):
+                continue
+            existing.add(key)
+            supplier = line.get("supplier")
+            if supplier and _fold(supplier) not in known:
+                await db.execute(
+                    "INSERT INTO contacts (ship_id, company) VALUES (?, ?)", (ship_id, supplier)
+                )
+                known.add(_fold(supplier))
+            balance, paid = _expense_balance(line.get("unit_price"), line.get("paid"))
+            await db.execute(
+                """INSERT INTO expenses (ship_id, date, designation, description, unit_price, paid, balance,
+                                         expense_type, payment, supplier)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (ship_id, line.get("date"), line.get("designation"), line.get("description"),
+                 line.get("unit_price"), paid, balance, line.get("expense_type"),
+                 line.get("payment"), supplier),
+            )
+        await db.commit()
+    return RedirectResponse(url="/ship/expenses", status_code=303)
 
 
 @app.get("/ship/expenses/{entry_id}", response_class=HTMLResponse)
@@ -3061,7 +3426,7 @@ SEARCH_SECTIONS = [
                "FROM expenses WHERE ship_id = :ship AND ({where}) ORDER BY date DESC",
         "url": lambda r: f"/ship/expenses/{r['id']}",
         "label": lambda r: r["designation"] or "Dépense",
-        "context": lambda r: f"{r['unit_price']:.2f} €".replace(".", ",") if r["unit_price"] is not None else None,
+        "context": lambda r: _euros(r["unit_price"]) or None,
     },
     {
         "title": "Contacts",
@@ -3114,10 +3479,15 @@ async def search(request: Request, q: Optional[str] = None):
             # soient cherchés tels quels.
             escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             pattern = f"%{escaped}%"
-            # Pour les montants : « 250 € », « 250.00 » ou « 250,00 » doivent
-            # tous trouver 250,00. On retire l'euro et les espaces, on met la
-            # virgule française, et seulement s'il reste des chiffres.
-            amount = re.sub(r"[\s€]", "", escaped).replace(".", ",")
+            # Pour les montants : « 250 € », « 250.00 », « 250,00 » ou
+            # « 1.234,56 » (tel qu'affiché) doivent tous trouver leur montant.
+            # On retire l'euro et les espaces ; si point et virgule sont là
+            # tous deux, le point sépare les milliers et s'en va ; seul, il est
+            # la décimale. Et seulement s'il reste des chiffres.
+            amount = re.sub(r"[\s€]", "", escaped)
+            if "," in amount and "." in amount:
+                amount = amount.replace(".", "")
+            amount = amount.replace(".", ",")
             amount = f"%{amount}%" if re.search(r"\d", amount) else None
             for sec in SEARCH_SECTIONS:
                 alias = sec.get("alias")
