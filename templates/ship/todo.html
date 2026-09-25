@@ -2,13 +2,11 @@
 {% block title %}To Do — NautiBook{% endblock %}
 {% block content %}
 
-{# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
-   vide gardait son fond translucide et son min-width — une pastille creuse. #}
 <div class="section-bar">
+    {# Le bouton dans la barre, comme sur le carnet d'adresses : son double
+       invisible à gauche garde le titre centré. #}
+    <span class="btn btn-yellow" style="visibility:hidden" aria-hidden="true">+ Nouvelle tâche</span>
     <div class="section-bar-title">To Do</div>
-</div>
-
-<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
     <a href="/ship/todo/new" class="btn btn-yellow">+ Nouvelle tâche</a>
 </div>
 

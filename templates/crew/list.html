@@ -22,10 +22,10 @@
 {# Pas de badge de navire dans la barre : les équipiers ne sont pas rattachés à
    un navire, c'est la seule liste de l'application qui ignore le cookie. #}
 <div class="section-bar">
+    {# Le bouton dans la barre, comme sur le carnet d'adresses : son double
+       invisible à gauche garde le titre centré. #}
+    <span class="btn btn-yellow" style="visibility:hidden" aria-hidden="true">+ Nouvel équipier</span>
     <div class="section-bar-title">Liste des équipiers</div>
-</div>
-
-<div style="margin-bottom:14px;display:flex;justify-content:flex-end">
     <a href="/crew/new" class="btn btn-yellow">+ Nouvel équipier</a>
 </div>
 
