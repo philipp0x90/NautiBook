@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime, date
 import asyncio
 import re
+import unicodedata
 import subprocess
 import aiosqlite
 from contextlib import asynccontextmanager
@@ -2913,6 +2914,217 @@ async def update_line_field(line_id: int, field: str, value: Optional[str] = For
 async def add_line_note(line_id: int = Form(...), value: Optional[str] = Form(None)):
     """Journal panel: annotate a line picked from the dropdown of unannotated ones."""
     return RedirectResponse(url=await _set_line_field(line_id, "notes", value), status_code=303)
+
+
+# ── Recherche ─────────────────────────────────────────────────────────────────
+
+def _fold(text: str) -> str:
+    """Minuscules sans accents : « Équipement » → « equipement »."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)
+    ).lower()
+
+
+def _fold_sql(value):
+    """_fold exposé à SQLite, qui ne sait ignorer ni la casse des lettres
+    accentuées (LIKE ne le fait que pour l'ASCII) ni les accents."""
+    return _fold(value) if isinstance(value, str) else value
+
+
+def _excerpt(text: str, needle: str, width: int = 60):
+    """Extrait autour de la première occurrence, en trois morceaux (avant,
+    trouvé, après) que la template affiche échappés, le trouvé surligné.
+
+    La recherche se fait sur le texte replié, mais le découpage sur l'original :
+    replier un caractère peut en changer la longueur, d'où la table des
+    positions."""
+    folded, origin = "", []
+    for i, c in enumerate(text):
+        f = _fold(c)
+        folded += f
+        origin.extend([i] * len(f))
+    k = folded.find(needle)
+    if k < 0:
+        return None
+    start = origin[k]
+    end = origin[k + len(needle) - 1] + 1
+    lo, hi = max(0, start - width), min(len(text), end + width)
+    return {
+        "before": ("…" if lo > 0 else "") + text[lo:start],
+        "match": text[start:end],
+        "after": text[end:hi] + ("…" if hi < len(text) else ""),
+    }
+
+
+# Une section par type de fiche : la requête (dont les colonnes cherchées),
+# le lien vers la fiche, et de quoi l'intituler. `fields` liste les colonnes
+# fouillées, dans l'ordre où l'extrait les considère ; `alias` est la table qui
+# les porte quand la requête en joint plusieurs, et qui ont des colonnes
+# homonymes (name, notes). Tout est limité au navire
+# courant, sauf les équipiers, qui n'appartiennent à aucun (voir /crew).
+SEARCH_SECTIONS = [
+    {
+        "title": "Croisières",
+        "alias": "c",
+        "fields": ["name", "departure", "destination"],
+        "sql": "SELECT c.id, c.name, c.departure, c.destination, c.start_time AS date "
+               "FROM cruises c WHERE c.ship_id = :ship AND ({where}) "
+               "ORDER BY COALESCE(c.start_time, c.created_at) DESC",
+        "url": lambda r: f"/cruises/{r['id']}",
+        "label": lambda r: r["name"] or "Croisière",
+    },
+    {
+        "title": "Routes",
+        "alias": "r",
+        "fields": ["name", "departure_location", "destination_location", "notes"],
+        "sql": "SELECT r.id, r.name, r.departure_location, r.destination_location, r.notes, "
+               "r.start_time AS date, c.name AS cruise_name "
+               "FROM routes r JOIN cruises c ON r.cruise_id = c.id "
+               "WHERE c.ship_id = :ship AND ({where}) ORDER BY r.id DESC",
+        "url": lambda r: f"/routes/{r['id']}",
+        "label": lambda r: " → ".join(x for x in (r["departure_location"], r["destination_location"]) if x)
+                           or r["name"] or "Route",
+        "context": lambda r: r["cruise_name"],
+    },
+    {
+        "title": "Journal de bord",
+        "alias": "l",
+        "fields": ["notes", "visual_pos", "sails"],
+        "sql": "SELECT l.id, l.notes, l.visual_pos, l.sails, l.timestamp AS date, "
+               "r.departure_location, r.destination_location "
+               "FROM logbook_lines l JOIN routes r ON l.route_id = r.id JOIN cruises c ON r.cruise_id = c.id "
+               "WHERE c.ship_id = :ship AND ({where}) ORDER BY l.timestamp DESC",
+        "url": lambda r: f"/logbook/{r['id']}/edit",
+        "label": lambda r: " → ".join(x for x in (r["departure_location"], r["destination_location"]) if x)
+                           or "Ligne de journal",
+    },
+    {
+        "title": "Escales",
+        "alias": "s",
+        "fields": ["name", "locality", "notes"],
+        "sql": "SELECT s.id, s.route_id, s.name, s.locality, s.notes, s.arrival_date AS date "
+               "FROM stopovers s JOIN routes r ON s.route_id = r.id JOIN cruises c ON r.cruise_id = c.id "
+               "WHERE c.ship_id = :ship AND ({where}) ORDER BY s.arrival_date DESC",
+        "url": lambda r: f"/routes/{r['route_id']}",
+        "label": lambda r: r["name"] or r["locality"] or "Escale",
+        "context": lambda r: r["locality"] if r["name"] else None,
+    },
+    {
+        "title": "Comptes",
+        "fields": ["designation", "supplier", "expense_type", "description"],
+        # Le montant se cherche aussi, sous la forme où il s'affiche (250,00).
+        "amount": "unit_price",
+        "sql": "SELECT id, designation, supplier, expense_type, description, date, unit_price "
+               "FROM expenses WHERE ship_id = :ship AND ({where}) ORDER BY date DESC",
+        "url": lambda r: f"/ship/expenses/{r['id']}",
+        "label": lambda r: r["designation"] or "Dépense",
+        "context": lambda r: f"{r['unit_price']:.2f} €".replace(".", ",") if r["unit_price"] is not None else None,
+    },
+    {
+        "title": "Contacts",
+        "fields": ["company", "contact_name", "category", "city", "country", "street",
+                   "email", "phone", "notes"],
+        "sql": "SELECT id, company, contact_name, category, city, country, street, email, phone, notes "
+               "FROM contacts WHERE ship_id = :ship AND ({where}) "
+               "ORDER BY company COLLATE NOCASE, contact_name COLLATE NOCASE",
+        "url": lambda r: f"/ship/contacts/{r['id']}",
+        "label": lambda r: r["company"] or r["contact_name"] or "Contact",
+        "context": lambda r: r["contact_name"] if r["company"] else None,
+    },
+    {
+        "title": "Équipiers",
+        "fields": ["first_name", "last_name", "city", "nationality", "email", "phone"],
+        "sql": "SELECT id, first_name, last_name, city, nationality, email, phone "
+               "FROM crew_members WHERE ({where}) "
+               "ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE",
+        "url": lambda r: f"/crew/{r['id']}",
+        "label": lambda r: " ".join(x for x in (r["first_name"], (r["last_name"] or "").upper()) if x)
+                           or "Équipier",
+    },
+    {
+        "title": "To Do",
+        "fields": ["title", "task"],
+        "sql": "SELECT id, title, task, status, due_date AS date "
+               "FROM todo_items WHERE ship_id = :ship AND ({where}) ORDER BY id DESC",
+        "url": lambda r: f"/ship/todo/{r['id']}/edit",
+        "label": lambda r: r["title"] or "Tâche",
+        "context": lambda r: r["status"],
+    },
+]
+
+SEARCH_LIMIT = 50  # résultats par section au plus
+
+
+@app.get("/search", response_class=HTMLResponse)
+async def search(request: Request, q: Optional[str] = None):
+    query = (q or "").strip()
+    needle = _fold(query)
+    ship_id = get_current_ship_id(request)
+    sections, total = [], 0
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, ship_id)
+        # Deux lettres au moins : une seule ramènerait presque toute la base.
+        if len(needle) >= 2:
+            await db.create_function("fold", 1, _fold_sql, deterministic=True)
+            # % et _ sont des jokers pour LIKE : on les neutralise pour qu'ils
+            # soient cherchés tels quels.
+            escaped = needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            # Pour les montants : « 250 € », « 250.00 » ou « 250,00 » doivent
+            # tous trouver 250,00. On retire l'euro et les espaces, on met la
+            # virgule française, et seulement s'il reste des chiffres.
+            amount = re.sub(r"[\s€]", "", escaped).replace(".", ",")
+            amount = f"%{amount}%" if re.search(r"\d", amount) else None
+            for sec in SEARCH_SECTIONS:
+                alias = sec.get("alias")
+                where = " OR ".join(
+                    f"fold({alias + '.' if alias else ''}{f}) LIKE :pattern ESCAPE '\\'"
+                    for f in sec["fields"]
+                )
+                if sec.get("amount") and amount:
+                    where += (f" OR replace(printf('%.2f', {sec['amount']}), '.', ',') "
+                              f"LIKE :amount ESCAPE '\\'")
+                cursor = await db.execute(
+                    sec["sql"].format(where=where) + f" LIMIT {SEARCH_LIMIT + 1}",
+                    {"ship": ship_id, "pattern": pattern, "amount": amount},
+                )
+                rows = [dict(r) for r in await cursor.fetchall()]
+                if not rows:
+                    continue
+                results = []
+                for r in rows[:SEARCH_LIMIT]:
+                    label = sec["label"](r)
+                    context = sec.get("context", lambda _: None)(r)
+                    # L'extrait vient du premier champ trouvé qui ne figure pas
+                    # déjà dans l'intitulé ou le contexte : inutile de répéter
+                    # « Venise » sous « Novigrad → Venise ».
+                    shown = f"{label} {context or ''}"
+                    excerpt = None
+                    for f in sec["fields"]:
+                        if isinstance(r.get(f), str) and r[f] not in shown:
+                            excerpt = _excerpt(r[f], needle)
+                            if excerpt:
+                                break
+                    results.append({
+                        "url": sec["url"](r),
+                        "label": label,
+                        "context": context,
+                        "date": r.get("date"),
+                        "excerpt": excerpt,
+                    })
+                total += len(results)
+                sections.append({"title": sec["title"], "results": results,
+                                 "more": len(rows) > SEARCH_LIMIT})
+    return templates.TemplateResponse(
+        "search.html",
+        {
+            "request": request, "active_section": None,
+            "current_ship": dict(ship) if ship else None,
+            "q": query, "sections": sections, "total": total,
+            "too_short": 0 < len(needle) < 2,
+        },
+    )
 
 
 # ── Setup (first run) ─────────────────────────────────────────────────────────

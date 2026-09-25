@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Recherche : ' ~ q if q else 'Recherche' }} — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    .search-form { display: flex; gap: 10px; margin-bottom: 18px; max-width: 640px; }
+    .search-form input { flex: 1; height: 38px; font-size: 16px; }
+    .search-section { margin-bottom: 18px; }
+    .search-section h3 {
+        margin: 0 0 8px; font-size: 13px; color: var(--muted);
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+    .search-result {
+        display: block; padding: 8px 12px; border-radius: 6px;
+        color: inherit; text-decoration: none;
+    }
+    .search-result:hover { background: #e8f4f9; }
+    .search-result .titre { font-weight: 600; }
+    .search-result .contexte { color: var(--muted); font-size: 13px; margin-left: 6px; }
+    .search-result .extrait { font-size: 13px; color: #445; margin-top: 2px; }
+    .search-result mark { background: #fde68a; border-radius: 2px; padding: 0 1px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-title">Recherche</div>
+</div>
+
+{# GET et non POST : une recherche n'écrit rien, et son adresse (/search?q=…)
+   se garde en favori ou se recharge. #}
+<form method="GET" action="/search" class="search-form">
+    <input type="search" name="q" value="{{ q }}" placeholder="Un nom, un lieu, un mot d'une note…" autofocus>
+    <button type="submit" class="btn btn-primary">Rechercher</button>
+</form>
+
+{% if too_short %}
+<div class="meta">Tape au moins deux lettres.</div>
+{% elif q and not sections %}
+<div class="card" style="color:var(--muted);text-align:center;padding:24px">
+    Rien trouvé pour « {{ q }} ».
+</div>
+{% elif q %}
+<div class="meta" style="margin-bottom:12px">
+    {{ total }} résultat{{ 's' if total > 1 else '' }} pour « {{ q }} »
+    {%- if current_ship %}, sur {{ current_ship.name }}{% endif %}
+    — sans tenir compte des majuscules ni des accents.
+</div>
+{% for sec in sections %}
+<section class="card search-section">
+    <h3>{{ sec.title }} <span style="font-weight:400">({{ sec.results | length }}{{ '+' if sec.more else '' }})</span></h3>
+    {% for r in sec.results %}
+    <a href="{{ r.url }}" class="search-result">
+        <span class="titre">{{ r.label }}</span>
+        {% if r.context %}<span class="contexte">{{ r.context }}</span>{% endif %}
+        {% if r.date %}<span class="contexte">{{ r.date | datefr }}</span>{% endif %}
+        {% if r.excerpt %}
+        <div class="extrait">{{ r.excerpt.before }}<mark>{{ r.excerpt.match }}</mark>{{ r.excerpt.after }}</div>
+        {% endif %}
+    </a>
+    {% endfor %}
+    {% if sec.more %}
+    <div class="meta" style="padding:4px 12px">Seuls les {{ sec.results | length }} premiers sont affichés : précise la recherche.</div>
+    {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+
+{% endblock %}
