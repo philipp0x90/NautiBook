@@ -497,6 +497,8 @@ async def _migrate(db):
         await db.execute("ALTER TABLE expenses ADD COLUMN document_path TEXT")
         print("Migration: expenses.document_path added")
 
+    await _move_crew_photos(db)
+
     # L'adresse d'un contact, un seul texte libre, devient quatre champs comme
     # celle d'un équipier. Un texte libre ne se redécoupe pas sûrement : il
     # passe tel quel dans street, à reprendre à la main. La colonne address
@@ -603,6 +605,12 @@ DOC_SUFFIXES = IMG_SUFFIXES | {".pdf"}
 DOC_MAX_BYTES = 20 * 1024 * 1024
 (IMG_DIR / DOC_SUBDIR).mkdir(exist_ok=True)
 
+# Photos des équipiers : leur propre sous-dossier d'IMG/, pour la même raison
+# que les factures (sauvegarde et montage /IMG sans rien changer). Celles
+# enregistrées avant sont déplacées au démarrage par _move_crew_photos.
+CREW_SUBDIR = "SailingCrew"
+(IMG_DIR / CREW_SUBDIR).mkdir(exist_ok=True)
+
 
 async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str = "",
                        max_bytes: Optional[int] = None) -> Optional[str]:
@@ -636,6 +644,42 @@ async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str 
 async def _save_photo(upload: Optional[UploadFile]) -> Optional[str]:
     """Store an uploaded image in IMG/ and return the URL to use as photo_path."""
     return await _save_upload(upload, IMG_SUFFIXES)
+
+
+async def _save_crew_photo(upload: Optional[UploadFile]) -> Optional[str]:
+    """Photo d'un équipier, dans IMG/SailingCrew/."""
+    return await _save_upload(upload, IMG_SUFFIXES, CREW_SUBDIR)
+
+
+async def _move_crew_photos(db):
+    """Range dans IMG/SailingCrew/ les photos d'équipiers restées à la racine
+    d'IMG/, et met leur chemin à jour dans la base.
+
+    Étape de _migrate, donc rejouée à chaque démarrage : une photo déjà rangée
+    n'est plus concernée. Le fichier est déplacé avant que la base soit
+    modifiée ; si l'app s'arrêtait entre les deux, le tour suivant trouve le
+    fichier déjà à destination et ne fait que corriger le chemin. Une photo
+    introuvable, ou une URL externe, est laissée telle quelle.
+
+    Seules les photos qu'une fiche désigne sont déplacées : un ancien fichier
+    qu'aucune ne désigne plus reste où il est, au cas où une sauvegarde
+    ancienne de la base y renverrait encore."""
+    cursor = await db.execute(
+        "SELECT id, photo_path FROM crew_members WHERE photo_path LIKE ?", (IMG_URL + "/%",)
+    )
+    for crew_id, path in await cursor.fetchall():
+        name = path[len(IMG_URL) + 1:]
+        if "/" in name:
+            continue   # déjà dans un sous-dossier
+        src, dst = IMG_DIR / name, IMG_DIR / CREW_SUBDIR / name
+        if src.exists() and not dst.exists():
+            src.rename(dst)
+        if dst.exists():
+            await db.execute(
+                "UPDATE crew_members SET photo_path = ? WHERE id = ?",
+                (f"{IMG_URL}/{CREW_SUBDIR}/{name}", crew_id),
+            )
+            print(f"Migration: photo d'équipier rangée dans {CREW_SUBDIR}/ : {name}")
 
 
 async def _save_document(upload: Optional[UploadFile]) -> Optional[str]:
@@ -2266,7 +2310,7 @@ async def create_crew(
     photo_path: Optional[str] = Form(None),
 ):
     phone = _join_phone(phone_code, phone)
-    photo = await _save_photo(photo_file) or photo_path or None
+    photo = await _save_crew_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
             """INSERT INTO crew_members
@@ -2368,7 +2412,7 @@ async def update_crew(
 ):
     # Same field list as create_crew — a new column has to be added to both.
     phone = _join_phone(phone_code, phone)
-    photo = await _save_photo(photo_file) or photo_path or None
+    photo = await _save_crew_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
             """UPDATE crew_members SET
