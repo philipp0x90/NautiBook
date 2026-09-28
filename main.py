@@ -988,13 +988,26 @@ async def save_ship_info(
 
 
 @app.get("/ship/expenses", response_class=HTMLResponse)
-async def ship_expenses(request: Request):
+async def ship_expenses(request: Request, tri: Optional[str] = None, ordre: Optional[str] = None):
     ship_id = get_current_ship_id(request)
+    # Tri choisi par les flèches des titres de colonne. La colonne vient de
+    # EXPENSE_SORTS et jamais de l'URL telle quelle : elle est interpolée dans
+    # l'ORDER BY. Par défaut, les plus récentes d'abord.
+    if tri not in EXPENSE_SORTS:
+        tri, ordre = "date", "desc"
+    ordre = "asc" if ordre == "asc" else "desc"
+    column, is_text = EXPENSE_SORTS[tri]
+    # Le texte se trie sans tenir compte des majuscules ni des accents (fold,
+    # comme la recherche) ; les cases vides vont toujours en dernier, quel que
+    # soit le sens ; à égalité, la date la plus récente d'abord.
+    key = f"fold({column})" if is_text else column
+    order_by = f"({column} IS NULL OR {column} = ''), {key} {ordre.upper()}, date DESC, id DESC"
     async with connect() as db:
         db.row_factory = aiosqlite.Row
+        await db.create_function("fold", 1, _fold_sql, deterministic=True)
         ship = await _fetch_ship(db, ship_id)
         cursor = await db.execute(
-            "SELECT * FROM expenses WHERE ship_id = ? ORDER BY date DESC", (ship_id,)
+            f"SELECT * FROM expenses WHERE ship_id = ? ORDER BY {order_by}", (ship_id,)
         )
         entries = await cursor.fetchall()
         # Nom du fournisseur → id de sa fiche. expenses.supplier retient un nom,
@@ -1011,8 +1024,20 @@ async def ship_expenses(request: Request):
             "current_ship": dict(ship) if ship else None,
             "entries": [dict(e) for e in entries],
             "supplier_ids": supplier_ids,
+            "tri": tri, "ordre": ordre,
         },
     )
+
+
+# Colonnes de la liste des comptes que l'on peut trier : nom dans l'URL →
+# (colonne SQL, texte ?). Seules ces colonnes peuvent finir dans l'ORDER BY.
+EXPENSE_SORTS = {
+    "date": ("date", False),
+    "montant": ("unit_price", False),
+    "objet": ("designation", True),
+    "type": ("expense_type", True),
+    "fournisseur": ("supplier", True),
+}
 
 
 # Types de frais proposés dans le formulaire des comptes. Valeurs *stockées* :
@@ -1219,25 +1244,79 @@ def _cell(value):
     return None if value == "" else value
 
 
-async def _parse_expense_import(db, ship_id: int, filename: str, data: bytes) -> dict:
-    """Lit le fichier et prépare l'aperçu : lignes valides, doublons ignorés,
-    erreurs, et avertissements (type remplacé, contact à créer)."""
-    rows = _read_sheet(filename, data)
-    # La ligne de titres est la première qui en contient au moins un connu :
-    # un tableur a parfois un intitulé ou une ligne vide au-dessus.
-    header_index, mapping = None, {}
+def _find_header(rows: list, aliases: dict, required: set, message: str):
+    """La ligne de titres et, pour chaque colonne du fichier reconnue, la
+    colonne de la base qu'elle remplit : (index de la ligne, {n° : colonne}).
+
+    C'est la première des dix premières lignes qui porte l'un des titres
+    `required` : un tableur a parfois un intitulé ou une ligne vide au-dessus.
+    Sinon ValueError(message)."""
     for i, row in enumerate(rows[:10]):
         found = {}
         for j, cell in enumerate(row):
             key = _fold(str(cell or "")).strip()
-            if key in IMPORT_ALIASES and IMPORT_ALIASES[key] not in found.values():
-                found[j] = IMPORT_ALIASES[key]
-        if "designation" in found.values():
-            header_index, mapping = i, found
-            break
-    if header_index is None:
-        raise ValueError("Colonne « Objet » introuvable : la première ligne doit porter les titres "
-                         "du fichier modèle (Date, Montant, Objet…).")
+            if key in aliases and aliases[key] not in found.values():
+                found[j] = aliases[key]
+        if required & set(found.values()):
+            return i, found
+    raise ValueError(message)
+
+
+def _import_template(fmt: str, headers: list, widths: tuple, name: str, customize=None) -> Response:
+    """Fichier modèle vide, en CSV ou en Excel : les titres de colonnes, rien
+    d'autre — une ligne d'exemple risquerait d'être importée avec le reste.
+    `customize(feuille)` ajoute au modèle Excel ses listes et formats."""
+    if fmt == "csv":
+        out = io.StringIO()
+        csv.writer(out, delimiter=";").writerow(headers)
+        # BOM : sans lui, Excel ouvre l'UTF-8 comme du Windows et « Payé »
+        # devient « PayÃ© ».
+        return Response(
+            ("\ufeff" + out.getvalue()).encode("utf-8"), media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="modele-{name}.csv"'},
+        )
+    if fmt == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        wb = Workbook()
+        ws = wb.active
+        ws.title = name.capitalize()
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for index, width in enumerate(widths):
+            ws.column_dimensions[chr(ord("A") + index)].width = width
+        ws.freeze_panes = "A2"
+        if customize:
+            customize(ws)
+        out = io.BytesIO()
+        wb.save(out)
+        return Response(
+            out.getvalue(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="modele-{name}.xlsx"'},
+        )
+    raise HTTPException(status_code=404, detail="Format inconnu")
+
+
+def _dropdown(ws, column: str, values: list):
+    """Liste déroulante sur une colonne du modèle Excel, pour taper les
+    valeurs que l'app connaît ; une autre reste possible (erreur non bloquante)."""
+    from openpyxl.worksheet.datavalidation import DataValidation
+    dv = DataValidation(type="list", formula1='"' + ",".join(values) + '"', showErrorMessage=False)
+    dv.add(f"{column}2:{column}1000")
+    ws.add_data_validation(dv)
+
+
+async def _parse_expense_import(db, ship_id: int, filename: str, data: bytes) -> dict:
+    """Lit le fichier et prépare l'aperçu : lignes valides, doublons ignorés,
+    erreurs, et avertissements (valeur hors liste, contact à créer)."""
+    rows = _read_sheet(filename, data)
+    header_index, mapping = _find_header(
+        rows, IMPORT_ALIASES, {"designation"},
+        "Colonne « Objet » introuvable : la première ligne doit porter les titres "
+        "du fichier modèle (Date, Montant, Objet…).",
+    )
 
     cursor = await db.execute(
         "SELECT id, COALESCE(company, contact_name) FROM contacts WHERE ship_id = ?", (ship_id,)
@@ -1333,50 +1412,15 @@ async def expense_import_form(request: Request):
 
 @app.get("/ship/expenses/import/modele.{fmt}")
 async def expense_import_template(fmt: str):
-    """Fichier modèle vide : les titres de colonnes, rien d'autre — une ligne
-    d'exemple risquerait d'être importée avec le reste."""
-    headers = [c for c, _ in IMPORT_COLUMNS]
-    if fmt == "csv":
-        out = io.StringIO()
-        csv.writer(out, delimiter=";").writerow(headers)
-        # BOM : sans lui, Excel ouvre l'UTF-8 comme du Windows et « Payé »
-        # devient « PayÃ© ».
-        return Response(
-            ("﻿" + out.getvalue()).encode("utf-8"), media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="modele-comptes.csv"'},
-        )
-    if fmt == "xlsx":
-        from openpyxl import Workbook
-        from openpyxl.styles import Font
-        from openpyxl.worksheet.datavalidation import DataValidation
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Comptes"
-        ws.append(headers)
-        for cell in ws[1]:
-            cell.font = Font(bold=True)
-        for letter, width in zip("ABCDEFGH", (12, 12, 32, 16, 24, 12, 14, 40)):
-            ws.column_dimensions[letter].width = width
-        ws.freeze_panes = "A2"
-        # Listes déroulantes dans le tableur même, pour taper les valeurs
-        # que l'app connaît ; une autre reste possible (erreur non bloquante).
-        for column, values in (("D", [t for t in EXPENSE_TYPES if t]), ("G", PAYMENT_MODES)):
-            dv = DataValidation(type="list", formula1='"' + ",".join(values) + '"',
-                                showErrorMessage=False)
-            dv.add(f"{column}2:{column}1000")
-            ws.add_data_validation(dv)
+    def customize(ws):
+        _dropdown(ws, "D", [t for t in EXPENSE_TYPES if t])
+        _dropdown(ws, "G", PAYMENT_MODES)
         for row in range(2, 1001):
             ws[f"A{row}"].number_format = "DD/MM/YYYY"
             for column in ("B", "F"):
                 ws[f"{column}{row}"].number_format = "#,##0.00"
-        out = io.BytesIO()
-        wb.save(out)
-        return Response(
-            out.getvalue(),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": 'attachment; filename="modele-comptes.xlsx"'},
-        )
-    raise HTTPException(status_code=404, detail="Format inconnu")
+    return _import_template(fmt, [c for c, _ in IMPORT_COLUMNS],
+                            (12, 12, 32, 16, 24, 12, 14, 40), "comptes", customize)
 
 
 @app.post("/ship/expenses/import", response_class=HTMLResponse)
@@ -1760,6 +1804,224 @@ async def create_contact(
         await db.commit()
     if expense_id is not None:
         return RedirectResponse(url=f"/ship/expenses/{expense_id}", status_code=303)
+    return RedirectResponse(url="/ship/contacts", status_code=303)
+
+
+# ── Import du carnet d'adresses ──────────────────────────────────────────────
+# Même principe que l'import des comptes (aperçu, puis confirmation), avec une
+# règle de plus : un contact déjà au carnet n'est pas dupliqué, il est
+# complété — seuls ses champs vides reçoivent la valeur du fichier, un champ
+# rempli n'est jamais écrasé. Déclaré avant /ship/contacts/{contact_id}.
+
+CONTACT_IMPORT_COLUMNS = [
+    ("Société", "company"), ("Contact", "contact_name"), ("Catégorie", "category"),
+    ("Téléphone", "phone"), ("Email", "email"), ("Site web", "website"),
+    ("Rue et numéro", "street"), ("Code postal", "postal_code"), ("Localité", "city"),
+    ("Pays", "country"), ("Notes", "notes"),
+]
+CONTACT_FIELD_LABELS = {col: label.lower() for label, col in CONTACT_IMPORT_COLUMNS}
+CONTACT_IMPORT_ALIASES = {
+    "societe": "company", "entreprise": "company", "raison sociale": "company", "company": "company",
+    "contact": "contact_name", "nom du contact": "contact_name", "nom": "contact_name",
+    "personne de contact": "contact_name",
+    "categorie": "category",
+    "telephone": "phone", "tel": "phone", "tel.": "phone", "gsm": "phone", "mobile": "phone",
+    "portable": "phone", "phone": "phone",
+    "email": "email", "e-mail": "email", "mail": "email", "courriel": "email",
+    "site web": "website", "site": "website", "web": "website", "site internet": "website",
+    "rue et numero": "street", "rue": "street", "adresse": "street",
+    "code postal": "postal_code", "cp": "postal_code",
+    "localite": "city", "ville": "city", "commune": "city",
+    "pays": "country",
+    "notes": "notes", "remarques": "notes", "commentaire": "notes", "commentaires": "notes",
+}
+CONTACT_DATA_FIELDS = [col for _, col in CONTACT_IMPORT_COLUMNS if col not in ("company", "contact_name")]
+
+
+def _contact_key(company, contact_name):
+    """Ce qui identifie un contact : sa société, à défaut le nom du contact,
+    replié — la même règle que expenses.supplier, qui retient ce nom-là."""
+    return _fold(company or contact_name or "").strip()
+
+
+def _import_text(value):
+    """Cellule en texte : un code postal ou un téléphone lu comme nombre par
+    Excel (1000.0) redevient « 1000 »."""
+    if value is None:
+        return None
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    text = str(value).strip()
+    return text or None
+
+
+async def _parse_contact_import(db, ship_id: int, filename: str, data: bytes) -> dict:
+    rows = _read_sheet(filename, data)
+    header_index, mapping = _find_header(
+        rows, CONTACT_IMPORT_ALIASES, {"company", "contact_name"},
+        "Colonne « Société » ou « Contact » introuvable : la première ligne doit porter les "
+        "titres du fichier modèle (Société, Contact, Catégorie…).",
+    )
+    db.row_factory = aiosqlite.Row
+    cursor = await db.execute("SELECT * FROM contacts WHERE ship_id = ?", (ship_id,))
+    existing = {}
+    for r in await cursor.fetchall():
+        existing.setdefault(_contact_key(r["company"], r["contact_name"]), dict(r))
+    db.row_factory = None
+    categories = {_fold(c): c for c in CONTACT_CATEGORIES}
+
+    # Une entrée par contact : deux lignes de la même société dans le fichier
+    # se fondent en une, la première valeur de chaque champ l'emportant.
+    entries, order, errors = {}, [], []
+    for number, row in enumerate(rows[header_index + 1:], start=header_index + 2):
+        raw = {col: _import_text(_cell(row[j])) if j < len(row) else None for j, col in mapping.items()}
+        if all(v is None for v in raw.values()):
+            continue
+        key = _contact_key(raw.get("company"), raw.get("contact_name"))
+        if not key:
+            errors.append({"line": number, "status": "error", "errors": ["ni société ni contact"],
+                           "values": raw, "notes": [], "fills": [], "conflicts": []})
+            continue
+        cat = raw.get("category")
+        if cat and _fold(cat) in categories:
+            raw["category"] = categories[_fold(cat)]
+        if key not in entries:
+            entries[key] = {"lines": [number], "values": raw}
+            order.append(key)
+        else:
+            entries[key]["lines"].append(number)
+            for col, value in raw.items():
+                if value is not None and entries[key]["values"].get(col) is None:
+                    entries[key]["values"][col] = value
+
+    lines = []
+    for key in order:
+        entry = entries[key]
+        values = entry["values"]
+        line = {"line": ", ".join(map(str, entry["lines"])), "values": values,
+                "errors": [], "notes": [], "fills": [], "conflicts": []}
+        if len(entry["lines"]) > 1:
+            line["notes"].append(f"{len(entry['lines'])} lignes du fichier réunies")
+        current = existing.get(key)
+        if current is None:
+            line["status"] = "new"
+        else:
+            line["id"] = current["id"]
+            # Seuls les champs vides au carnet reçoivent la valeur du fichier ;
+            # une valeur différente sur un champ rempli est signalée, pas écrite.
+            for col in CONTACT_DATA_FIELDS + ["company", "contact_name"]:
+                value = values.get(col)
+                if value is None:
+                    continue
+                stored = current.get(col)
+                if stored in (None, ""):
+                    line["fills"].append(col)
+                elif _fold(str(stored)).strip() != _fold(value).strip():
+                    line["conflicts"].append(f"{CONTACT_FIELD_LABELS[col]} : « {stored} » conservé")
+            line["status"] = "update" if line["fills"] else "same"
+            line["stored"] = {k: current.get(k) for k in ("company", "contact_name")}
+        lines.append(line)
+    lines += errors
+    lines.sort(key=lambda l: int(str(l["line"]).split(",")[0]))
+    return {"lines": lines,
+            "actions": [l for l in lines if l["status"] in ("new", "update")]}
+
+
+@app.get("/ship/contacts/import", response_class=HTMLResponse)
+async def contact_import_form(request: Request):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+    return templates.TemplateResponse(
+        "ship/contacts_import.html",
+        {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None,
+         "columns": [c for c, _ in CONTACT_IMPORT_COLUMNS], "labels": CONTACT_FIELD_LABELS,
+         "preview": None, "error": None},
+    )
+
+
+@app.get("/ship/contacts/import/modele.{fmt}")
+async def contact_import_template(fmt: str):
+    def customize(ws):
+        _dropdown(ws, "C", CONTACT_CATEGORIES)
+        # Texte et non nombre : sans quoi Excel mange le zéro de tête d'un
+        # code postal (01000) et le + d'un téléphone.
+        for row in range(2, 1001):
+            for column in ("D", "H"):
+                ws[f"{column}{row}"].number_format = "@"
+    return _import_template(fmt, [c for c, _ in CONTACT_IMPORT_COLUMNS],
+                            (28, 22, 20, 18, 28, 26, 28, 12, 18, 14, 40), "contacts", customize)
+
+
+@app.post("/ship/contacts/import", response_class=HTMLResponse)
+async def contact_import_preview(request: Request, file: Optional[UploadFile] = File(None)):
+    """Premier temps : lire et montrer, sans rien enregistrer."""
+    ship_id = get_current_ship_id(request)
+    preview, error = None, None
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, ship_id)
+        if file is None or not file.filename:
+            error = "Choisissez d'abord un fichier."
+        else:
+            data = await file.read(IMPORT_MAX_BYTES + 1)
+            if len(data) > IMPORT_MAX_BYTES:
+                error = "Fichier trop volumineux pour un carnet d'adresses (plus de 5 Mo)."
+            else:
+                try:
+                    preview = await _parse_contact_import(db, ship_id, file.filename, data)
+                except ValueError as exc:
+                    error = str(exc)
+                except Exception:
+                    error = "Ce fichier n'a pas pu être lu comme un tableur CSV ou Excel."
+    return templates.TemplateResponse(
+        "ship/contacts_import.html",
+        {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None,
+         "columns": [c for c, _ in CONTACT_IMPORT_COLUMNS], "labels": CONTACT_FIELD_LABELS,
+         "preview": preview, "error": error, "filename": file.filename if file else None,
+         "payload": json.dumps(
+             [{"id": l.get("id"), "values": l["values"]} for l in preview["actions"]],
+             ensure_ascii=False) if preview else None},
+    )
+
+
+@app.post("/ship/contacts/import/confirm")
+async def contact_import_confirm(request: Request, payload: str = Form(...)):
+    """Second temps : créer les nouveaux contacts, compléter les autres."""
+    ship_id = get_current_ship_id(request)
+    fields = ["company", "contact_name"] + CONTACT_DATA_FIELDS
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT id, company, contact_name FROM contacts WHERE ship_id = ?", (ship_id,))
+        known = {}
+        for r in await cursor.fetchall():
+            known.setdefault(_contact_key(r["company"], r["contact_name"]), r["id"])
+        for action in json.loads(payload):
+            values = {f: action["values"].get(f) for f in fields}
+            key = _contact_key(values["company"], values["contact_name"])
+            if not key:
+                continue
+            # Revérifié ici : le contact a pu être créé entre l'aperçu et la
+            # confirmation, auquel cas on le complète au lieu de le doubler.
+            contact_id = known.get(key)
+            if contact_id is None:
+                cols = [f for f in fields if values[f] is not None]
+                cursor = await db.execute(
+                    f"INSERT INTO contacts (ship_id, {', '.join(cols)}) VALUES (?{', ?' * len(cols)})",
+                    (ship_id, *[values[c] for c in cols]),
+                )
+                known[key] = cursor.lastrowid
+            else:
+                # Champ par champ, et seulement s'il est vide *au moment de
+                # l'écriture* : rien de ce qui est au carnet n'est écrasé.
+                for f in fields:
+                    if values[f] is not None:
+                        await db.execute(
+                            f"UPDATE contacts SET {f} = ? WHERE id = ? AND ship_id = ? "
+                            f"AND ({f} IS NULL OR {f} = '')",
+                            (values[f], contact_id, ship_id),
+                        )
+        await db.commit()
     return RedirectResponse(url="/ship/contacts", status_code=303)
 
 

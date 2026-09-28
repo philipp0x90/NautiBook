@@ -123,7 +123,10 @@
                 </thead>
                 <tbody>
                     {% for p in purchases %}
-                    <tr>
+                    {# Toute la ligne ouvre la fiche de la dépense, comme dans la
+                       liste des comptes. #}
+                    <tr style="cursor:pointer" title="Ouvrir cette dépense"
+                        onclick="rowLink(event, '/ship/expenses/{{ p.id }}')">
                         <td style="white-space:nowrap">{{ p.date | datefr if p.date else '' }}</td>
                         <td>{{ p.designation or '' }}</td>
                         <td>{{ p.expense_type or '' }}</td>

@@ -2,13 +2,13 @@
 {% block title %}Carnet d'adresses — NautiBook{% endblock %}
 {% block content %}
 
-{# Le bouton dans la barre, à droite. Pas de .section-bar-right, dont le fond
-   translucide ferait une pastille autour du bouton ; à gauche, son double
-   invisible occupe la même largeur pour que le titre reste centré. #}
+{# Un bouton de chaque côté, de même largeur, pour que le titre reste centré :
+   l'import à gauche, la saisie à droite, comme sur la liste des comptes. Pas de
+   .section-bar-right, dont le fond translucide ferait une pastille autour. #}
 <div class="section-bar">
-    <span class="btn btn-yellow" style="visibility:hidden" aria-hidden="true">+ Nouveau contact</span>
+    <a href="/ship/contacts/import" class="btn" style="min-width:180px;text-align:center;background:#fff;color:#0f3a4a">⇪ Importer</a>
     <div class="section-bar-title">Carnet d'adresses</div>
-    <a href="/ship/contacts/new" class="btn btn-yellow">+ Nouveau contact</a>
+    <a href="/ship/contacts/new" class="btn btn-yellow" style="min-width:180px;text-align:center">+ Nouveau contact</a>
 </div>
 
 {% if contacts %}

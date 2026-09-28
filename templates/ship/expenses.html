@@ -15,6 +15,19 @@
         border-radius: 6px;
     }
     .comptes-scroll thead th { position: sticky; top: 0; z-index: 2; }
+
+    /* Flèches de tri : deux petits triangles empilés à droite du titre. */
+    .tri-titre { display: inline-flex; align-items: center; gap: 6px; }
+    .tri-titre.tri-droite { justify-content: flex-end; }
+    .tri { display: inline-flex; flex-direction: column; line-height: 1; }
+    /* Zone de toucher agrandie par la marge intérieure : sur iPad, un
+       triangle de 11 px seul serait difficile à viser. */
+    .tri a {
+        color: rgba(255, 255, 255, 0.55); text-decoration: none;
+        font-size: 11px; padding: 1px 4px;
+    }
+    .tri a:hover { color: #fff; }
+    .tri a.actif { color: #fff; }
     .comptes-scroll tfoot td {
         position: sticky; bottom: 0; z-index: 2; background: #fff;
         /* border-collapse ne colle pas les bordures avec la cellule : le trait
@@ -41,11 +54,32 @@
     <table class="data-table">
         <thead>
             <tr>
-                <th>Date</th>
-                <th style="text-align:right">Montant</th>
-                <th>Objet</th>
-                <th>Type de frais</th>
-                <th>Fournisseur</th>
+                {# Deux triangles à droite du titre : ▲ croissant, ▼ décroissant.
+                   Le sens actif est plein, l'autre estompé. Chaque info-bulle dit
+                   l'ordre obtenu dans les mots de la colonne. La liste de la
+                   colonne est au-dessus du for : un commentaire ne peut pas se
+                   glisser à l'intérieur de la balise. #}
+                {% for key, label, align, asc_tip, desc_tip in [
+                    ('date', 'Date', 'left', 'du plus ancien au plus récent', 'du plus récent au plus ancien'),
+                    ('montant', 'Montant', 'right', 'du plus petit au plus grand', 'du plus grand au plus petit'),
+                    ('objet', 'Objet', 'left', 'de A à Z', 'de Z à A'),
+                    ('type', 'Type de frais', 'left', 'de A à Z', 'de Z à A'),
+                    ('fournisseur', 'Fournisseur', 'left', 'de A à Z', 'de Z à A'),
+                ] %}
+                <th style="text-align:{{ align }};white-space:nowrap">
+                    <span class="tri-titre{{ ' tri-droite' if align == 'right' else '' }}">
+                        {{ label }}
+                        <span class="tri">
+                            <a href="?tri={{ key }}&amp;ordre=asc" title="Trier par {{ label | lower }}, {{ asc_tip }}"
+                               aria-label="Trier par {{ label | lower }}, {{ asc_tip }}"
+                               class="{{ 'actif' if tri == key and ordre == 'asc' else '' }}">▲</a>
+                            <a href="?tri={{ key }}&amp;ordre=desc" title="Trier par {{ label | lower }}, {{ desc_tip }}"
+                               aria-label="Trier par {{ label | lower }}, {{ desc_tip }}"
+                               class="{{ 'actif' if tri == key and ordre == 'desc' else '' }}">▼</a>
+                        </span>
+                    </span>
+                </th>
+                {% endfor %}
                 <th style="text-align:right">Payé</th>
                 <th>Paiement</th>
                 <th style="text-align:right">Solde</th>
