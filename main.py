@@ -498,6 +498,7 @@ async def _migrate(db):
         print("Migration: expenses.document_path added")
 
     await _move_crew_photos(db)
+    await _rename_doc_folder(db)
 
     # L'adresse d'un contact, un seul texte libre, devient quatre champs comme
     # celle d'un équipier. Un texte libre ne se redécoupe pas sûrement : il
@@ -598,7 +599,12 @@ app.mount(IMG_URL, StaticFiles(directory=IMG_DIR), name="img")
 # Comme les photos, rien ne les supprime : remplacer le document d'une dépense
 # ou supprimer la dépense laisse le fichier, qu'une base restaurée peut encore
 # désigner.
-DOC_SUBDIR = "factures"
+# « Invoices-Receipts » et non « Invoices&Receipts » : un & non protégé coupe
+# une commande tapée dans un terminal (ls IMG/Invoices&Receipts lance « ls
+# IMG/Invoices » en arrière-plan), et ce dossier se manipule à la main sur le
+# Pi. L'ancien nom, factures, est repris au démarrage par _rename_doc_folder.
+DOC_SUBDIR = "Invoices-Receipts"
+OLD_DOC_SUBDIR = "factures"
 DOC_SUFFIXES = IMG_SUFFIXES | {".pdf"}
 # Plafond par fichier : un ticket photographié fait 3 à 5 Mo, un PDF scanné
 # rarement plus de 10. Au-delà c'est une erreur, qui remplirait la carte SD.
@@ -610,6 +616,11 @@ DOC_MAX_BYTES = 20 * 1024 * 1024
 # enregistrées avant sont déplacées au démarrage par _move_crew_photos.
 CREW_SUBDIR = "SailingCrew"
 (IMG_DIR / CREW_SUBDIR).mkdir(exist_ok=True)
+
+# Documents du bord (papiers du navire, manuels…). Rien dans l'app n'y écrit
+# encore : le dossier est créé pour qu'on puisse y déposer des fichiers, que
+# le montage /IMG sert et que backup.sh sauvegarde comme le reste.
+(IMG_DIR / "Documents").mkdir(exist_ok=True)
 
 
 async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str = "",
@@ -651,6 +662,36 @@ async def _save_crew_photo(upload: Optional[UploadFile]) -> Optional[str]:
     return await _save_upload(upload, IMG_SUFFIXES, CREW_SUBDIR)
 
 
+async def _rename_doc_folder(db):
+    """IMG/factures/ devient IMG/Invoices-Receipts/, et le chemin des
+    documents des dépenses suit.
+
+    Étape de _migrate, rejouée à chaque démarrage. Fichier par fichier plutôt
+    qu'un renommage du dossier : le nouveau existe déjà, créé vide au
+    chargement du module. Tous les fichiers suivent — c'est le dossier qui
+    change de nom —, même ceux qu'aucune dépense ne désigne. Les chemins sont
+    réécrits ensuite ; un arrêt entre les deux se rattrape au tour suivant,
+    puisque les fichiers déjà déplacés sont sautés et les chemins réécrits
+    quoi qu'il arrive. L'ancien dossier, vidé, est retiré."""
+    old = IMG_DIR / OLD_DOC_SUBDIR
+    if old.is_dir():
+        for f in old.iterdir():
+            if f.name == ".DS_Store":
+                f.unlink()   # métadonnées du Finder, recréées au besoin
+            elif not (IMG_DIR / DOC_SUBDIR / f.name).exists():
+                f.rename(IMG_DIR / DOC_SUBDIR / f.name)
+                print(f"Migration: {OLD_DOC_SUBDIR}/{f.name} → {DOC_SUBDIR}/")
+        try:
+            old.rmdir()
+        except OSError:
+            pass   # un fichier homonyme n'a pas pu être déplacé : on le laisse
+    old_prefix, new_prefix = f"{IMG_URL}/{OLD_DOC_SUBDIR}/", f"{IMG_URL}/{DOC_SUBDIR}/"
+    await db.execute(
+        "UPDATE expenses SET document_path = ? || substr(document_path, ?) WHERE document_path LIKE ?",
+        (new_prefix, len(old_prefix) + 1, old_prefix + "%"),
+    )
+
+
 async def _move_crew_photos(db):
     """Range dans IMG/SailingCrew/ les photos d'équipiers restées à la racine
     d'IMG/, et met leur chemin à jour dans la base.
@@ -683,7 +724,7 @@ async def _move_crew_photos(db):
 
 
 async def _save_document(upload: Optional[UploadFile]) -> Optional[str]:
-    """Facture ou reçu d'une dépense (image ou PDF), dans IMG/factures/."""
+    """Facture ou reçu d'une dépense (image ou PDF), dans IMG/Invoices-Receipts/."""
     return await _save_upload(upload, DOC_SUFFIXES, DOC_SUBDIR, DOC_MAX_BYTES)
 
 
