@@ -3,6 +3,25 @@
 
 {% block head %}
 <style>
+    /* Section Documents */
+    .doc-ajout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .doc-type { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
+    .doc-type.doc-pdf { background: #c0392b; }
+    .doc-type.doc-img { background: #2980b9; }
+    /* Validité : le champ date se lit comme du texte, bordé au survol. */
+    .validite { display: flex; align-items: center; gap: 6px; }
+    .validite input {
+        width: auto; padding: 2px 6px; font: inherit; background: transparent;
+        border: 1px solid transparent; border-radius: 4px;
+    }
+    .validite input:hover { border-color: #cfe3ef; background: #fff; }
+    .validite.bientot input { color: #b45309; font-weight: 700; }
+    .validite.expire input { color: #b91c1c; font-weight: 700; }
+    .validite-badge { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
+    .validite.bientot .validite-badge { background: #d97706; }
+    .validite.expire .validite-badge { background: #dc2626; }
+    .doc-validite { display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; }
+    .doc-validite input { width: auto; }
     /* Dans chaque cellule de fiche, libellé et valeur sont centrés l'un sur
        l'autre. Une règle unique plutôt qu'un style inline par cellule, car
        toutes les rubriques de la page le veulent. Le bloc « Divers » n'est pas
@@ -185,6 +204,94 @@
             {% endfor %}
         </div>
     </section>
+
+    {# Documents du navire (table ship_documents, fichiers dans IMG/Documents/).
+       Ajoutés et retirés ici même, sans passer par « Modifier » : chaque action
+       est son propre formulaire, enregistré aussitôt. « Supprimer » retire la
+       ligne mais garde le fichier, comme partout dans IMG/. #}
+    <section>
+        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Documents</h3>
+
+        {% if documents %}
+        <table class="data-table" style="margin-bottom:12px">
+            <thead>
+                <tr><th>Titre</th><th>Type</th><th>Ajouté le</th><th>Valable jusqu'au</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for d in documents %}
+                {% set pdf = d.path.lower().endswith('.pdf') %}
+                {# Un PDF s'ouvre dans un nouvel onglet, où le lecteur du
+                   navigateur permet de défiler et de zoomer ; une image, en
+                   plein écran comme les photos. #}
+                <tr style="cursor:pointer" title="Afficher le document"
+                    onclick="ouvrirDocument(event, '{{ d.path }}', {{ 'true' if pdf else 'false' }})">
+                    <td style="font-weight:600">{{ d.title or '—' }}</td>
+                    <td>
+                        {% if pdf %}<span class="doc-type doc-pdf">PDF</span>
+                        {% else %}<span class="doc-type doc-img">Image</span>{% endif %}
+                    </td>
+                    <td style="white-space:nowrap">{{ d.created_at | datefr }}</td>
+                    {# Validité modifiable sur place, son propre formulaire comme
+                       les champs d'une fiche contact. Rouge une fois dépassée,
+                       orange dans le mois qui précède. #}
+                    {% set etat = none if not d.valid_until else ('expire' if d.valid_until < today else ('bientot' if d.valid_until <= soon else 'ok')) %}
+                    <td style="white-space:nowrap">
+                        <form method="POST" action="/ship/documents/{{ d.id }}/valid-until" class="validite {{ etat or '' }}">
+                            <input type="date" name="value" value="{{ d.valid_until or '' }}"
+                                   title="Date de fin de validité (facultative)" onchange="this.form.submit()">
+                            {% if etat == 'expire' %}<span class="validite-badge">Expiré</span>
+                            {% elif etat == 'bientot' %}<span class="validite-badge">Expire bientôt</span>{% endif %}
+                        </form>
+                    </td>
+                    <td style="text-align:right">
+                        <form method="POST" action="/ship/documents/{{ d.id }}/delete"
+                              onsubmit="return confirm('Retirer « {{ (d.title or 'ce document') | replace("'", "’") }} » de la fiche ?')">
+                            <button type="submit" class="btn" title="Retirer ce document de la fiche"
+                                    style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px">✕ Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="meta" style="margin-bottom:12px">Aucun document pour ce navire.</div>
+        {% endif %}
+
+        <form method="POST" action="/ship/documents/new" enctype="multipart/form-data"
+              class="doc-ajout" onsubmit="return verifierDocument(this)">
+            <input type="text" name="title" placeholder="Titre du document (sinon, le nom du fichier)"
+                   style="flex:2;min-width:220px">
+            <input type="file" name="document_file" accept="image/*,application/pdf" required
+                   style="flex:2;min-width:220px">
+            <label class="doc-validite">Valable jusqu'au
+                <input type="date" name="valid_until" title="Facultatif">
+            </label>
+            <button type="submit" class="btn btn-yellow">+ Ajouter document</button>
+        </form>
+        <div class="meta" style="margin-top:4px">PDF ou image, {{ doc_max_bytes // 1048576 }} Mo au plus.</div>
+    </section>
+
+    <script>
+    // Clic sur une ligne de document, hors bouton « Supprimer ».
+    function ouvrirDocument(event, url, pdf) {
+        if (event.target.closest('button, form')) return;
+        if (pdf) { window.open(url, '_blank', 'noopener'); return; }
+        const img = new Image();
+        img.src = url;
+        agrandirPhoto(event, img);
+    }
+    // Refus avant l'envoi plutôt qu'une page d'erreur après : à 50 Mo, l'envoi
+    // lui-même prend du temps sur le wifi du bord.
+    function verifierDocument(form) {
+        const f = form.document_file.files[0];
+        if (f && f.size > {{ doc_max_bytes }}) {
+            alert('Fichier trop volumineux (plus de {{ doc_max_bytes // 1048576 }} Mo).');
+            return false;
+        }
+        return true;
+    }
+    </script>
 
     <section>
         <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Divers</h3>

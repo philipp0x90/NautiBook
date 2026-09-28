@@ -376,6 +376,19 @@ async def init_db():
             )
         """)
 
+        # Documents du navire (papiers, manuels…), listés sur sa fiche. Le
+        # fichier est dans IMG/Documents/ ; path est son URL, comme photo_path.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ship_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ship_id INTEGER NOT NULL REFERENCES ship_info(id) ON DELETE CASCADE,
+                title TEXT,
+                path TEXT NOT NULL,
+                valid_until TEXT,
+                created_at DATETIME
+            )
+        """)
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS contacts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -497,6 +510,11 @@ async def _migrate(db):
         await db.execute("ALTER TABLE expenses ADD COLUMN document_path TEXT")
         print("Migration: expenses.document_path added")
 
+    cursor = await db.execute("PRAGMA table_info(ship_documents)")
+    if "valid_until" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE ship_documents ADD COLUMN valid_until TEXT")
+        print("Migration: ship_documents.valid_until added")
+
     await _move_crew_photos(db)
     await _rename_doc_folder(db)
 
@@ -617,10 +635,12 @@ DOC_MAX_BYTES = 20 * 1024 * 1024
 CREW_SUBDIR = "SailingCrew"
 (IMG_DIR / CREW_SUBDIR).mkdir(exist_ok=True)
 
-# Documents du bord (papiers du navire, manuels…). Rien dans l'app n'y écrit
-# encore : le dossier est créé pour qu'on puisse y déposer des fichiers, que
-# le montage /IMG sert et que backup.sh sauvegarde comme le reste.
-(IMG_DIR / "Documents").mkdir(exist_ok=True)
+# Documents du navire, ajoutés depuis sa fiche (section « Documents »). PDF et
+# images, comme les factures, mais un plafond plus haut : un manuel moteur en
+# PDF dépasse volontiers les 20 Mo d'une facture.
+SHIP_DOC_SUBDIR = "Documents"
+SHIP_DOC_MAX_BYTES = 50 * 1024 * 1024
+(IMG_DIR / SHIP_DOC_SUBDIR).mkdir(exist_ok=True)
 
 
 async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str = "",
@@ -721,6 +741,11 @@ async def _move_crew_photos(db):
                 (f"{IMG_URL}/{CREW_SUBDIR}/{name}", crew_id),
             )
             print(f"Migration: photo d'équipier rangée dans {CREW_SUBDIR}/ : {name}")
+
+
+async def _save_ship_document(upload: Optional[UploadFile]) -> Optional[str]:
+    """Document du navire (image ou PDF), dans IMG/Documents/."""
+    return await _save_upload(upload, DOC_SUFFIXES, SHIP_DOC_SUBDIR, SHIP_DOC_MAX_BYTES)
 
 
 async def _save_document(upload: Optional[UploadFile]) -> Optional[str]:
@@ -953,10 +978,74 @@ async def ship_info(request: Request):
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
         ship = dict(ship) if ship else None
+        documents = []
+        if ship:
+            cursor = await db.execute(
+                "SELECT * FROM ship_documents WHERE ship_id = ? ORDER BY created_at DESC, id DESC",
+                (ship["id"],),
+            )
+            documents = [dict(d) for d in await cursor.fetchall()]
     return templates.TemplateResponse(
         "ship/info.html",
-        {"request": request, "active_section": "ship", "ship": ship, "current_ship": ship},
+        {"request": request, "active_section": "ship", "ship": ship, "current_ship": ship,
+         "documents": documents, "doc_max_bytes": SHIP_DOC_MAX_BYTES,
+         # Repères de la couleur de validité : expiré avant aujourd'hui,
+         # « bientôt » dans les DOC_EXPIRY_WARNING_DAYS qui suivent. Des
+         # dates ISO, que la template compare comme des chaînes.
+         "today": date.today().isoformat(),
+         "soon": (date.today() + timedelta(days=DOC_EXPIRY_WARNING_DAYS)).isoformat()},
     )
+
+
+# Un document dont la validité expire dans ce délai s'affiche en orange.
+DOC_EXPIRY_WARNING_DAYS = 30
+
+
+@app.post("/ship/documents/new")
+async def add_ship_document(
+    request: Request,
+    title: Optional[str] = Form(None),
+    valid_until: Optional[str] = Form(None),
+    document_file: Optional[UploadFile] = File(None),
+):
+    """Ajoute un document à la fiche du navire courant. Sans titre, celui du
+    fichier (sans son extension) en tient lieu."""
+    path = await _save_ship_document(document_file)
+    if path:
+        title = (title or "").strip() or Path(document_file.filename).stem
+        async with connect() as db:
+            ship = await _fetch_ship(db, get_current_ship_id(request))
+            if ship is None:
+                raise HTTPException(status_code=404, detail="Aucun navire")
+            await db.execute(
+                "INSERT INTO ship_documents (ship_id, title, path, valid_until, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (ship[0], title, path, valid_until or None, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            )
+            await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
+
+
+@app.post("/ship/documents/{doc_id}/valid-until")
+async def set_ship_document_validity(doc_id: int, value: Optional[str] = Form(None)):
+    """Modification sur place de la date de validité, depuis la liste : un
+    document renouvelé change de date sans être retiré ni rajouté. Vide, le
+    document n'a plus d'échéance."""
+    async with connect() as db:
+        await db.execute("UPDATE ship_documents SET valid_until = ? WHERE id = ?", (value or None, doc_id))
+        await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
+
+
+@app.post("/ship/documents/{doc_id}/delete")
+async def delete_ship_document(doc_id: int):
+    """Retire le document de la fiche, mais laisse le fichier dans
+    IMG/Documents/ : rien n'efface un fichier d'IMG/, pour qu'une base
+    restaurée retrouve les siens (voir backup.sh)."""
+    async with connect() as db:
+        await db.execute("DELETE FROM ship_documents WHERE id = ?", (doc_id,))
+        await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
 
 
 @app.get("/ship/info/edit", response_class=HTMLResponse)
@@ -3795,6 +3884,15 @@ SEARCH_SECTIONS = [
         "url": lambda r: f"/crew/{r['id']}",
         "label": lambda r: " ".join(x for x in (r["first_name"], (r["last_name"] or "").upper()) if x)
                            or "Équipier",
+    },
+    {
+        "title": "Documents du navire",
+        "fields": ["title"],
+        "sql": "SELECT id, title, path, created_at AS date "
+               "FROM ship_documents WHERE ship_id = :ship AND ({where}) ORDER BY created_at DESC",
+        # Le résultat ouvre le document lui-même : c'est ce qu'on cherchait.
+        "url": lambda r: r["path"],
+        "label": lambda r: r["title"] or "Document",
     },
     {
         "title": "To Do",
