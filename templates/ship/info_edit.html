@@ -82,7 +82,7 @@
     <section>
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Moteur</h3>
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
-            <div><label>Puissance</label><input type="text" name="engine_power" value="{{ s.engine_power or '' }}" placeholder="30 CV"></div>
+            <div><label>Puissance (cv)</label><input type="number" step="any" name="engine_power" value="{{ s.engine_power or '' }}"></div>
             <div><label>Consommation (L/h)</label><input type="number" step="0.1" name="engine_consumption" value="{{ s.engine_consumption or '' }}"></div>
             <div><label>Horamètre initial (h)</label><input type="number" step="0.1" name="engine_hours_initial" value="{{ s.engine_hours_initial or '' }}"></div>
             <div><label>En date du</label><input type="date" name="engine_hours_date" value="{{ s.engine_hours_date or '' }}"></div>

@@ -38,14 +38,16 @@
     @media (min-width: 901px) {
         .fiche-colonne-droite { break-before: column; -webkit-column-break-before: always; }
     }
+    /* Titres de carte centrés : ils se repèrent d'un coup d'œil au-dessus
+       des lignes, alignées, elles, à gauche et à droite. */
     .fiche-carte h3 {
         margin: 0 0 6px; font-size: 13px; color: var(--muted);
-        text-transform: uppercase; letter-spacing: 1px;
+        text-transform: uppercase; letter-spacing: 1px; text-align: center;
     }
     .fiche-pleine { margin-bottom: 16px; }
     .fiche-pleine h3 {
         margin: 0 0 10px; font-size: 13px; color: var(--muted);
-        text-transform: uppercase; letter-spacing: 1px;
+        text-transform: uppercase; letter-spacing: 1px; text-align: center;
     }
 
     /* Une ligne : le libellé à gauche, la valeur alignée à droite. */
@@ -106,8 +108,12 @@
         {% if kind == 'date' %}
         <input type="date" name="value" value="{{ (val or '')[:10] }}" onchange="this.form.submit()">
         {% elif kind == 'number' %}
+        {# | float(none) : une colonne jadis texte peut encore tenir une saisie
+           qui n'est pas un nombre ; elle s'affiche alors telle quelle, au lieu
+           d'un 0 trompeur. #}
+        {% set nombre = val | float(none) if val is not none and val != '' else none %}
         <input type="text" inputmode="decimal" name="value" placeholder="—" onchange="this.form.submit()"
-               value="{{ ('%g' | format(val | float)).replace('.', ',') if val is not none and val != '' else '' }}">
+               value="{{ ('%g' | format(nombre)).replace('.', ',') if nombre is not none else (val or '') }}">
         {% else %}
         <input type="text" name="value" value="{{ val or '' }}" placeholder="—" onchange="this.form.submit()">
         {% endif %}
@@ -202,7 +208,7 @@
 
     <section class="card fiche-carte">
         <h3>Moteur</h3>
-        {{ ligne('engine_power', 'Puissance') }}
+        {{ ligne('engine_power', 'Puissance', 'cv') }}
         {{ ligne('engine_consumption', 'Consommation', 'L/h') }}
         {{ ligne('engine_hours_initial', 'Horamètre initial', 'h') }}
         {{ ligne('engine_hours_date', 'En date du') }}

@@ -328,7 +328,7 @@ async def init_db():
                 engine_brand TEXT,
                 engine_model TEXT,
                 engine_serial TEXT,
-                engine_power TEXT,
+                engine_power REAL,
                 engine_consumption REAL,
                 engine_hours_initial REAL,
                 engine_hours_date TEXT,
@@ -522,21 +522,24 @@ async def _migrate(db):
         await db.execute("ALTER TABLE ship_info DROP COLUMN surface")
         print("Migration: ship_info.surface dropped")
 
-    # Le franc-bord devient un nombre en mètres, comme les autres dimensions.
-    # Dans une base ancienne la colonne reste de type texte (SQLite ne change
-    # pas le type d'une colonne) : on y range « 1.2 » plutôt que « 1,2 m »,
-    # et l'affichage le relit comme un nombre. Une saisie qui n'en est pas un
-    # est laissée telle quelle.
-    cursor = await db.execute("SELECT id, freeboard FROM ship_info WHERE freeboard IS NOT NULL")
-    for ship_id, freeboard in await cursor.fetchall():
-        if isinstance(freeboard, str):
+    # Le franc-bord (en mètres) et la puissance (en cv) deviennent des
+    # nombres, l'unité étant affichée à côté comme pour les autres champs.
+    # Dans une base ancienne leurs colonnes restent de type texte (SQLite ne
+    # change pas le type d'une colonne) : on y range « 88 » plutôt que
+    # « 88 cv », et l'affichage le relit comme un nombre. Une saisie qui n'en
+    # est pas un est laissée telle quelle, et affichée telle quelle.
+    for column, units in (("freeboard", r"m"), ("engine_power", r"cv|ch|hp")):
+        cursor = await db.execute(f"SELECT id, {column} FROM ship_info WHERE {column} IS NOT NULL")
+        for ship_id, value in await cursor.fetchall():
+            if not isinstance(value, str):
+                continue
             try:
-                number = _import_amount(re.sub(r"\s*m\s*$", "", freeboard.strip(), flags=re.I))
+                number = _import_amount(re.sub(rf"\s*({units})\.?\s*$", "", value.strip(), flags=re.I))
             except ValueError:
                 continue
-            if number is not None and str(number) != freeboard:
-                await db.execute("UPDATE ship_info SET freeboard = ? WHERE id = ?", (number, ship_id))
-                print(f"Migration: franc-bord « {freeboard} » → {number}")
+            if number is not None and str(number) != value:
+                await db.execute(f"UPDATE ship_info SET {column} = ? WHERE id = ?", (number, ship_id))
+                print(f"Migration: {column} « {value} » → {number}")
 
     await _move_crew_photos(db)
     await _rename_doc_folder(db)
@@ -1107,19 +1110,19 @@ async def edit_ship_info_form(request: Request):
 # Champs de la fiche navire modifiables sur place, et leur type. Le nom est
 # interpolé dans l'UPDATE : il doit venir de ce dictionnaire, jamais de l'URL
 # telle quelle (même parti que EDITABLE_CONTACT_FIELDS). Les colonnes REAL
-# sont des « number », et freeboard aussi (en mètres) ; engine_power, du texte
-# (« 88 cv »), reste du texte.
+# sont des « number », de même que freeboard (en mètres) et engine_power (en
+# cv), textes à l'origine et convertis au démarrage par _migrate.
 SHIP_FIELDS = {
     **{f: "text" for f in (
         "name", "home_port", "flag", "mmsi", "call_sign", "registration", "registry",
-        "engine_brand", "engine_model", "engine_serial", "engine_power",
+        "engine_brand", "engine_model", "engine_serial",
         "insurance_company", "insurance_policy",
     )},
     **{f: "number" for f in (
         "loa", "hull_length", "waterline_length", "beam", "draft", "air_draft", "freeboard",
         "mast_height", "clearance_no_mast", "displacement", "ballast",
         "sail_main", "sail_genoa", "sail_spinnaker", "sail_trinquette", "sail_portant",
-        "tank_fuel", "tank_water", "engine_consumption", "engine_hours_initial",
+        "tank_fuel", "tank_water", "engine_power", "engine_consumption", "engine_hours_initial",
     )},
     **{f: "date" for f in (
         "issued_date", "valid_until", "engine_hours_date", "insurance_start", "insurance_end",
@@ -1184,7 +1187,7 @@ async def save_ship_info(
     engine_brand: Optional[str] = Form(None),
     engine_model: Optional[str] = Form(None),
     engine_serial: Optional[str] = Form(None),
-    engine_power: Optional[str] = Form(None),
+    engine_power: Optional[float] = Form(None),
     engine_consumption: Optional[float] = Form(None),
     engine_hours_initial: Optional[float] = Form(None),
     engine_hours_date: Optional[str] = Form(None),
@@ -1203,7 +1206,7 @@ async def save_ship_info(
         sail_main, sail_genoa, sail_spinnaker, sail_trinquette, sail_portant,
         tank_fuel, tank_water,
         engine_brand or None, engine_model or None, engine_serial or None,
-        engine_power or None, engine_consumption, engine_hours_initial,
+        engine_power, engine_consumption, engine_hours_initial,
         engine_hours_date or None,
         insurance_company or None, insurance_policy or None,
         insurance_start or None, insurance_end or None,
