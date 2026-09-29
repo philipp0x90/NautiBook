@@ -2448,6 +2448,8 @@ def _join_phone(code, number):
 
 
 GENDERS = ["Femme", "Homme", "Non-binaire"]
+# Valeurs *stockées*, comme GENDERS : les changer demande de reprendre les fiches.
+ID_TYPES = ["Carte d'identité", "Passeport"]
 
 
 def _equipier(gender, det=None):
@@ -2485,6 +2487,7 @@ templates.env.filters["equipier"] = _equipier
 # Même raison que dial_codes : liste de référence fixe, exposée en global plutôt
 # que passée dans le contexte de chaque handler qui affiche le formulaire.
 templates.env.globals["genders"] = GENDERS
+templates.env.globals["id_types"] = ID_TYPES
 # Exposed as a global rather than threaded through every handler's context: it is
 # a fixed reference list, and the next form that needs it gets it for free.
 templates.env.globals["dial_codes"] = DIAL_CODES
@@ -2592,6 +2595,7 @@ async def crew_detail(request: Request, crew_id: int):
             "active_section": "crew",
             "member": dict(member),
             "cruises": [dict(c) for c in cruises],
+            "crew_fields": CREW_FIELDS, "crew_choices": CREW_CHOICES,
             "prev_id": ids[i - 1] if i > 0 else None,
             "next_id": ids[i + 1] if i + 1 < len(ids) else None,
         },
@@ -2652,6 +2656,58 @@ async def update_crew(
              photo, crew_id),
         )
         await db.commit()
+    return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
+
+
+# Champs de la fiche équipier modifiables sur place, et leur type. Le nom est
+# interpolé dans l'UPDATE : il doit venir de ce dictionnaire, jamais de l'URL
+# telle quelle. Le téléphone et la photo ont leurs propres routes, plus bas :
+# l'un se recompose de deux cases, l'autre est un fichier.
+CREW_FIELDS = {
+    **{f: "text" for f in (
+        "first_name", "last_name", "birth_place", "nationality",
+        "street", "postal_code", "city", "id_number", "email",
+    )},
+    "birth_date": "date",
+    "gender": "select",
+    "id_type": "select",
+}
+CREW_CHOICES = {"gender": GENDERS, "id_type": ID_TYPES}
+
+
+@app.post("/crew/{crew_id}/field/{field}")
+async def update_crew_field(crew_id: int, field: str, value: Optional[str] = Form(None)):
+    """Modification sur place d'un champ de la fiche équipier."""
+    if field not in CREW_FIELDS:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    value = (value or "").strip() or None
+    async with connect() as db:
+        await db.execute(f"UPDATE crew_members SET {field} = ? WHERE id = ?", (value, crew_id))
+        await db.commit()
+    return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
+
+
+@app.post("/crew/{crew_id}/phone")
+async def update_crew_phone(crew_id: int, phone_code: Optional[str] = Form(None),
+                            phone: Optional[str] = Form(None)):
+    """Le téléphone, en deux cases (indicatif, numéro) comme dans le formulaire,
+    recomposées par _join_phone."""
+    async with connect() as db:
+        await db.execute("UPDATE crew_members SET phone = ? WHERE id = ?",
+                         (_join_phone(phone_code, phone), crew_id))
+        await db.commit()
+    return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
+
+
+@app.post("/crew/{crew_id}/photo")
+async def update_crew_photo(crew_id: int, photo_file: Optional[UploadFile] = File(None)):
+    """Nouvelle photo, choisie d'un clic sur celle de la fiche. L'ancienne reste
+    dans IMG/SailingCrew/, comme toute photo remplacée."""
+    photo = await _save_crew_photo(photo_file)
+    if photo:
+        async with connect() as db:
+            await db.execute("UPDATE crew_members SET photo_path = ? WHERE id = ?", (photo, crew_id))
+            await db.commit()
     return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
 
 

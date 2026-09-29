@@ -1,6 +1,36 @@
 {% extends "base.html" %}
 {% block title %}{{ member.first_name or '' }} {{ member.last_name or (member.gender | equipier | capitalize) }} — NautiBook{% endblock %}
 
+{% block head %}
+<style>
+    /* Champs modifiables sur place, même allure que la fiche navire : la case
+       bleue d'une fiche en lecture, bordée au survol, blanche pendant la saisie. */
+    .champ-equipier {
+        display: flex; align-items: center; gap: 4px; margin-top: 2px;
+        background: #e8f4f9; border: 1px solid transparent; border-radius: 6px;
+    }
+    .champ-equipier:hover { border-color: #cfe3ef; }
+    .champ-equipier:focus-within { background: #fff; border-color: var(--accent); }
+    .champ-equipier input, .champ-equipier select {
+        flex: 1; min-width: 0; width: 100%; padding: 5px 10px; height: 30px;
+        background: transparent; border: 0; font: inherit;
+    }
+    .champ-equipier input:focus, .champ-equipier select:focus { outline: none; background: transparent; }
+    .champ-equipier select.indicatif { flex: 0 0 auto; width: auto; padding-right: 2px; }
+    /* Le nom en capitales, comme sur les pièces d'identité ; stocké tel quel. */
+    .champ-equipier input.nom { text-transform: uppercase; }
+    .champ-lecture { background: #f1f5f8; border-radius: 6px; padding: 5px 10px; margin-top: 2px; color: #445; }
+    /* La photo se change d'un clic dessus. */
+    .photo-equipier { position: relative; display: block; cursor: pointer; }
+    .photo-equipier .changer {
+        position: absolute; left: 0; right: 0; bottom: 0; padding: 4px; font-size: 12px;
+        text-align: center; color: #fff; background: rgba(15, 58, 74, .65);
+        border-radius: 0 0 8px 8px; opacity: 0; transition: opacity .15s;
+    }
+    .photo-equipier:hover .changer { opacity: 1; }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="section-bar">
@@ -11,7 +41,8 @@
 </div>
 
 <div style="margin-bottom:14px;display:flex;gap:10px;align-items:center">
-    <a href="/crew/{{ member.id }}/edit" class="btn btn-yellow">✎ Modifier</a>
+    {# Plus de bouton « Modifier » : chaque champ se modifie sur place. La page
+       /crew/{id}/edit existe toujours. #}
     {# Aux extrémités de la liste, le bouton reste en place, grisé : masqué, il
        décalerait « + Nouvel équipier » d'une fiche à l'autre. #}
     <div style="flex:1;display:flex;gap:8px;justify-content:center">
@@ -34,73 +65,116 @@
 </div>
 
 <div class="card" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start">
-    <div>
-        {% if member.photo_path %}
-        <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
-             style="width:160px;height:160px;object-fit:cover;border-radius:8px;display:block">
-        {% else %}
-        <div style="width:160px;height:160px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
-            {{ (member.first_name or member.last_name or '?')[0] | upper }}
-        </div>
-        {% endif %}
-    </div>
+    {# Un clic sur la photo ouvre le choix d'un fichier ; le choisir l'envoie
+       aussitôt (formulaire à part, multipart). #}
+    <form method="POST" action="/crew/{{ member.id }}/photo" enctype="multipart/form-data">
+        <label class="photo-equipier" title="Changer la photo">
+            {% if member.photo_path %}
+            <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
+                 style="width:160px;height:160px;object-fit:cover;border-radius:8px;display:block">
+            {% else %}
+            <div style="width:160px;height:160px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
+                {{ (member.first_name or member.last_name or '?')[0] | upper }}
+            </div>
+            {% endif %}
+            <span class="changer">{{ 'Changer la photo' if member.photo_path else 'Ajouter une photo' }}</span>
+            <input type="file" name="photo_file" accept="image/*" hidden onchange="this.form.submit()">
+        </label>
+    </form>
 
     <div style="display:grid;gap:16px">
-        {# Âge calculé, jamais stocké — voir le filtre age dans main.py. Le nom
-           est en capitales ici comme dans le titre et dans la liste, ainsi
-           qu'il figure sur les pièces d'identité. Une section peut porter
-           plusieurs lignes : la pièce d'identité suit la naissance sous le même
-           titre. #}
-        {% for titre, lignes in [
-            (member.gender | equipier | capitalize, [
-                ('repeat(4,1fr)', [
-                    ('Prénom', member.first_name),
-                    ('Nom', (member.last_name or '') | upper),
-                    ('Genre', member.gender),
-                    ('Âge', member.birth_date | age)
-                ])
-            ]),
-            ('Contact', [
-                ('1fr 1fr', [
-                    ('Téléphone', member.phone),
-                    ('Email', member.email)
-                ])
-            ]),
-            ('Adresse', [
-                ('2fr 1fr 2fr', [
-                    ('Rue et numéro', member.street),
-                    ('Code postal', member.postal_code),
-                    ('Localité', member.city)
-                ])
-            ]),
-            ('Identité', [
-                ('1fr 1fr', [
-                    ('Date de naissance', member.birth_date | datefr),
-                    ('Lieu de naissance', member.birth_place)
-                ]),
-                ('repeat(3,1fr)', [
-                    ('Nationalité', member.nationality),
-                    ('Type de pièce d\'identité', member.id_type),
-                    ('Numéro', member.id_number)
-                ])
-            ])
-        ] %}
-        <section style="display:grid;gap:12px">
-            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">{{ titre }}</h3>
-            {% for colonnes, champs in lignes %}
-            <div class="grid" style="grid-template-columns:{{ colonnes }};gap:12px">
-                {% for label, val in champs %}
-                <div>
-                    <div class="meta">{{ label }}</div>
-                    <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;margin-top:2px">
-                        {{ val if val is not none and val != '' else '—' }}
-                    </div>
-                </div>
-                {% endfor %}
+        {# Chaque champ est son propre formulaire, enregistré dès qu'on le quitte
+           — jamais un formulaire commun, sinon deux modifications proches
+           s'écraseraient. Les champs permis et leur type sont dans CREW_FIELDS
+           (main.py). L'âge se calcule à partir de la date de naissance (filtre
+           age) : affiché, jamais saisi. #}
+        {% macro champ(field, label, extra_class='') %}
+        {% set kind = crew_fields[field] %}
+        {% set val = member[field] %}
+        <form method="POST" action="/crew/{{ member.id }}/field/{{ field }}">
+            <div class="meta">{{ label }}</div>
+            <div class="champ-equipier">
+                {% if kind == 'select' %}
+                <select name="value" onchange="this.form.submit()">
+                    <option value="">—</option>
+                    {% for opt in crew_choices[field] %}
+                    <option value="{{ opt }}" {{ 'selected' if val == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                    {% if val and val not in crew_choices[field] %}
+                    <option value="{{ val }}" selected>{{ val }}</option>
+                    {% endif %}
+                </select>
+                {% elif kind == 'date' %}
+                <input type="date" name="value" value="{{ (val or '')[:10] }}" onchange="this.form.submit()">
+                {% else %}
+                <input type="{{ 'email' if field == 'email' else 'text' }}" name="value" class="{{ extra_class }}"
+                       value="{{ val or '' }}" placeholder="—" onchange="this.form.submit()">
+                {% endif %}
             </div>
-            {% endfor %}
+        </form>
+        {% endmacro %}
+
+        <section style="display:grid;gap:12px">
+            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">{{ member.gender | equipier | capitalize }}</h3>
+            <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
+                {{ champ('first_name', 'Prénom') }}
+                {{ champ('last_name', 'Nom', 'nom') }}
+                {{ champ('gender', 'Genre') }}
+                <div>
+                    <div class="meta">Âge</div>
+                    <div class="champ-lecture" title="Calculé à partir de la date de naissance">{{ member.birth_date | age }}</div>
+                </div>
+            </div>
         </section>
-        {% endfor %}
+
+        <section style="display:grid;gap:12px">
+            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Contact</h3>
+            <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+                {# Indicatif et numéro dans une même case, deux champs d'un même
+                   formulaire : _join_phone les recompose, comme à la saisie. #}
+                {% set tel = member.phone | phoneparts %}
+                <form method="POST" action="/crew/{{ member.id }}/phone">
+                    <div class="meta">Téléphone{% if member.phone %} <a href="tel:{{ member.phone }}" title="Appeler" style="color:var(--accent);text-decoration:none">↗</a>{% endif %}</div>
+                    <div class="champ-equipier">
+                        {# L'indicatif seul n'est pas un numéro (_join_phone n'enregistre
+                           rien) : choisi avant le numéro, il attend celui-ci au lieu
+                           d'être envoyé, et perdu. #}
+                        <select name="phone_code" class="indicatif" onchange="if (this.form.phone.value) this.form.submit()">
+                            <option value="">—</option>
+                            {% for code, pays in dial_codes %}
+                            <option value="{{ code }}" {{ 'selected' if tel.code == code else '' }}>{{ code }} {{ pays }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="tel" name="phone" value="{{ tel.number }}" placeholder="—" onchange="this.form.submit()">
+                    </div>
+                </form>
+                <div>
+                    {{ champ('email', 'Email') }}
+                </div>
+            </div>
+        </section>
+
+        <section style="display:grid;gap:12px">
+            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Adresse</h3>
+            <div class="grid" style="grid-template-columns:2fr 1fr 2fr;gap:12px">
+                {{ champ('street', 'Rue et numéro') }}
+                {{ champ('postal_code', 'Code postal') }}
+                {{ champ('city', 'Localité') }}
+            </div>
+        </section>
+
+        <section style="display:grid;gap:12px">
+            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Identité</h3>
+            <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+                {{ champ('birth_date', 'Date de naissance') }}
+                {{ champ('birth_place', 'Lieu de naissance') }}
+            </div>
+            <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px">
+                {{ champ('nationality', 'Nationalité') }}
+                {{ champ('id_type', "Type de pièce d'identité") }}
+                {{ champ('id_number', 'Numéro') }}
+            </div>
+        </section>
     </div>
 </div>
 
