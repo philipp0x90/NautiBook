@@ -4,6 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{% block title %}NautiBook{% endblock %}</title>
+    {# Icônes : dossier icons/ (voir main.py). apple-touch-icon sert l'iPad
+       quand on ajoute NautiBook à l'écran d'accueil, le manifeste Android ;
+       le titre apple-mobile-web-app-title nomme l'icône sous iOS. #}
+    {# ?v=2 : Safari garde les favicons en cache avec obstination, même au
+       rechargement ; changer l'adresse est ce qui l'oblige à reprendre les
+       versions à fond transparent. À incrémenter si les icônes changent. #}
+    <link rel="icon" href="/favicon.ico?v=2" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png?v=2">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png?v=2">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+    <link rel="manifest" href="/icons/site.webmanifest">
+    <meta name="apple-mobile-web-app-title" content="NautiBook">
+    <meta name="theme-color" content="#5bc8e0">
     <style>
         :root {
             --max-width: 1280px;
@@ -169,6 +182,19 @@
             background: #f8fafc;
         }
         input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); background: #fff; }
+        /* Champ date encore vide : Safari y affiche la date du jour en gris
+           comme indication, mais laisse les « / » en noir, et Chrome montre
+           jj/mm/aaaa en noir. Tout en gris, séparateurs compris — le gris
+           « darkgray » (#a9a9a9) que Safari donne lui-même aux chiffres. La
+           classe date-vide est posée par marquerDatesVides(), plus bas : CSS
+           seul ne sait pas qu'un champ date est vide. */
+        input.date-vide::-webkit-datetime-edit-text,
+        input.date-vide::-webkit-datetime-edit-day-field,
+        input.date-vide::-webkit-datetime-edit-month-field,
+        input.date-vide::-webkit-datetime-edit-year-field,
+        input.date-vide::-webkit-datetime-edit-hour-field,
+        input.date-vide::-webkit-datetime-edit-minute-field,
+        input.date-vide::-webkit-datetime-edit-ampm-field { color: #a9a9a9; }
         .btn { display: inline-block; padding: 8px 18px; border-radius: 20px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600; text-decoration: none; }
         .btn-blue { background: #3bbfe0; color: #fff; }
         .btn-orange { background: #f47c3c; color: #fff; }
@@ -354,6 +380,24 @@
 </div>
 
 <script>
+// Champs date vides : la classe date-vide grise leurs séparateurs (voir le
+// CSS). Posée au chargement, puis tenue à jour à chaque saisie. Une date
+// tapée à moitié reste « vide » pour le navigateur tant qu'elle n'est pas
+// complète, donc grise jusque-là.
+function marquerDatesVides() {
+    document.querySelectorAll('input[type=date], input[type=datetime-local]').forEach(function (champ) {
+        champ.classList.toggle('date-vide', !champ.value);
+    });
+}
+document.addEventListener('DOMContentLoaded', marquerDatesVides);
+['input', 'change'].forEach(function (type) {
+    document.addEventListener(type, function (event) {
+        if (event.target.matches && event.target.matches('input[type=date], input[type=datetime-local]')) {
+            event.target.classList.toggle('date-vide', !event.target.value);
+        }
+    }, true);
+});
+
 // Whole-row links in tables: <tr onclick="rowLink(event, '/somewhere')">.
 // Ignores clicks that landed on something interactive, so the delete button
 // and any link inside the row keep doing their own job.

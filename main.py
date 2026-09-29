@@ -1,6 +1,6 @@
 # main.py
 from fastapi import FastAPI, HTTPException, Request, Form, Query, File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, date, timedelta
@@ -310,13 +310,12 @@ async def init_db():
                 loa REAL,
                 hull_length REAL,
                 waterline_length REAL,
-                surface REAL,
                 beam REAL,
                 draft REAL,
                 air_draft REAL,
                 mast_height REAL,
                 clearance_no_mast REAL,
-                freeboard TEXT,
+                freeboard REAL,
                 displacement REAL,
                 ballast REAL,
                 sail_main REAL,
@@ -515,6 +514,30 @@ async def _migrate(db):
         await db.execute("ALTER TABLE ship_documents ADD COLUMN valid_until TEXT")
         print("Migration: ship_documents.valid_until added")
 
+    # « Surface » (longueur × bau) retirée de la fiche : une valeur qui se
+    # recalcule, et que personne ne consultait. La colonne part avec ses
+    # données, comme les tags de la To Do.
+    cursor = await db.execute("PRAGMA table_info(ship_info)")
+    if "surface" in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE ship_info DROP COLUMN surface")
+        print("Migration: ship_info.surface dropped")
+
+    # Le franc-bord devient un nombre en mètres, comme les autres dimensions.
+    # Dans une base ancienne la colonne reste de type texte (SQLite ne change
+    # pas le type d'une colonne) : on y range « 1.2 » plutôt que « 1,2 m »,
+    # et l'affichage le relit comme un nombre. Une saisie qui n'en est pas un
+    # est laissée telle quelle.
+    cursor = await db.execute("SELECT id, freeboard FROM ship_info WHERE freeboard IS NOT NULL")
+    for ship_id, freeboard in await cursor.fetchall():
+        if isinstance(freeboard, str):
+            try:
+                number = _import_amount(re.sub(r"\s*m\s*$", "", freeboard.strip(), flags=re.I))
+            except ValueError:
+                continue
+            if number is not None and str(number) != freeboard:
+                await db.execute("UPDATE ship_info SET freeboard = ? WHERE id = ?", (number, ship_id))
+                print(f"Migration: franc-bord « {freeboard} » → {number}")
+
     await _move_crew_photos(db)
     await _rename_doc_folder(db)
 
@@ -609,6 +632,27 @@ IMG_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
 
 IMG_DIR.mkdir(exist_ok=True)
 app.mount(IMG_URL, StaticFiles(directory=IMG_DIR), name="img")
+
+# Icônes du site (onglet, écran d'accueil de l'iPad, Android). Contrairement à
+# IMG/, le dossier est suivi par git : c'est du code, pas des données, et il
+# doit arriver sur le Pi avec le reste. Les pages les déclarent dans base.html.
+ICONS_DIR = Path(__file__).parent / "icons"
+app.mount("/icons", StaticFiles(directory=ICONS_DIR), name="icons")
+
+
+# Deux fichiers que les navigateurs vont chercher d'eux-mêmes à la racine,
+# sans lire les <link> de la page : /favicon.ico (onglet, historique, favoris)
+# et /apple-touch-icon.png (iPad, « Sur l'écran d'accueil »). Sans ces routes,
+# ils tombent sur un 404 à chaque visite.
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse(ICONS_DIR / "favicon.ico")
+
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+async def apple_touch_icon():
+    return FileResponse(ICONS_DIR / "apple-touch-icon.png")
 
 
 # Factures et reçus des comptes : un sous-dossier d'IMG/, et non un dossier à
@@ -988,7 +1032,7 @@ async def ship_info(request: Request):
     return templates.TemplateResponse(
         "ship/info.html",
         {"request": request, "active_section": "ship", "ship": ship, "current_ship": ship,
-         "documents": documents, "doc_max_bytes": SHIP_DOC_MAX_BYTES,
+         "documents": documents, "doc_max_bytes": SHIP_DOC_MAX_BYTES, "ship_fields": SHIP_FIELDS,
          # Repères de la couleur de validité : expiré avant aujourd'hui,
          # « bientôt » dans les DOC_EXPIRY_WARNING_DAYS qui suivent. Des
          # dates ISO, que la template compare comme des chaînes.
@@ -1060,6 +1104,53 @@ async def edit_ship_info_form(request: Request):
     )
 
 
+# Champs de la fiche navire modifiables sur place, et leur type. Le nom est
+# interpolé dans l'UPDATE : il doit venir de ce dictionnaire, jamais de l'URL
+# telle quelle (même parti que EDITABLE_CONTACT_FIELDS). Les colonnes REAL
+# sont des « number », et freeboard aussi (en mètres) ; engine_power, du texte
+# (« 88 cv »), reste du texte.
+SHIP_FIELDS = {
+    **{f: "text" for f in (
+        "name", "home_port", "flag", "mmsi", "call_sign", "registration", "registry",
+        "engine_brand", "engine_model", "engine_serial", "engine_power",
+        "insurance_company", "insurance_policy",
+    )},
+    **{f: "number" for f in (
+        "loa", "hull_length", "waterline_length", "beam", "draft", "air_draft", "freeboard",
+        "mast_height", "clearance_no_mast", "displacement", "ballast",
+        "sail_main", "sail_genoa", "sail_spinnaker", "sail_trinquette", "sail_portant",
+        "tank_fuel", "tank_water", "engine_consumption", "engine_hours_initial",
+    )},
+    **{f: "date" for f in (
+        "issued_date", "valid_until", "engine_hours_date", "insurance_start", "insurance_end",
+    )},
+    "misc_notes": "textarea",
+}
+
+
+@app.post("/ship/info/field/{field}")
+async def update_ship_field(request: Request, field: str, value: Optional[str] = Form(None)):
+    """Modification sur place d'un champ de la fiche du navire courant."""
+    kind = SHIP_FIELDS.get(field)
+    if kind is None:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    value = (value or "").strip() or None
+    if kind == "number" and value is not None:
+        # « 12,5 » comme « 12.5 » ; une saisie qui n'est pas un nombre ne
+        # remplace pas la valeur enregistrée.
+        try:
+            value = _import_amount(value)
+        except ValueError:
+            return RedirectResponse(url="/ship/info", status_code=303)
+    async with connect() as db:
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+        if ship is None:
+            raise HTTPException(status_code=404, detail="Aucun navire")
+        await db.execute(f"UPDATE ship_info SET {field} = ? WHERE id = ?", (value, ship[0]))
+        await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
+
+
 @app.post("/ship/info/edit")
 async def save_ship_info(
     request: Request,
@@ -1075,13 +1166,12 @@ async def save_ship_info(
     loa: Optional[float] = Form(None),
     hull_length: Optional[float] = Form(None),
     waterline_length: Optional[float] = Form(None),
-    surface: Optional[float] = Form(None),
     beam: Optional[float] = Form(None),
     draft: Optional[float] = Form(None),
     air_draft: Optional[float] = Form(None),
     mast_height: Optional[float] = Form(None),
     clearance_no_mast: Optional[float] = Form(None),
-    freeboard: Optional[str] = Form(None),
+    freeboard: Optional[float] = Form(None),
     displacement: Optional[float] = Form(None),
     ballast: Optional[float] = Form(None),
     sail_main: Optional[float] = Form(None),
@@ -1108,8 +1198,8 @@ async def save_ship_info(
     vals = (
         name or None, home_port or None, flag or None, mmsi or None, call_sign or None,
         registration or None, registry or None, issued_date or None, valid_until or None,
-        loa, hull_length, waterline_length, surface, beam, draft, air_draft,
-        mast_height, clearance_no_mast, freeboard or None, displacement, ballast,
+        loa, hull_length, waterline_length, beam, draft, air_draft,
+        mast_height, clearance_no_mast, freeboard, displacement, ballast,
         sail_main, sail_genoa, sail_spinnaker, sail_trinquette, sail_portant,
         tank_fuel, tank_water,
         engine_brand or None, engine_model or None, engine_serial or None,
@@ -1127,7 +1217,7 @@ async def save_ship_info(
                 """UPDATE ship_info SET
                    name=?, home_port=?, flag=?, mmsi=?, call_sign=?, registration=?, registry=?,
                    issued_date=?, valid_until=?, loa=?, hull_length=?, waterline_length=?,
-                   surface=?, beam=?, draft=?, air_draft=?, mast_height=?, clearance_no_mast=?,
+                   beam=?, draft=?, air_draft=?, mast_height=?, clearance_no_mast=?,
                    freeboard=?, displacement=?, ballast=?, sail_main=?, sail_genoa=?,
                    sail_spinnaker=?, sail_trinquette=?, sail_portant=?, tank_fuel=?, tank_water=?,
                    engine_brand=?, engine_model=?, engine_serial=?, engine_power=?,
@@ -1142,14 +1232,14 @@ async def save_ship_info(
                 """INSERT INTO ship_info (
                    name, home_port, flag, mmsi, call_sign, registration, registry,
                    issued_date, valid_until, loa, hull_length, waterline_length,
-                   surface, beam, draft, air_draft, mast_height, clearance_no_mast,
+                   beam, draft, air_draft, mast_height, clearance_no_mast,
                    freeboard, displacement, ballast, sail_main, sail_genoa,
                    sail_spinnaker, sail_trinquette, sail_portant, tank_fuel, tank_water,
                    engine_brand, engine_model, engine_serial, engine_power,
                    engine_consumption, engine_hours_initial, engine_hours_date,
                    insurance_company, insurance_policy, insurance_start, insurance_end,
                    misc_notes)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 vals,
             )
             new_id = cursor.lastrowid

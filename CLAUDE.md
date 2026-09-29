@@ -67,7 +67,7 @@ Several "current" pointers resolve implicitly rather than via a flag, and all ar
 - **`templates/`** — Jinja2, all extending `base.html`, which holds the entire stylesheet inline and the nav bar.
 - **`tables.sql`** — a translation of the original FileMaker schema (French table names, `ta_*`). It is *reference material only*, not the live schema and not kept in sync with `init_db()`.
 
-There is no `static/` directory: Leaflet and other assets come from CDNs. The one `StaticFiles` mount is `IMG/`, served at `/IMG` — see below.
+There is no `static/` directory: Leaflet and other assets come from CDNs. Two `StaticFiles` mounts: `IMG/` at `/IMG` (user data, gitignored — see below) and `icons/` at `/icons` (the favicons and `site.webmanifest`, tracked in git so they reach the Pi). `/favicon.ico` and `/apple-touch-icon.png` also get explicit root routes, because browsers and iOS request them there without reading the page's `<link>` tags.
 
 ### Photos
 
@@ -129,9 +129,11 @@ Editing a logbook line duplicates `create_line`'s whole signature in `update_lin
 
 The cruise name uses the same one-field-form idiom on `cruises/detail.html`, but posts to its own `POST /cruises/{id}/set-name` — a dedicated route like `set-end`, not a whitelisted field name.
 
+**The ship fiche** (`ship/info.html`) is cards of « label … value » lines, drawn by its `ligne()` macro; every value is edited in place through `POST /ship/info/field/{field}`, whitelisted with its type (`text`, `number`, `date`, `textarea`) in `SHIP_FIELDS`. Numbers are shown and typed with a decimal comma and parsed by `_import_amount`. `/ship/info/edit` (the full form) still exists — a newly created ship lands on it — but the fiche no longer links to it. `freeboard` is a number in metres, though old databases keep its column typed `TEXT`, which is why the macro reads it through `| float`. The `surface` column was dropped.
+
 **Clickable rows** — `rowLink(event, url)` in `base.html` is the whole mechanism: put it in the row's `onclick` and give the row `cursor:pointer`. It ignores clicks that landed on anything interactive, which is what lets the log table's inline `visual_pos` field keep working inside a clickable row. A logbook line spans **two `<tr>`**, so the pair is wrapped in its own `<tbody class="log-line">`: that is what makes the whole line light up on hover, which a `:hover` on one `<tr>` cannot do. Both rows carry the same `onclick`, pointing at the line's edit form.
 
-**A Jinja comment cannot go inside a tag.** Several templates loop over a list literal spelled out in the `{% for %}` itself (`ship/info.html`, `crew/detail.html`). A `{# … #}` between two entries of that list is not a comment — the tag is one expression, and the result is `TemplateSyntaxError: unexpected char '#'`, i.e. a 500 on that page only. Put the comment above the `{% for %}`. This has bitten twice; there is no linter to catch it, so a page whose template changed is worth loading once.
+**A Jinja comment cannot go inside a tag.** Several templates loop over a list literal spelled out in the `{% for %}` itself (`crew/detail.html`, the Comptes column headers in `ship/expenses.html`). A `{# … #}` between two entries of that list is not a comment — the tag is one expression, and the result is `TemplateSyntaxError: unexpected char '#'`, i.e. a 500 on that page only. Put the comment above the `{% for %}`. This has bitten twice; there is no linter to catch it, so a page whose template changed is worth loading once.
 
 **Ship context** — `get_current_ship_id(request)` reads the `ship_id` cookie (defaulting to 1); `_fetch_ship(db, ship_id)` falls back to the first ship when that id is gone. Templates get the ship as `current_ship`, which `base.html` uses for the nav label.
 

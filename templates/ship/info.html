@@ -1,8 +1,12 @@
 {% extends "base.html" %}
+{# Fiche du navire : des cartes, chacune une liste « libellé … valeur »,
+   chaque valeur modifiable sur place (SHIP_FIELDS dans main.py). Puis les
+   documents et les notes libres, en pleine largeur. #}
 {% block title %}Infos Navire — NautiBook{% endblock %}
 
 {% block head %}
 <style>
+
     /* Section Documents */
     .doc-ajout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .doc-type { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
@@ -22,28 +26,97 @@
     .validite.expire .validite-badge { background: #dc2626; }
     .doc-validite { display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; }
     .doc-validite input { width: auto; }
-    /* Dans chaque cellule de fiche, libellé et valeur sont centrés l'un sur
-       l'autre. Une règle unique plutôt qu'un style inline par cellule, car
-       toutes les rubriques de la page le veulent. Le bloc « Divers » n'est pas
-       dans une .grid, il garde donc son texte aligné à gauche. */
-    .grid > div { text-align: center; }
+
+    /* Cartes réparties sur deux colonnes à la manière d'un mur (column-count) :
+       des cartes de hauteurs différentes s'y empilent sans trous, ce qu'une
+       grille à rangées ne sait pas faire. Une seule colonne sur écran étroit. */
+    .fiche-cartes { column-count: 2; column-gap: 16px; }
+    @media (max-width: 900px) { .fiche-cartes { column-count: 1; } }
+    .fiche-carte { break-inside: avoid; margin-bottom: 16px; padding: 12px 16px 8px; }
+    /* Seulement à deux colonnes : sur une seule, le saut de colonne envoie la
+       suite dans une colonne hors de l'écran, à droite. */
+    @media (min-width: 901px) {
+        .fiche-colonne-droite { break-before: column; -webkit-column-break-before: always; }
+    }
+    .fiche-carte h3 {
+        margin: 0 0 6px; font-size: 13px; color: var(--muted);
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+    .fiche-pleine { margin-bottom: 16px; }
+    .fiche-pleine h3 {
+        margin: 0 0 10px; font-size: 13px; color: var(--muted);
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+
+    /* Une ligne : le libellé à gauche, la valeur alignée à droite. */
+    .ligne {
+        display: flex; align-items: center; gap: 12px;
+        padding: 3px 0; border-bottom: 1px solid #eef3f7; margin: 0;
+    }
+    .ligne:last-child { border-bottom: 0; }
+    .ligne > span.libelle { flex: 1; color: #556; font-size: 14px; }
+    .valeur {
+        display: flex; align-items: center; justify-content: flex-end;
+        min-width: 150px; border: 1px solid transparent; border-radius: 6px;
+    }
+    .valeur:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .valeur:focus-within { border-color: var(--accent); background: #fff; }
+    .valeur input {
+        width: 100%; padding: 4px 6px; background: transparent; border: 0;
+        font: inherit; font-weight: 600; text-align: right;
+    }
+    .valeur input:focus { outline: none; background: transparent; }
+    .valeur input[type=date] { width: auto; }
+    .valeur .unite { width: 34px; flex: 0 0 34px; padding-left: 4px; font-weight: 600; color: var(--muted); text-align: left; }
+    /* Échéances : même règle que les documents. */
+    .valeur.bientot input { color: #b45309; }
+    .valeur.expire input { color: #b91c1c; }
+    .echeance { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; margin-left: 6px; white-space: nowrap; }
+    .echeance.bientot { background: #d97706; }
+    .echeance.expire { background: #dc2626; }
+
+    .fiche-resume { font-size: 14px; font-weight: 500; opacity: 0.9; margin-top: 2px; }
+    /* Dans sa carte, les notes se présentent comme les valeurs : sans cadre au
+       repos, bordées au survol, blanches pendant la saisie. */
+    .champ-divers {
+        width: 100%; min-height: 120px; padding: 6px 8px; margin-bottom: 8px; color: #333;
+        font: inherit; background: transparent; border: 1px solid transparent;
+        border-radius: 6px; resize: vertical;
+    }
+    .champ-divers:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .champ-divers:focus { border-color: var(--accent); background: #fff; outline: none; }
 </style>
 {% endblock %}
 
 {% block content %}
 
-<div class="section-bar">
-    {# le bouton occupe le slot de gauche, à la largeur de l'ancien espaceur,
-       pour que le titre reste centré face au badge de droite #}
-    <div style="min-width:140px">
-        <a href="/ship/info/edit" class="btn btn-yellow">✎ Modifier</a>
-    </div>
-    <div class="section-bar-title">
-        Infos Navire
-        <div style="font-size:24px;margin-top:2px">{{ ship.name if ship else 'Navire' }}</div>
-    </div>
-    <div class="section-bar-right">Navire #{{ ship.id if ship else '—' }}</div>
-</div>
+{# Une ligne de fiche : son propre formulaire, enregistré dès qu'on la quitte,
+   comme sur la page actuelle. `echeance` colore une date de fin de validité. #}
+{% macro ligne(field, label, unit='', echeance=false) %}
+{% set kind = ship_fields[field] %}
+{% set val = ship[field] %}
+{% set etat = none %}
+{% if echeance and val %}
+{% set etat = 'expire' if val[:10] < today else ('bientot' if val[:10] <= soon else none) %}
+{% endif %}
+<form method="POST" action="/ship/info/field/{{ field }}" class="ligne">
+    <span class="libelle">{{ label }}</span>
+    {% if etat %}<span class="echeance {{ etat }}">{{ 'Expiré' if etat == 'expire' else 'Expire bientôt' }}</span>{% endif %}
+    <span class="valeur {{ etat or '' }}">
+        {% if kind == 'date' %}
+        <input type="date" name="value" value="{{ (val or '')[:10] }}" onchange="this.form.submit()">
+        {% elif kind == 'number' %}
+        <input type="text" inputmode="decimal" name="value" placeholder="—" onchange="this.form.submit()"
+               value="{{ ('%g' | format(val | float)).replace('.', ',') if val is not none and val != '' else '' }}">
+        {% else %}
+        <input type="text" name="value" value="{{ val or '' }}" placeholder="—" onchange="this.form.submit()">
+        {% endif %}
+        {# Case d'unité sur toutes les lignes, même vide : les valeurs
+           s'alignent ainsi sur un même bord, avec ou sans unité. #}
+        <span class="unite">{{ unit }}</span>
+    </span>
+</form>
+{% endmacro %}
 
 {% if not ship %}
 <div class="stub">
@@ -55,162 +128,110 @@
 </div>
 {% else %}
 
-<div style="display:flex;flex-direction:column;gap:20px">
-
-    <section>
-        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Informations générales</h3>
-        {# les 9 champs sur une seule ligne : colonnes fixes plutôt qu'auto-fit,
-           et minmax(0,…) pour qu'une valeur longue rétrécisse au lieu d'élargir
-           la colonne #}
-        <div class="grid" style="grid-template-columns:repeat(9,minmax(0,1fr));gap:8px">
-            {% for label, val in [
-                ('Nom du navire', ship.name),
-                ('Port d\'attache', ship.home_port),
-                ('Pavillon', ship.flag),
-                ('MMSI #', ship.mmsi),
-                ('Call sign #', ship.call_sign),
-                ('Immatriculation #', ship.registration),
-                ('Registre #', ship.registry),
-                ('Délivré le', ship.issued_date),
-                ('Valable jusqu\'au', ship.valid_until)
-            ] %}
-            <div>
-                <div class="meta">{{ label }}</div>
-                <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">{{ val | datefr }}</div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-
-    <section>
-        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Dimensions</h3>
-        {# « Longueur x largeur » est l'ancien champ « Surface » : la valeur
-           stockée est bien longueur HT × bau. #}
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-            {% for label, val, unit in [
-                ('Longueur hors-tout', ship.loa, 'm'),
-                ('Longueur coque', ship.hull_length, 'm'),
-                ('Longueur Flottaison', ship.waterline_length, 'm'),
-                ('Longueur x largeur', ship.surface, 'm²'),
-                ('Largeur (bau)', ship.beam, 'm'),
-                ('Tirant d\'eau', ship.draft, 'm'),
-                ('Tirant d\'air', ship.air_draft, 'm'),
-                ('Hauteur mât', ship.mast_height, 'm'),
-                ('(Sans mât)', ship.clearance_no_mast, 'm'),
-                ('Hauteur franc-bord', ship.freeboard, ''),
-                ('Poids lest', ship.ballast, 'T'),
-                ('Déplacement', ship.displacement, 'T')
-            ] %}
-            <div>
-                <div class="meta">{{ label }}</div>
-                <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">
-                    {{ (val ~ ' ' ~ unit) if val else '—' }}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-
-    <div style="display:grid;grid-template-columns:1fr auto;gap:20px;align-items:start">
-        <section>
-            <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Voiles</h3>
-            <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
-                {% for label, val in [
-                    ('Grand voile', ship.sail_main),
-                    ('Génois', ship.sail_genoa),
-                    ('Spinnaker', ship.sail_spinnaker),
-                    ('Trinquette', ship.sail_trinquette),
-                    ('Voile de portant', ship.sail_portant)
-                ] %}
-                <div>
-                    <div class="meta">{{ label }}</div>
-                    <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">
-                        {{ (val ~ ' m²') if val else '—' }}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </section>
-
-        <section style="min-width:200px">
-            <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Réservoirs</h3>
-            <div class="grid" style="grid-template-columns:1fr 1fr">
-                {% for label, val in [('Gasoil', ship.tank_fuel), ('Eau douce', ship.tank_water)] %}
-                <div>
-                    <div class="meta">{{ label }}</div>
-                    <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">
-                        {{ (val ~ ' L') if val else '—' }}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </section>
+{# L'en-tête résume le bateau au lieu d'afficher son identifiant interne. #}
+{% set resume = [
+    ((ship.engine_brand or '') ~ ' ' ~ (ship.engine_model or '')) | trim,
+    (('%g' | format(ship.loa)).replace('.', ',') ~ ' m') if ship.loa else '',
+    ship.flag or '', ship.home_port or ''
+] | select | join(' · ') %}
+<div class="section-bar">
+    <div class="section-bar-title">
+        <div style="font-size:24px">{{ ship.name or 'Navire sans nom' }}</div>
+        {% if resume %}<div class="fiche-resume">{{ resume }}</div>{% endif %}
     </div>
+</div>
 
-    {# Marque / modèle / n° de série décrivent le bateau, pas le moteur : ils
-       ont leur propre rubrique. Les colonnes SQL gardent leur nom d'origine
-       (engine_brand, engine_model, engine_serial).
-       Les deux rubriques partagent une ligne, comme Voiles / Réservoirs plus
-       haut. Colonnes 3fr / 4fr, au prorata du nombre de champs, pour que les
-       cellules des deux côtés fassent la même largeur. #}
-    <div style="display:grid;grid-template-columns:3fr 4fr;gap:20px;align-items:start">
-    <section>
-        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Bateau</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-            {% for label, val in [
-                ('Marque', ship.engine_brand),
-                ('Modèle', ship.engine_model),
-                ('# Série', ship.engine_serial)
-            ] %}
-            <div>
-                <div class="meta">{{ label }}</div>
-                <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">{{ val | datefr }}</div>
-            </div>
-            {% endfor %}
-        </div>
+<div class="fiche-cartes">
+
+    <section class="card fiche-carte">
+        <h3>Identification</h3>
+        {{ ligne('name', 'Nom du navire') }}
+        {{ ligne('home_port', "Port d'attache") }}
+        {{ ligne('flag', 'Pavillon') }}
+        {{ ligne('mmsi', 'MMSI') }}
+        {{ ligne('call_sign', 'Indicatif (call sign)') }}
     </section>
 
-    <section>
-        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Moteur</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-            {% for label, val in [
-                ('Puissance', ship.engine_power),
-                ('Consommation', ship.engine_consumption),
-                ('Horamètre initial', ship.engine_hours_initial),
-                ('En date du', ship.engine_hours_date)
-            ] %}
-            <div>
-                <div class="meta">{{ label }}</div>
-                <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">{{ val | datefr }}</div>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    </div>
-
-    <section>
-        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Assurance</h3>
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-            {% for label, val in [
-                ('Compagnie', ship.insurance_company),
-                ('Police #', ship.insurance_policy),
-                ('Date d\'effet', ship.insurance_start),
-                ('Date de fin', ship.insurance_end)
-            ] %}
-            <div>
-                <div class="meta">{{ label }}</div>
-                <div style="background:#e8f4f9;border-radius:6px;padding:5px 10px;font-weight:600;margin-top:2px">{{ val | datefr }}</div>
-            </div>
-            {% endfor %}
-        </div>
+    <section class="card fiche-carte">
+        <h3>Administratif</h3>
+        {{ ligne('registration', 'Immatriculation') }}
+        {{ ligne('registry', 'Registre') }}
+        {{ ligne('issued_date', 'Délivré le') }}
+        {{ ligne('valid_until', "Valable jusqu'au", echeance=true) }}
     </section>
 
+    <section class="card fiche-carte">
+        <h3>Caractéristiques</h3>
+        {{ ligne('engine_brand', 'Marque') }}
+        {{ ligne('engine_model', 'Modèle') }}
+        {{ ligne('engine_serial', 'N° de série') }}
+        {{ ligne('displacement', 'Déplacement', 'T') }}
+        {{ ligne('ballast', 'Poids du lest', 'T') }}
+    </section>
+
+    <section class="card fiche-carte">
+        <h3>Dimensions</h3>
+        {{ ligne('loa', 'Longueur hors-tout', 'm') }}
+        {{ ligne('hull_length', 'Longueur de coque', 'm') }}
+        {{ ligne('waterline_length', 'Longueur à la flottaison', 'm') }}
+        {{ ligne('beam', 'Largeur (bau)', 'm') }}
+        {{ ligne('draft', "Tirant d'eau", 'm') }}
+        {{ ligne('air_draft', "Tirant d'air", 'm') }}
+        {{ ligne('mast_height', 'Hauteur du mât', 'm') }}
+        {{ ligne('clearance_no_mast', 'Hauteur sans mât', 'm') }}
+        {{ ligne('freeboard', 'Hauteur de franc-bord', 'm') }}
+    </section>
+
+    {# Voilure ouvre toujours la colonne de droite (fiche-colonne-droite) : sans
+       cela le navigateur équilibre les deux colonnes lui-même, et une note
+       longue dans « Divers » déplacerait des cartes de l'une à l'autre. #}
+    <section class="card fiche-carte fiche-colonne-droite">
+        <h3>Voilure</h3>
+        {{ ligne('sail_main', 'Grand-voile', 'm²') }}
+        {{ ligne('sail_genoa', 'Génois', 'm²') }}
+        {{ ligne('sail_spinnaker', 'Spinnaker', 'm²') }}
+        {{ ligne('sail_trinquette', 'Trinquette', 'm²') }}
+        {{ ligne('sail_portant', 'Voile de portant', 'm²') }}
+    </section>
+
+    <section class="card fiche-carte">
+        <h3>Réservoirs</h3>
+        {{ ligne('tank_fuel', 'Gasoil', 'L') }}
+        {{ ligne('tank_water', 'Eau douce', 'L') }}
+    </section>
+
+    <section class="card fiche-carte">
+        <h3>Moteur</h3>
+        {{ ligne('engine_power', 'Puissance') }}
+        {{ ligne('engine_consumption', 'Consommation', 'L/h') }}
+        {{ ligne('engine_hours_initial', 'Horamètre initial', 'h') }}
+        {{ ligne('engine_hours_date', 'En date du') }}
+    </section>
+
+    <section class="card fiche-carte">
+        <h3>Assurance</h3>
+        {{ ligne('insurance_company', 'Compagnie') }}
+        {{ ligne('insurance_policy', 'N° de police') }}
+        {{ ligne('insurance_start', "Date d'effet") }}
+        {{ ligne('insurance_end', 'Date de fin', echeance=true) }}
+    </section>
+
+    <section class="card fiche-carte">
+        <h3>Divers, notes, …</h3>
+        <form method="POST" action="/ship/info/field/misc_notes">
+            <textarea name="value" class="champ-divers" rows="7" placeholder="Notes libres…"
+                      onchange="this.form.submit()">{{ ship.misc_notes or '' }}</textarea>
+        </form>
+    </section>
+
+</div>
+
+<section class="card fiche-pleine">
     {# Documents du navire (table ship_documents, fichiers dans IMG/Documents/).
        Ajoutés et retirés ici même, sans passer par « Modifier » : chaque action
        est son propre formulaire, enregistré aussitôt. « Supprimer » retire la
        ligne mais garde le fichier, comme partout dans IMG/. #}
-    <section>
-        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Documents</h3>
+        <h3>Documents</h3>
 
         {% if documents %}
         <table class="data-table" style="margin-bottom:12px">
@@ -270,7 +291,7 @@
             <button type="submit" class="btn btn-yellow">+ Ajouter document</button>
         </form>
         <div class="meta" style="margin-top:4px">PDF ou image, {{ doc_max_bytes // 1048576 }} Mo au plus.</div>
-    </section>
+</section>
 
     <script>
     // Clic sur une ligne de document, hors bouton « Supprimer ».
@@ -293,14 +314,8 @@
     }
     </script>
 
-    <section>
-        <h3 style="margin:0 0 10px;font-size:20px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Divers</h3>
-        <div style="background:#e8f4f9;border-radius:6px;padding:12px 16px;min-height:60px;color:#444">
-            {{ ship.misc_notes or '' }}
-        </div>
-    </section>
 
-</div>
+
 {% endif %}
 
 {% endblock %}

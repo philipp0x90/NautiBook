@@ -34,14 +34,13 @@
         <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
             <div><label>Longueur HT (m)</label><input type="number" step="0.01" name="loa" value="{{ s.loa or '' }}"></div>
             <div><label>Longueur coque (m)</label><input type="number" step="0.01" name="hull_length" value="{{ s.hull_length or '' }}"></div>
-            <div><label>Longueur flottaison (m)</label><input type="number" step="0.01" name="waterline_length" value="{{ s.waterline_length or '' }}"></div>
-            <div><label>Longueur x largeur (m²) <span style="font-size:11px;color:var(--muted);font-weight:400">calculée</span></label><input type="number" step="0.01" name="surface" id="surface_calc" value="{{ s.surface or '' }}" readonly style="background:#f0f4f8;color:var(--muted)"></div>
+            <div><label>Longueur à la flottaison (m)</label><input type="number" step="0.01" name="waterline_length" value="{{ s.waterline_length or '' }}"></div>
             <div><label>Largeur / Bau (m)</label><input type="number" step="0.01" name="beam" value="{{ s.beam or '' }}"></div>
             <div><label>Tirant d'eau (m)</label><input type="number" step="0.01" name="draft" value="{{ s.draft or '' }}"></div>
             <div><label>Tirant d'air (m)</label><input type="number" step="0.01" name="air_draft" value="{{ s.air_draft or '' }}"></div>
             <div><label>Hauteur mât (m)</label><input type="number" step="0.01" name="mast_height" value="{{ s.mast_height or '' }}"></div>
             <div><label>Hauteur sans mât (m)</label><input type="number" step="0.01" name="clearance_no_mast" value="{{ s.clearance_no_mast or '' }}"></div>
-            <div><label>Franc-bord</label><input type="text" name="freeboard" value="{{ s.freeboard or '' }}"></div>
+            <div><label>Franc-bord (m)</label><input type="number" step="0.01" name="freeboard" value="{{ s.freeboard or '' }}"></div>
             <div><label>Déplacement (T)</label><input type="number" step="0.01" name="displacement" value="{{ s.displacement or '' }}"></div>
             <div><label>Lest (T)</label><input type="number" step="0.01" name="ballast" value="{{ s.ballast or '' }}"></div>
         </div>
@@ -114,18 +113,5 @@
 
 </form>
 
-<script>
-(function() {
-    var loa = document.querySelector('[name=loa]');
-    var beam = document.querySelector('[name=beam]');
-    var surf = document.getElementById('surface_calc');
-    function calc() {
-        var l = parseFloat(loa.value), b = parseFloat(beam.value);
-        surf.value = (l && b) ? (l * b).toFixed(2) : '';
-    }
-    loa.addEventListener('input', calc);
-    beam.addEventListener('input', calc);
-}());
-</script>
 
 {% endblock %}
