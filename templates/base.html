@@ -14,7 +14,16 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png?v=2">
     <link rel="icon" type="image/png" sizes="16x16" href="/icons/favicon-16x16.png?v=2">
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
-    <link rel="manifest" href="/icons/site.webmanifest">
+    {# Mode « web app » du raccourci d'écran d'accueil (iPad) : plein écran,
+       sans la barre d'adresse de Safari. scope « / » dans le manifeste est
+       l'essentiel : sans lui, iOS le déduit de la page d'où le raccourci a été
+       créé (/ship/info → /ship/), et la barre revient dès qu'on en sort.
+       iOS lit le manifeste à la création du raccourci : un raccourci créé
+       avant ce réglage est à supprimer et à recréer. #}
+    <link rel="manifest" href="/icons/site.webmanifest?v=2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="NautiBook">
     <meta name="theme-color" content="#5bc8e0">
     <style>
