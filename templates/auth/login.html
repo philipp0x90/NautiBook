@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Connexion — NautiBook{% endblock %}
+{% block head %}{% include "auth/_style.html" %}{% endblock %}
+{% block content %}
+{# Sans compte, on consulte librement (Mousse) ; se connecter n'est utile que
+   pour enregistrer. ecrire : on arrive ici parce qu'une écriture a été refusée. #}
+<form method="POST" action="/login" class="card auth-card">
+    <h2>Connexion</h2>
+    {% if ecrire %}
+    <div class="auth-msg info">Connectez-vous pour enregistrer une modification. Sans compte, l'app reste
+        consultable librement.</div>
+    {% endif %}
+    {% if error %}<div class="auth-msg erreur">{{ error }}</div>{% endif %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <div>
+        <label>Identifiant</label>
+        <input type="text" name="username" value="{{ username or '' }}" autocomplete="username"
+               autocapitalize="none" autocorrect="off" required autofocus>
+    </div>
+    <div>
+        <label>Mot de passe</label>
+        <input type="password" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Se connecter</button>
+    <div class="auth-liens">
+        <a href="{{ next }}">← Revenir sans se connecter</a>
+        <a href="/recover">Amiral : mot de passe oublié ?</a>
+    </div>
+    <div class="meta">Un autre mot de passe oublié : demandez à l'Amiral de le réinitialiser depuis votre fiche.</div>
+</form>
+{% endblock %}

@@ -69,3 +69,47 @@ Pour télécharger le fichier `logbook.db` depuis le Pi (qui doit etre sur le me
 ```bash
 ./copy_db.sh
 ```
+
+# Comptes et rangs
+
+Sans compte, on consulte NautiBook librement (rang **Mousse**), mais on ne peut rien
+enregistrer. Pour modifier quoi que ce soit, il faut se connecter : icône du
+bonhomme, en haut à droite.
+
+Rangs : **Amiral** (un seul), **Capitaine**, **Matelot**, et **Mousse** pour qui n'a
+pas de compte. L'Amiral attribue les rangs depuis la fiche de chaque équipier, sous
+sa photo ; donner un rang à un Mousse lui crée son compte (identifiant et mot de
+passe initial, qu'il pourra changer dans « Mon compte »).
+
+Le Mac et le Pi ont chacun leurs comptes : il faut créer l'Amiral sur chacun.
+
+## Premier Amiral
+
+Tant qu'aucun compte n'existe, chaque fiche équipier propose « Devenir Amiral ».
+Le faire **tout de suite** après la mise à jour, sur le Mac puis sur le Pi :
+jusque-là, n'importe qui sur le wifi du bord pourrait le faire à votre place.
+
+Un **code de secours** s'affiche alors, une seule fois. Le noter sur papier et le
+garder à bord.
+
+## Mot de passe de l'Amiral oublié
+
+Page de connexion › « Amiral : mot de passe oublié ? », puis le code de secours.
+Le code utilisé ne vaut plus ; un nouveau s'affiche, à noter à la place de l'ancien.
+
+## Amiral sans mot de passe ni code de secours
+
+Dernier recours, depuis le terminal du Mac (le Pi doit être sur le même réseau) :
+
+```bash
+ssh pi@nautibook.local
+cd ~/NautiBook && .venv/bin/python reset_admiral.py
+```
+
+La première commande demande le mot de passe du Pi lui-même. Le script demande
+ensuite le nouveau mot de passe de l'Amiral (deux fois), puis affiche un nouveau
+code de secours à noter. Pour l'Amiral du Mac, même script, lancé dans le dossier
+du projet sur le Mac, sans la ligne `ssh`.
+
+Un autre équipier qui a oublié son mot de passe : l'Amiral le réinitialise depuis
+sa fiche (« Réinitialiser son mot de passe »).

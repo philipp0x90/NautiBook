@@ -138,6 +138,7 @@
            0,9 px à cette taille, contre 2,8 px pour l'ancre. */
         .topbar-settings svg { width: 26px; height: 26px; display: block; }
         .topbar-settings:hover { color: var(--accent-dark); }
+        .topbar-connecte { color: var(--accent); }
 
         /* ── Section sub-header bar ── */
         .section-bar {
@@ -254,10 +255,11 @@
         }
         #maj-bandeau.open { display: block; }
 
-        /* 1040 et non 780 : six onglets pleine taille demandent ~960 px, plus
-           les 48 px de la loupe, sinon « Gallerie » touche les icônes, puis
-           sort de l'écran, au lieu de passer en version compacte. */
-        @media (max-width: 1040px) {
+        /* 1090 et non 780 : six onglets pleine taille demandent ~960 px, plus
+           les 48 px de la loupe et les 48 du compte, sinon « Gallerie » touche
+           les icônes, puis sort de l'écran, au lieu de passer en version
+           compacte. */
+        @media (max-width: 1090px) {
             nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
             .topbar { padding: 8px 10px; }
         }
@@ -351,6 +353,20 @@
              stroke-width="2.6" stroke-linecap="round">
             <circle cx="10" cy="10" r="6.5"/>
             <path d="M15 15l6 6"/>
+        </svg>
+    </a>
+
+    {# Compte : « Connexion » pour un visiteur (Mousse), « Mon compte » une fois
+       connecté — le même pictogramme, plein et coloré quand on l'est. #}
+    {% set moi = utilisateur(request) %}
+    <a href="{{ '/account' if moi else '/login?next=' ~ (request.url.path | urlencode) }}"
+       class="topbar-settings{{ ' topbar-connecte' if moi else '' }}"
+       title="{{ (moi.first_name or moi.username) ~ ' · ' ~ rank_labels[moi.rank] if moi else 'Connexion' }}"
+       aria-label="{{ 'Mon compte' if moi else 'Connexion' }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="{{ 'currentColor' if moi else 'none' }}"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 21c1.5-4.5 4.5-6.5 8-6.5s6.5 2 8 6.5"/>
         </svg>
     </a>
 
@@ -449,6 +465,9 @@ document.addEventListener('keydown', function (e) {
 // le navigateur — l'app n'écrit que par formulaire.
 (function () {
     if (!window.EventSource) return;   // rien à faire sur un très vieux navigateur
+    // Une page qui ne doit jamais se recharger d'elle-même (le code de secours,
+    // montré une seule fois) pose window.NB_FIGEE avant ce script.
+    if (window.NB_FIGEE) return;
 
     // Recharger effacerait une saisie en cours, ou refermerait une fenêtre que
     // l'on vient d'ouvrir : dans ces cas on propose le rechargement au lieu de

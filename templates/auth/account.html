@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Mon compte — NautiBook{% endblock %}
+{% block head %}{% include "auth/_style.html" %}{% endblock %}
+{% block content %}
+{% set u = utilisateur(request) %}
+<div class="card auth-card">
+    <h2>Mon compte</h2>
+    <div style="text-align:center">
+        <a href="/crew/{{ u.crew_member_id }}" style="color:inherit;font-weight:600;text-decoration:none">
+            {{ u.first_name or '' }} {{ (u.last_name or '') | upper }}</a>
+        <div class="meta">Identifiant « {{ u.username }} » · {{ rank_labels[u.rank] }}</div>
+    </div>
+    <form method="POST" action="/logout" style="text-align:center">
+        <button type="submit" class="btn" style="background:#eee;color:#333">Se déconnecter</button>
+    </form>
+</div>
+
+<form method="POST" action="/account/password" class="card auth-card">
+    <h2 style="font-size:16px">Changer de mot de passe</h2>
+    {% if error %}<div class="auth-msg erreur">{{ error }}</div>{% endif %}
+    {% if ok %}<div class="auth-msg ok">Mot de passe changé. Les autres appareils connectés avec l'ancien ont été déconnectés.</div>{% endif %}
+    <div><label>Mot de passe actuel</label><input type="password" name="current" autocomplete="current-password" required></div>
+    <div><label>Nouveau mot de passe <span class="meta" style="font-weight:400">(8 caractères au moins)</span></label>
+        <input type="password" name="new" autocomplete="new-password" minlength="8" required></div>
+    <div><label>Nouveau mot de passe, à nouveau</label><input type="password" name="confirm" autocomplete="new-password" minlength="8" required></div>
+    <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
+</form>
+{% endblock %}

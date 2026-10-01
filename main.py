@@ -5,6 +5,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, date, timedelta
 import asyncio
+import hashlib
+import secrets
+import time
 import csv
 import io
 import json
@@ -17,6 +20,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 from utils import get_sensor_data, get_position
+import passwords
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
 
 DATABASE_URL = "logbook.db"
@@ -372,6 +376,45 @@ async def init_db():
                 payment TEXT,
                 supplier TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Comptes de connexion. Un compte appartient à une fiche équipier, une
+        # fiche a au plus un compte ; un équipier sans compte est « Mousse »
+        # (lecture seule), ce n'est pas un rang stocké. Le rang est en
+        # français, comme le domaine — jamais affiché tel quel (RANK_LABELS).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                crew_member_id INTEGER NOT NULL UNIQUE
+                    REFERENCES crew_members(id) ON DELETE CASCADE,
+                username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                password_hash TEXT NOT NULL,
+                rank TEXT NOT NULL CHECK (rank IN ('amiral', 'capitaine', 'matelot')),
+                created_at DATETIME
+            )
+        """)
+        # Un seul Amiral, garanti par la base et pas seulement par l'app : un
+        # index unique *partiel*, qui ne porte que sur les lignes 'amiral'.
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS users_one_admiral ON users(rank) WHERE rank = 'amiral'"
+        )
+        # Sessions : le cookie porte un jeton aléatoire, la base n'en garde que
+        # l'empreinte SHA-256 — une base copiée ne permet pas de se connecter.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at DATETIME,
+                expires_at DATETIME
+            )
+        """)
+        # Secrets de l'app, hachés : pour l'instant le seul code de secours de
+        # l'Amiral (« admiral_recovery »).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS app_secrets (
+                name TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
         """)
 
@@ -885,6 +928,170 @@ async def announce_changes(request: Request, call_next):
     if request.method == "POST" and response.status_code == 303:
         _bump_revision()
     return response
+
+
+# ── Comptes, rangs et droits ──────────────────────────────────────────────────
+#
+# Cinq rangs : Amiral (un seul), Capitaine, Matelot — qui ont un compte —, et
+# Mousse, qui désigne simplement l'absence de compte : lecture seule, sans
+# connexion. « Skipper » n'a rien à voir : c'est une fonction tenue sur une
+# croisière (cruise_crew.role), pas un grade.
+#
+# Les droits sont des *noms* (« modifier », « gerer_roles », plus tard
+# « voir_comptes »…), et PERMISSIONS dit quel rang en a lesquels. C'est la
+# seule table à remplir pour régler les accès : MENU_PERMISSIONS masque les
+# entrées du menu, PAGE_PERMISSIONS refuse les pages, avec les mêmes noms.
+
+RANKS = ["amiral", "capitaine", "matelot"]
+RANK_LABELS = {"amiral": "Amiral", "capitaine": "Capitaine", "matelot": "Matelot", None: "Mousse"}
+
+# Provisoire, en attendant la matrice des accès : Capitaine et Matelot ont les
+# mêmes droits ; seul l'Amiral gère les rangs ; le Mousse ne fait que lire.
+PERMISSIONS = {
+    "amiral": {"modifier", "gerer_roles"},
+    "capitaine": {"modifier"},
+    "matelot": {"modifier"},
+    None: set(),
+}
+# Entrée du menu (son adresse) → droit requis pour la voir. Vide pour l'instant :
+# tout le menu est visible. Exemple : "/ship/expenses": "voir_comptes".
+MENU_PERMISSIONS: dict = {}
+# Début d'adresse → droit requis pour ouvrir la page. Mêmes noms que ci-dessus ;
+# une entrée masquée du menu doit aussi figurer ici, sans quoi son adresse
+# tapée à la main l'ouvre encore.
+PAGE_PERMISSIONS: dict = {}
+
+SESSION_COOKIE = "nb_session"
+SESSION_DAYS = 30
+# Écritures permises sans être connecté : se connecter, récupérer l'Amiral,
+# le tout premier réglage du serveur SignalK, et devenir le premier Amiral
+# (become_admiral vérifie lui-même qu'aucun compte n'existe encore).
+OPEN_POST_PATHS = ("/login", "/recover", "/setup")
+OPEN_POST_PATTERN = re.compile(r"^/crew/\d+/become-admiral$")
+# Ni session ni contrôle pour les fichiers et le flux en direct : ils n'écrivent
+# rien, et le flux reste ouvert en permanence.
+NO_SESSION_PREFIXES = ("/IMG", "/icons", "/favicon", "/apple-touch-icon", "/api/changes")
+
+
+def can(user: Optional[dict], permission: str) -> bool:
+    """L'utilisateur (None = Mousse) a-t-il ce droit ?"""
+    return permission in PERMISSIONS.get(user["rank"] if user else None, set())
+
+
+def _required_permission(path: str, table: dict) -> Optional[str]:
+    for prefix, permission in table.items():
+        if path == prefix or path.startswith(prefix.rstrip("/") + "/"):
+            return permission
+    return None
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def _session_user(token: str) -> Optional[dict]:
+    """L'utilisateur d'un jeton de session encore valide, ou None."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT u.id, u.username, u.rank, u.crew_member_id, m.first_name, m.last_name
+               FROM sessions s JOIN users u ON s.user_id = u.id
+               JOIN crew_members m ON u.crew_member_id = m.id
+               WHERE s.token_hash = ? AND s.expires_at > ?""",
+            (_token_hash(token), datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def _start_session(db, user_id: int) -> str:
+    """Nouvelle session pour cet utilisateur ; renvoie le jeton du cookie."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.now()
+    await db.execute(
+        "INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        (_token_hash(token), user_id, now.strftime("%Y-%m-%d %H:%M:%S"),
+         (now + timedelta(days=SESSION_DAYS)).strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    # Ménage au passage : les sessions expirées ne servent plus à rien.
+    await db.execute("DELETE FROM sessions WHERE expires_at <= ?", (now.strftime("%Y-%m-%d %H:%M:%S"),))
+    return token
+
+
+def _set_session_cookie(response, token: str):
+    # HttpOnly : invisible au JavaScript de la page. SameSite=Lax : le
+    # navigateur ne l'envoie pas avec un formulaire posté depuis un autre site,
+    # ce qui ferme la porte aux écritures déclenchées à distance. Pas de Secure :
+    # l'app est servie en HTTP sur le wifi du bord (risque accepté).
+    response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_DAYS * 24 * 3600,
+                        httponly=True, samesite="lax")
+
+
+def _safe_next(path: Optional[str], default: str = "/") -> str:
+    """Une page de l'app où revenir — jamais une adresse extérieure, que ce
+    paramètre suffirait sinon à imposer (« //ailleurs.com »)."""
+    if path and path.startswith("/") and not path.startswith("//"):
+        return path
+    return default
+
+
+def _referer_path(request: Request) -> str:
+    """La page d'où vient la requête, chemin et paramètres seulement."""
+    ref = request.headers.get("referer") or ""
+    m = re.match(r"^https?://[^/]+(/[^#]*)?", ref)
+    return _safe_next(m.group(1) if m and m.group(1) else None)
+
+
+@app.middleware("http")
+async def require_login_to_write(request: Request, call_next):
+    """Charge l'utilisateur connecté (request.state.user, None pour un Mousse)
+    et fait respecter les droits : toute écriture exige d'être connecté, et une
+    page réservée exige son droit.
+
+    Toutes les écritures de l'app sont des POST de formulaire : vérifier la
+    méthode ici couvre les quelque cent routes d'un coup, y compris celles
+    qu'on ajoutera. Déclaré après announce_changes, donc exécuté avant lui :
+    une écriture refusée n'est pas annoncée aux autres pages."""
+    path = request.url.path
+    request.state.user = None
+    if path.startswith(NO_SESSION_PREFIXES):
+        return await call_next(request)
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        request.state.user = await _session_user(token)
+    user = request.state.user
+
+    if request.method == "POST" and user is None and not (
+        path in OPEN_POST_PATHS or OPEN_POST_PATTERN.match(path)
+    ):
+        # Retour, après connexion, sur la page où l'on voulait enregistrer.
+        # La saisie elle-même est perdue : elle n'est pas gardée en route.
+        return RedirectResponse(
+            url=f"/login?ecrire=1&next={quote(_referer_path(request))}", status_code=303
+        )
+
+    permission = _required_permission(path, PAGE_PERMISSIONS)
+    if permission and not can(user, permission):
+        if user is None:
+            return RedirectResponse(url=f"/login?next={quote(path)}", status_code=303)
+        return HTMLResponse(
+            "<p style='font-family:sans-serif;padding:40px'>Cette page n'est pas accessible "
+            "à votre rang. <a href='/'>Retour à l'accueil</a></p>", status_code=403,
+        )
+    return await call_next(request)
+
+
+def _template_user(request) -> Optional[dict]:
+    return getattr(request.state, "user", None)
+
+
+# Pour les templates : qui est connecté, ses droits, et le menu qu'il voit.
+templates.env.globals["utilisateur"] = _template_user
+templates.env.globals["peut"] = lambda request, permission: can(_template_user(request), permission)
+templates.env.globals["voit"] = lambda request, href: (
+    (lambda perm: perm is None or can(_template_user(request), perm))(MENU_PERMISSIONS.get(href))
+)
+templates.env.globals["rank_labels"] = RANK_LABELS
 
 
 @app.get("/api/changes")
@@ -2585,6 +2792,13 @@ async def crew_detail(request: Request, crew_id: int):
             "SELECT id FROM crew_members ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE"
         )
         ids = [r[0] for r in await cursor.fetchall()]
+        # Son compte éventuel (sans compte : Mousse), et s'il existe déjà un
+        # compte quelque part — sinon la fiche propose « Devenir Amiral ».
+        cursor = await db.execute(
+            "SELECT id, username, rank FROM users WHERE crew_member_id = ?", (crew_id,))
+        account = await cursor.fetchone()
+        cursor = await db.execute("SELECT COUNT(*) FROM users")
+        has_users = (await cursor.fetchone())[0] > 0
     if member is None:
         raise HTTPException(status_code=404, detail="Crew member not found")
     i = ids.index(crew_id)
@@ -2594,6 +2808,11 @@ async def crew_detail(request: Request, crew_id: int):
             "request": request,
             "active_section": "crew",
             "member": dict(member),
+            "account": dict(account) if account else None,
+            "has_users": has_users,
+            "ranks": RANKS,
+            "erreur": request.query_params.get("erreur"),
+            "info": request.query_params.get("info"),
             "cruises": [dict(c) for c in cruises],
             "crew_fields": CREW_FIELDS, "crew_choices": CREW_CHOICES,
             "prev_id": ids[i - 1] if i > 0 else None,
@@ -2714,6 +2933,13 @@ async def update_crew_photo(crew_id: int, photo_file: Optional[UploadFile] = Fil
 @app.post("/crew/{crew_id}/delete")
 async def delete_crew(crew_id: int):
     async with connect() as db:
+        # Supprimer la fiche de l'Amiral emporterait son compte (cascade) et
+        # laisserait l'app sans Amiral : on nomme d'abord quelqu'un d'autre.
+        cursor = await db.execute(
+            "SELECT 1 FROM users WHERE crew_member_id = ? AND rank = 'amiral'", (crew_id,))
+        if await cursor.fetchone():
+            error = "C'est la fiche de l'Amiral : nommez d'abord un autre Amiral pour pouvoir la supprimer."
+            return RedirectResponse(url=f"/crew/{crew_id}?erreur={quote(error)}#acces", status_code=303)
         await db.execute("DELETE FROM crew_members WHERE id = ?", (crew_id,))
         await db.commit()
     return RedirectResponse(url="/crew", status_code=303)
@@ -4132,6 +4358,278 @@ async def search(request: Request, q: Optional[str] = None):
             "too_short": 0 < len(needle) < 2,
         },
     )
+
+
+# ── Connexion ─────────────────────────────────────────────────────────────────
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{3,30}$")
+# Anti-force brute : au-delà de LOGIN_MAX_FAILURES échecs en LOGIN_WINDOW
+# secondes pour un même identifiant, on attend. En mémoire : un redémarrage
+# remet les compteurs à zéro, ce qui suffit sur un bateau.
+LOGIN_MAX_FAILURES, LOGIN_WINDOW = 5, 15 * 60
+_login_failures: dict = {}
+
+
+def _too_many_failures(key: str) -> Optional[int]:
+    """Minutes d'attente restantes si cet identifiant est bloqué, sinon None."""
+    now = time.time()
+    recent = [t for t in _login_failures.get(key, []) if now - t < LOGIN_WINDOW]
+    _login_failures[key] = recent
+    if len(recent) >= LOGIN_MAX_FAILURES:
+        return max(1, round((LOGIN_WINDOW - (now - recent[0])) / 60))
+    return None
+
+
+def _password_problem(password: str, confirm: Optional[str]) -> Optional[str]:
+    if len(password or "") < passwords.MIN_PASSWORD_LENGTH:
+        return f"Le mot de passe doit compter au moins {passwords.MIN_PASSWORD_LENGTH} caractères."
+    if confirm is not None and password != confirm:
+        return "Les deux mots de passe ne correspondent pas."
+    return None
+
+
+async def _hash(password: str) -> str:
+    # scrypt prend quelques dizaines de millisecondes : hors de la boucle
+    # asynchrone, pour ne pas figer les autres requêtes pendant ce temps.
+    return await asyncio.to_thread(passwords.hash_password, password)
+
+
+async def _check(password: str, stored: str) -> bool:
+    return await asyncio.to_thread(passwords.check_password, password, stored)
+
+
+async def _new_recovery_code(db) -> str:
+    """Nouveau code de secours de l'Amiral ; l'ancien cesse de valoir."""
+    code = passwords.new_recovery_code()
+    stored = await _hash(passwords.normalize_recovery_code(code))
+    await db.execute(
+        "INSERT INTO app_secrets (name, value) VALUES ('admiral_recovery', ?) "
+        "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+        (stored,),
+    )
+    return code
+
+
+def _auth_page(request, template: str, **context):
+    return templates.TemplateResponse(template, {"request": request, "active_section": None, **context})
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_form(request: Request, next: Optional[str] = None, ecrire: Optional[str] = None):
+    if _template_user(request):
+        return RedirectResponse(url=_safe_next(next), status_code=303)
+    return _auth_page(request, "auth/login.html", next=_safe_next(next), ecrire=bool(ecrire), error=None)
+
+
+@app.post("/login", response_class=HTMLResponse)
+async def login(request: Request, username: str = Form(""), password: str = Form(""),
+                next: Optional[str] = Form(None)):
+    key = username.strip().lower()
+    wait = _too_many_failures(key)
+    if wait:
+        return _auth_page(request, "auth/login.html", next=_safe_next(next), ecrire=False, username=username,
+                          error=f"Trop d'essais pour cet identifiant : réessayez dans {wait} min.")
+    async with connect() as db:
+        cursor = await db.execute("SELECT id, password_hash FROM users WHERE username = ?", (username.strip(),))
+        row = await cursor.fetchone()
+        # Même vérification, même durée, que l'identifiant existe ou non.
+        ok = await _check(password, row[1] if row else passwords.DUMMY_HASH)
+        if not (row and ok):
+            _login_failures.setdefault(key, []).append(time.time())
+            return _auth_page(request, "auth/login.html", next=_safe_next(next), ecrire=False, username=username,
+                              error="Identifiant ou mot de passe incorrect.")
+        _login_failures.pop(key, None)
+        token = await _start_session(db, row[0])
+        await db.commit()
+    response = RedirectResponse(url=_safe_next(next), status_code=303)
+    _set_session_cookie(response, token)
+    return response
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        async with connect() as db:
+            await db.execute("DELETE FROM sessions WHERE token_hash = ?", (_token_hash(token),))
+            await db.commit()
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(SESSION_COOKIE)
+    return response
+
+
+@app.get("/account", response_class=HTMLResponse)
+async def account(request: Request, ok: Optional[str] = None):
+    if not _template_user(request):
+        return RedirectResponse(url="/login?next=/account", status_code=303)
+    return _auth_page(request, "auth/account.html", error=None, ok=bool(ok))
+
+
+@app.post("/account/password", response_class=HTMLResponse)
+async def change_own_password(request: Request, current: str = Form(""), new: str = Form(""),
+                              confirm: str = Form("")):
+    user = _template_user(request)
+    async with connect() as db:
+        cursor = await db.execute("SELECT password_hash FROM users WHERE id = ?", (user["id"],))
+        stored = (await cursor.fetchone())[0]
+        if not await _check(current, stored):
+            return _auth_page(request, "auth/account.html", ok=False, error="Le mot de passe actuel est incorrect.")
+        problem = _password_problem(new, confirm)
+        if problem:
+            return _auth_page(request, "auth/account.html", ok=False, error=problem)
+        await db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (await _hash(new), user["id"]))
+        # Les autres appareils connectés avec l'ancien mot de passe sont
+        # déconnectés ; celui-ci garde sa session.
+        token = request.cookies.get(SESSION_COOKIE) or ""
+        await db.execute("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?",
+                         (user["id"], _token_hash(token)))
+        await db.commit()
+    return RedirectResponse(url="/account?ok=1", status_code=303)
+
+
+@app.get("/recover", response_class=HTMLResponse)
+async def recover_form(request: Request):
+    return _auth_page(request, "auth/recover.html", error=None)
+
+
+@app.post("/recover", response_class=HTMLResponse)
+async def recover(request: Request, code: str = Form(""), new: str = Form(""), confirm: str = Form("")):
+    """Mot de passe de l'Amiral oublié : le code de secours en donne un nouveau.
+    Le code utilisé ne vaut plus ; un nouveau est montré, à noter à sa place."""
+    wait = _too_many_failures("__recover__")
+    if wait:
+        return _auth_page(request, "auth/recover.html", error=f"Trop d'essais : réessayez dans {wait} min.")
+    async with connect() as db:
+        cursor = await db.execute("SELECT value FROM app_secrets WHERE name = 'admiral_recovery'")
+        row = await cursor.fetchone()
+        cursor = await db.execute(
+            "SELECT u.id, u.crew_member_id FROM users u WHERE u.rank = 'amiral'")
+        admiral = await cursor.fetchone()
+        if not (row and admiral and await _check(passwords.normalize_recovery_code(code), row[0])):
+            _login_failures.setdefault("__recover__", []).append(time.time())
+            return _auth_page(request, "auth/recover.html", error="Code de secours incorrect.")
+        problem = _password_problem(new, confirm)
+        if problem:
+            return _auth_page(request, "auth/recover.html", error=problem)
+        await db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (await _hash(new), admiral[0]))
+        await db.execute("DELETE FROM sessions WHERE user_id = ?", (admiral[0],))
+        new_code = await _new_recovery_code(db)
+        token = await _start_session(db, admiral[0])
+        await db.commit()
+    _login_failures.pop("__recover__", None)
+    response = _auth_page(request, "auth/recovery_code.html", code=new_code,
+                          back=f"/crew/{admiral[1]}", premier=False)
+    _set_session_cookie(response, token)
+    return response
+
+
+@app.post("/crew/{crew_id}/become-admiral", response_class=HTMLResponse)
+async def become_admiral(request: Request, crew_id: int, username: str = Form(""),
+                         password: str = Form(""), confirm: str = Form("")):
+    """Premier compte de l'app : il devient l'Amiral. Possible seulement tant
+    qu'aucun compte n'existe — après, plus personne ne peut s'en servir."""
+    username = username.strip()
+    async with connect() as db:
+        cursor = await db.execute("SELECT COUNT(*) FROM users")
+        if (await cursor.fetchone())[0]:
+            raise HTTPException(status_code=403, detail="Un Amiral existe déjà")
+        error = _username_problem(username) or _password_problem(password, confirm)
+        if error:
+            return RedirectResponse(url=f"/crew/{crew_id}?erreur={quote(error)}#acces", status_code=303)
+        cursor = await db.execute(
+            "INSERT INTO users (crew_member_id, username, password_hash, rank, created_at) "
+            "VALUES (?, ?, ?, 'amiral', ?)",
+            (crew_id, username, await _hash(password), datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        )
+        user_id = cursor.lastrowid
+        code = await _new_recovery_code(db)
+        token = await _start_session(db, user_id)
+        await db.commit()
+    response = _auth_page(request, "auth/recovery_code.html", code=code, back=f"/crew/{crew_id}", premier=True)
+    _set_session_cookie(response, token)
+    return response
+
+
+def _username_problem(username: str) -> Optional[str]:
+    if not USERNAME_RE.match(username or ""):
+        return "L'identifiant doit faire de 3 à 30 caractères : lettres, chiffres, point, tiret ou souligné."
+    return None
+
+
+def _require(request, permission: str):
+    if not can(_template_user(request), permission):
+        raise HTTPException(status_code=403, detail="Droit insuffisant")
+
+
+@app.post("/crew/{crew_id}/rank")
+async def set_crew_rank(request: Request, crew_id: int, rank: str = Form(...),
+                        username: Optional[str] = Form(None), password: Optional[str] = Form(None)):
+    """Changement de rang par l'Amiral, depuis la fiche.
+
+    Mousse → autre rang : crée le compte (identifiant et mot de passe initial).
+    → Mousse : supprime le compte, et ses sessions avec lui.
+    → Amiral : transmission ; l'Amiral en place redevient Capitaine, dans la
+    même transaction, si bien qu'il y a toujours exactement un Amiral. L'Amiral
+    ne peut donc pas être rétrogradé directement : on en nomme un autre."""
+    _require(request, "gerer_roles")
+    back = f"/crew/{crew_id}"
+    if rank not in RANKS + ["mousse"]:
+        raise HTTPException(status_code=400, detail="Rang inconnu")
+    async with connect() as db:
+        cursor = await db.execute("SELECT id, rank FROM users WHERE crew_member_id = ?", (crew_id,))
+        account = await cursor.fetchone()
+        if account and account[1] == "amiral" and rank != "amiral":
+            error = "Pour changer le rang de l'Amiral, nommez d'abord un autre Amiral."
+            return RedirectResponse(url=f"{back}?erreur={quote(error)}#acces", status_code=303)
+        if rank == "mousse":
+            if account:
+                await db.execute("DELETE FROM users WHERE id = ?", (account[0],))
+        else:
+            if account is None:
+                username = (username or "").strip()
+                error = _username_problem(username) or _password_problem(password or "", None)
+                if not error:
+                    cursor = await db.execute("SELECT 1 FROM users WHERE username = ?", (username,))
+                    if await cursor.fetchone():
+                        error = f"L'identifiant « {username} » est déjà pris."
+                if error:
+                    return RedirectResponse(url=f"{back}?erreur={quote(error)}#acces", status_code=303)
+                # Créé d'abord comme Matelot, pour qu'un Amiral nommé ainsi
+                # passe par la transmission ci-dessous comme les autres.
+                cursor = await db.execute(
+                    "INSERT INTO users (crew_member_id, username, password_hash, rank, created_at) "
+                    "VALUES (?, ?, ?, 'matelot', ?)",
+                    (crew_id, username, await _hash(password), datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                )
+                account = (cursor.lastrowid, "matelot")
+            if rank == "amiral" and account[1] != "amiral":
+                # L'ordre compte : l'index unique refuserait un second Amiral,
+                # même un instant.
+                await db.execute("UPDATE users SET rank = 'capitaine' WHERE rank = 'amiral'")
+                await db.execute("UPDATE users SET rank = 'amiral' WHERE id = ?", (account[0],))
+            elif rank != "amiral":
+                await db.execute("UPDATE users SET rank = ? WHERE id = ?", (rank, account[0]))
+        await db.commit()
+    return RedirectResponse(url=f"{back}#acces", status_code=303)
+
+
+@app.post("/crew/{crew_id}/reset-password")
+async def reset_crew_password(request: Request, crew_id: int, password: str = Form("")):
+    """L'Amiral redonne un mot de passe à un équipier qui a oublié le sien ;
+    ses sessions ouvertes sont fermées."""
+    _require(request, "gerer_roles")
+    back = f"/crew/{crew_id}"
+    error = _password_problem(password, None)
+    if error:
+        return RedirectResponse(url=f"{back}?erreur={quote(error)}#acces", status_code=303)
+    async with connect() as db:
+        cursor = await db.execute("SELECT id FROM users WHERE crew_member_id = ?", (crew_id,))
+        account = await cursor.fetchone()
+        if account:
+            await db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (await _hash(password), account[0]))
+            await db.execute("DELETE FROM sessions WHERE user_id = ?", (account[0],))
+            await db.commit()
+    return RedirectResponse(url=f"{back}?info={quote('Mot de passe réinitialisé.')}#acces", status_code=303)
 
 
 # ── Setup (first run) ─────────────────────────────────────────────────────────

@@ -28,6 +28,27 @@
         border-radius: 0 0 8px 8px; opacity: 0; transition: opacity .15s;
     }
     .photo-equipier:hover .changer { opacity: 1; }
+    /* Colonne photo et rang d'accès. */
+    .colonne-photo { width: 160px; display: grid; gap: 10px; align-content: start; }
+    .acces { display: grid; gap: 6px; }
+    /* hidden doit gagner : sans cela, display de .btn ou de .acces-compte
+       l'emporte, et « Appliquer » s'affiche alors qu'il n'y a rien à appliquer. */
+    .acces [hidden] { display: none !important; }
+    .acces-form { display: grid; gap: 6px; }
+    .acces-form select, .acces-form input, .acces-reset input, .acces-premier input { height: 30px; font-size: 13px; }
+    .acces-compte { display: grid; gap: 6px; }
+    .acces-badge { text-align: center; font-weight: 700; border-radius: 12px; padding: 4px 8px; font-size: 13px; }
+    .rang-amiral { background: #0f3a4a; color: #fff; }
+    .rang-capitaine { background: #2980b9; color: #fff; }
+    .rang-matelot { background: #5bc8e0; color: #0f3a4a; }
+    .rang-mousse { background: #e8eef3; color: #556; }
+    .acces-reset, .acces-premier { font-size: 13px; }
+    .acces-reset summary, .acces-premier summary { cursor: pointer; color: var(--accent); }
+    .acces-reset form, .acces-premier form { display: grid; gap: 6px; margin-top: 6px; }
+    .acces-premier summary { font-weight: 700; }
+    .acces-msg { border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+    .acces-msg.erreur { background: #fee2e2; color: #991b1b; }
+    .acces-msg.info { background: #e0f2fe; color: #075985; }
 </style>
 {% endblock %}
 
@@ -65,22 +86,94 @@
 </div>
 
 <div class="card" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start">
-    {# Un clic sur la photo ouvre le choix d'un fichier ; le choisir l'envoie
-       aussitôt (formulaire à part, multipart). #}
-    <form method="POST" action="/crew/{{ member.id }}/photo" enctype="multipart/form-data">
-        <label class="photo-equipier" title="Changer la photo">
-            {% if member.photo_path %}
-            <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
-                 style="width:160px;height:160px;object-fit:cover;border-radius:8px;display:block">
+    {# Colonne de gauche : la photo, puis le rang d'accès dans l'app. #}
+    <div class="colonne-photo">
+        {# Un clic sur la photo ouvre le choix d'un fichier ; le choisir l'envoie
+           aussitôt (formulaire à part, multipart). #}
+        <form method="POST" action="/crew/{{ member.id }}/photo" enctype="multipart/form-data">
+            <label class="photo-equipier" title="Changer la photo">
+                {% if member.photo_path %}
+                <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
+                     style="width:160px;height:160px;object-fit:cover;border-radius:8px;display:block">
+                {% else %}
+                <div style="width:160px;height:160px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
+                    {{ (member.first_name or member.last_name or '?')[0] | upper }}
+                </div>
+                {% endif %}
+                <span class="changer">{{ 'Changer la photo' if member.photo_path else 'Ajouter une photo' }}</span>
+                <input type="file" name="photo_file" accept="image/*" hidden onchange="this.form.submit()">
+            </label>
+        </form>
+
+        {# Rang d'accès. Tout le monde le voit ; seul l'Amiral le change (menu
+           déroulant). Sans compte, l'équipier est Mousse. Le choix d'un rang
+           au-dessus de Mousse pour quelqu'un qui n'a pas de compte demande un
+           identifiant et un mot de passe initial : c'est ce qui crée le compte. #}
+        <div class="acces" id="acces">
+            {% set rang = account.rank if account else none %}
+            {% if peut(request, 'gerer_roles') %}
+            <form method="POST" action="/crew/{{ member.id }}/rank" class="acces-form"
+                  onsubmit="return verifierRang(this)">
+                {# L'Amiral ne se rétrograde pas : on nomme un autre Amiral depuis la
+                   fiche de celui-ci. Attribut en {% if %} et non en {{ }}, qui
+                   en échapperait les guillemets. #}
+                <select name="rank" onchange="majRang(this)" data-actuel="{{ rang or 'mousse' }}"
+                        {% if rang == 'amiral' %}disabled title="Pour changer l'Amiral, nommez-en un autre depuis sa fiche"{% endif %}>
+                    <option value="mousse" {{ 'selected' if not rang else '' }}>Mousse</option>
+                    {% for r in ranks | reverse %}
+                    <option value="{{ r }}" {{ 'selected' if rang == r else '' }}>{{ rank_labels[r] }}</option>
+                    {% endfor %}
+                </select>
+                {% if not account %}
+                <div class="acces-compte" hidden>
+                    <input type="text" name="username" placeholder="Identifiant" autocomplete="off"
+                           autocapitalize="none" autocorrect="off">
+                    <input type="password" name="password" placeholder="Mot de passe initial" autocomplete="new-password">
+                </div>
+                {% endif %}
+                <button type="submit" class="btn btn-blue acces-appliquer" hidden>Appliquer</button>
+            </form>
             {% else %}
-            <div style="width:160px;height:160px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
-                {{ (member.first_name or member.last_name or '?')[0] | upper }}
-            </div>
+            <div class="acces-badge rang-{{ rang or 'mousse' }}">{{ rank_labels[rang] }}</div>
             {% endif %}
-            <span class="changer">{{ 'Changer la photo' if member.photo_path else 'Ajouter une photo' }}</span>
-            <input type="file" name="photo_file" accept="image/*" hidden onchange="this.form.submit()">
-        </label>
-    </form>
+
+            {% if account %}
+            <div class="meta" style="text-align:center">Identifiant « {{ account.username }} »</div>
+            {% if peut(request, 'gerer_roles') and utilisateur(request).id != account.id %}
+            <details class="acces-reset">
+                <summary>Réinitialiser son mot de passe</summary>
+                <form method="POST" action="/crew/{{ member.id }}/reset-password">
+                    <input type="password" name="password" placeholder="Nouveau mot de passe" minlength="8"
+                           autocomplete="new-password" required>
+                    <button type="submit" class="btn btn-blue">Réinitialiser</button>
+                </form>
+            </details>
+            {% endif %}
+            {% endif %}
+
+            {# Premier démarrage : tant qu'aucun compte n'existe, chaque fiche
+               propose de devenir le premier Amiral. Le bouton disparaît pour
+               de bon une fois l'Amiral créé. #}
+            {% if not has_users %}
+            <details class="acces-premier" open>
+                <summary>Devenir Amiral</summary>
+                <div class="meta">Aucun compte n'existe encore. Le premier devient l'Amiral, qui gère ensuite les rangs.</div>
+                <form method="POST" action="/crew/{{ member.id }}/become-admiral">
+                    <input type="text" name="username" placeholder="Identifiant" autocomplete="username"
+                           autocapitalize="none" autocorrect="off" required>
+                    <input type="password" name="password" placeholder="Mot de passe (8 car. min.)" minlength="8"
+                           autocomplete="new-password" required>
+                    <input type="password" name="confirm" placeholder="Mot de passe, à nouveau" minlength="8"
+                           autocomplete="new-password" required>
+                    <button type="submit" class="btn btn-yellow">Devenir Amiral</button>
+                </form>
+            </details>
+            {% endif %}
+
+            {% if erreur %}<div class="acces-msg erreur">{{ erreur }}</div>{% endif %}
+            {% if info %}<div class="acces-msg info">{{ info }}</div>{% endif %}
+        </div>
+    </div>
 
     <div style="display:grid;gap:16px">
         {# Chaque champ est son propre formulaire, enregistré dès qu'on le quitte
@@ -225,5 +318,27 @@
     <div class="meta">{{ member.gender | equipier('cet') | capitalize }} n'a embarqué sur aucune croisière.</div>
     {% endif %}
 </div>
+
+<script>
+// Rang : le bouton « Appliquer » n'apparaît que si le choix change ; les cases
+// identifiant / mot de passe, que s'il faut créer un compte (un Mousse promu).
+function majRang(select) {
+    const form = select.form;
+    const change = select.value !== select.dataset.actuel;
+    form.querySelector('.acces-appliquer').hidden = !change;
+    const compte = form.querySelector('.acces-compte');
+    if (compte) {
+        const creer = change && select.value !== 'mousse';
+        compte.hidden = !creer;
+        compte.querySelectorAll('input').forEach(i => i.required = creer);
+    }
+}
+function verifierRang(form) {
+    const v = form.rank.value;
+    if (v === 'amiral') return confirm("Nommer cet équipier Amiral ? L'Amiral actuel deviendra Capitaine.");
+    if (v === 'mousse') return confirm('Repasser cet équipier Mousse ? Son compte sera supprimé.');
+    return true;
+}
+</script>
 
 {% endblock %}

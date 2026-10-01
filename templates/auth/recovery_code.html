@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Code de secours — NautiBook{% endblock %}
+{% block head %}{% include "auth/_style.html" %}{% endblock %}
+{% block content %}
+<script>window.NB_FIGEE = true;</script>
+{# Montré une seule fois : la base n'en garde que le hachage, personne ne
+   pourra le réafficher. #}
+<div class="card auth-card" style="max-width:520px">
+    <h2>{{ 'Vous êtes l\'Amiral' if premier else 'Nouveau code de secours' }}</h2>
+    <div>Voici votre <strong>code de secours</strong>. Il permet de redéfinir le mot de passe de l'Amiral s'il est
+        oublié, sans terminal ni email.</div>
+    <div style="font-family:ui-monospace,Menlo,monospace;font-size:26px;font-weight:700;letter-spacing:3px;
+                text-align:center;padding:16px;border:2px dashed var(--accent);border-radius:10px">{{ code }}</div>
+    <div class="auth-msg info"><strong>Notez-le sur papier maintenant</strong> et gardez-le à bord. Il ne sera plus
+        jamais affiché : NautiBook n'en conserve qu'une empreinte chiffrée.{% if not premier %} L'ancien code ne vaut plus.{% endif %}</div>
+    <a href="{{ back }}" class="btn btn-primary" style="text-align:center">J'ai noté le code</a>
+</div>
+{% endblock %}

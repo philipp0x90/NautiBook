@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Code de secours — NautiBook{% endblock %}
+{% block head %}{% include "auth/_style.html" %}{% endblock %}
+{% block content %}
+<form method="POST" action="/recover" class="card auth-card">
+    <h2>Mot de passe de l'Amiral oublié</h2>
+    <div class="meta">Saisissez le code de secours noté à la création de l'Amiral, puis un nouveau mot de passe.
+        Le code utilisé ne vaudra plus : un nouveau vous sera montré, à noter à sa place.</div>
+    {% if error %}<div class="auth-msg erreur">{{ error }}</div>{% endif %}
+    <div><label>Code de secours</label>
+        <input type="text" name="code" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off"
+               autocapitalize="characters" autocorrect="off" required style="letter-spacing:2px"></div>
+    <div><label>Nouveau mot de passe <span class="meta" style="font-weight:400">(8 caractères au moins)</span></label>
+        <input type="password" name="new" autocomplete="new-password" minlength="8" required></div>
+    <div><label>Nouveau mot de passe, à nouveau</label><input type="password" name="confirm" autocomplete="new-password" minlength="8" required></div>
+    <button type="submit" class="btn btn-primary">Changer le mot de passe</button>
+    <div class="meta">Code perdu aussi : voir « Amiral sans mot de passe ni code » dans notes_papa.md (script sur le Pi).</div>
+</form>
+{% endblock %}
