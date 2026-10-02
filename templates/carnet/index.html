@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}Carnet de voyage — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    .carnet { max-width: 760px; margin: 0 auto; display: grid; gap: 16px; }
+    .carnet-filtre { display: flex; gap: 10px; align-items: center; justify-content: center; }
+    .carnet-filtre select { width: auto; min-width: 220px; height: 34px; }
+
+    /* Zone d'écriture : toujours ouverte, en tête. */
+    .composer { display: grid; gap: 10px; }
+    /* hidden doit l'emporter sur le display de .btn : « Publier » n'apparaît
+       que s'il y a quelque chose à publier. */
+    .composer [hidden] { display: none !important; }
+    .composer textarea { min-height: 70px; resize: vertical; font: inherit; font-size: 15px; }
+    .composer.survol { outline: 2px dashed var(--accent); outline-offset: 4px; }
+    .composer-bas { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .composer-bas .dans { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+    .composer-bas .dans select { width: auto; height: 30px; font-size: 13px; }
+    .composer-bas .espace { flex: 1; }
+    .apercus { display: flex; gap: 8px; flex-wrap: wrap; }
+    .apercu { position: relative; width: 84px; height: 84px; border-radius: 8px; overflow: hidden; background: #e8eef3; }
+    .apercu img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .apercu .retirer {
+        position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%;
+        border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 13px; line-height: 22px; padding: 0; cursor: pointer;
+    }
+    .apercu .geo { position: absolute; left: 4px; bottom: 3px; font-size: 12px; text-shadow: 0 0 3px #fff; }
+    .composer-etat { font-size: 12px; color: var(--muted); }
+
+    /* Les publications. */
+    .jour { margin: 6px 0 -6px; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted);
+            text-transform: uppercase; letter-spacing: 1px; }
+    .publication { display: grid; gap: 10px; }
+    .pub-tete { display: flex; gap: 10px; align-items: center; }
+    .pub-avatar { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: 0 0 38px;
+                  background: #dde5ee; color: #7d8fa3; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .pub-qui { flex: 1; line-height: 1.25; }
+    .pub-qui .nom { font-weight: 700; }
+    .pub-qui .quand { font-size: 12px; color: var(--muted); }
+    .pub-actions { display: flex; gap: 6px; align-items: center; }
+    .pub-actions a, .pub-actions button { font-size: 12px; }
+    .pub-texte { white-space: pre-wrap; font-size: 15px; line-height: 1.5; }
+    .pub-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+    .pub-photos.une { grid-template-columns: 1fr; }
+    .pub-photo { position: relative; border-radius: 8px; overflow: hidden; background: #e8eef3; }
+    .pub-photo img { width: 100%; height: 100%; max-height: 520px; object-fit: cover; display: block; cursor: zoom-in; aspect-ratio: 4 / 3; }
+    .pub-photos.une .pub-photo img { aspect-ratio: auto; object-fit: contain; background: #0f1b24; }
+    .pub-photo .legende { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 8px; font-size: 11px;
+                          color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.65)); }
+    .pub-photo .legende a { color: #fff; }
+    .pub-photo form { position: absolute; top: 4px; right: 4px; }
+    .pub-photo form button { width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0;
+                             background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
+    .verrou { display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; font-size: 28px; color: #7d8fa3; }
+    .vide { text-align: center; color: var(--muted); padding: 30px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# Une publication en cours d'écriture : la même zone sert à publier (en tête
+   de page) et à corriger (à la place d'une publication). #}
+{% macro composer(action, texte='', bouton='Publier', avec_croisiere=true) %}
+<form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer">
+    <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+    <textarea name="text" placeholder="Quoi de neuf à bord ?" maxlength="20000">{{ texte }}</textarea>
+    <div class="apercus"></div>
+    <div class="composer-bas">
+        <label class="btn" style="background:#e8f4f9;color:#0f3a4a;cursor:pointer;margin:0">
+            📷 Photos
+            <input type="file" accept="image/*" multiple hidden class="choix-photos">
+        </label>
+        {# Le champ réellement envoyé : rempli par le script avec les photos
+           réduites, dans l'ordre des aperçus. #}
+        <input type="file" name="photo_files" multiple hidden class="envoi-photos">
+        <div class="geo-champs" hidden></div>
+        {% if avec_croisiere and cruises %}
+        <span class="dans">dans
+            <select name="cruise_id">
+                {% for c in cruises %}
+                <option value="{{ c.id }}" {{ 'selected' if c.id == (selected or current_cruise) else '' }}>{{ c.name or 'Croisière sans nom' }}</option>
+                {% endfor %}
+            </select>
+        </span>
+        {% endif %}
+        <span class="espace"></span>
+        <span class="composer-etat"></span>
+        <button type="submit" class="btn btn-primary publier" hidden>{{ bouton }}</button>
+    </div>
+</form>
+{% endmacro %}
+
+<div class="section-bar">
+    <div class="section-bar-title">Carnet de voyage</div>
+</div>
+
+<div class="carnet">
+
+    {# Le carnet d'une croisière, par défaut celle en cours, ou tout le navire. #}
+    <form method="GET" action="/carnet" class="carnet-filtre">
+        <select name="croisiere" onchange="this.form.submit()" aria-label="Croisière">
+            {% for c in cruises %}
+            <option value="{{ c.id }}" {{ 'selected' if not voir_tout and c.id == selected else '' }}>
+                {{ c.name or 'Croisière sans nom' }}{{ ' (en cours)' if c.id == current_cruise else '' }}</option>
+            {% endfor %}
+            <option value="tout" {{ 'selected' if voir_tout else '' }}>Voir tout</option>
+        </select>
+    </form>
+
+    {% if peut(request, 'carnet.modifier') %}
+    {{ composer('/carnet/new') }}
+    {% else %}
+    <div class="card meta" style="text-align:center">
+        <a href="/login?next={{ request.url.path | urlencode }}" style="color:var(--accent)">Connectez-vous</a>
+        pour écrire dans le carnet.
+    </div>
+    {% endif %}
+
+    {% for d in days %}
+    <div class="jour">{{ d.day | jourfr }} {{ d.day | datefr }}</div>
+    {% for e in d.entries %}
+    {% set auteur = my_crew_id and e.crew_member_id == my_crew_id %}
+    {% set corrige = auteur or (utilisateur(request) and utilisateur(request).rank == 'amiral') %}
+    {% if editing == e.id and corrige %}
+    <div id="publication-{{ e.id }}">
+        {{ composer('/carnet/' ~ e.id ~ '/edit', e.text or '', 'Enregistrer', false) }}
+        <div class="meta" style="margin-top:4px">Les photos ajoutées s'ajoutent à celles déjà publiées.
+            <a href="{{ request.url.path }}{{ '?croisiere=tout' if voir_tout else ('?croisiere=' ~ selected if selected else '') }}#publication-{{ e.id }}" style="color:var(--accent)">Annuler</a></div>
+    </div>
+    {% else %}
+    <article class="card publication" id="publication-{{ e.id }}">
+        <div class="pub-tete">
+            {% if e.author_photo and fichier_visible(request, e.author_photo) %}
+            <img src="{{ e.author_photo }}" alt="" class="pub-avatar">
+            {% else %}
+            <div class="pub-avatar">{{ (e.first_name or e.last_name or '?')[0] | upper }}</div>
+            {% endif %}
+            <div class="pub-qui">
+                <div class="nom">{{ e.first_name or '' }} {{ (e.last_name or '') | upper }}{% if not e.first_name and not e.last_name %}Équipage{% endif %}</div>
+                <div class="quand">
+                    {{ (e.created_at or '')[11:16] }}{% if voir_tout and e.cruise_name %} · {{ e.cruise_name }}{% endif %}{% if e.updated_at %} · corrigé{% endif %}
+                </div>
+            </div>
+            <div class="pub-actions">
+                {% if corrige %}
+                <a href="?{{ 'croisiere=tout&' if voir_tout else ('croisiere=' ~ selected ~ '&' if selected else '') }}edit={{ e.id }}#publication-{{ e.id }}"
+                   class="btn" style="background:#eee;color:#333;padding:3px 10px">✎ Corriger</a>
+                {% endif %}
+                <form method="POST" action="/carnet/{{ e.id }}/delete"
+                      onsubmit="return confirm('Supprimer cette publication et ses photos du carnet ?')">
+                    <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:3px 10px">✕</button>
+                </form>
+            </div>
+        </div>
+        {% if e.text %}<div class="pub-texte">{{ e.text }}</div>{% endif %}
+        {% if e.photos %}
+        <div class="pub-photos{{ ' une' if e.photos | length == 1 else '' }}">
+            {% for ph in e.photos %}
+            <div class="pub-photo">
+                {% if fichier_visible(request, ph.photo_path) %}
+                <img src="{{ ph.photo_path }}" alt="" loading="lazy" onclick="agrandirPhoto(event, this)" title="Agrandir">
+                {% else %}
+                <div class="verrou" title="Connectez-vous pour voir les photos">🔒</div>
+                {% endif %}
+                {% if ph.lat is not none or (ph.taken_at and ph.taken_at[:10] != (e.created_at or '')[:10]) %}
+                <div class="legende">
+                    {% if ph.taken_at and ph.taken_at[:10] != (e.created_at or '')[:10] %}{{ ph.taken_at | datefr }}{% if ph.lat is not none %} · {% endif %}{% endif %}
+                    {% if ph.lat is not none %}
+                    {# Position de la photo, sinon du bateau au moment de publier. #}
+                    {# Les coordonnées dans l'info-bulle et le lien de carte : en
+                       clair, elles ne tiennent pas sur une vignette. #}
+                    <a href="https://www.openstreetmap.org/?mlat={{ ph.lat }}&mlon={{ ph.lon }}#map=13/{{ ph.lat }}/{{ ph.lon }}"
+                       target="_blank" rel="noopener" title="{{ ph.lat | lat }} {{ ph.lon | lon }}">📍 {{ 'photo' if ph.geo_source == 'photo' else 'bateau' }}</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+                <form method="POST" action="/carnet/photos/{{ ph.id }}/delete" onsubmit="return confirm('Retirer cette photo ?')">
+                    <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+                    <button type="submit" title="Retirer cette photo">✕</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </article>
+    {% endif %}
+    {% endfor %}
+    {% else %}
+    <div class="vide">
+        <div style="font-size:36px;margin-bottom:8px">📖</div>
+        {% if voir_tout %}Rien encore dans le carnet de ce navire.{% else %}Rien encore dans le carnet de cette croisière.{% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+// ── Photos du carnet ─────────────────────────────────────────────────────────
+// Chaque photo choisie est d'abord lue — position GPS et heure de prise de vue,
+// dans ses données EXIF — puis réduite à 2000 px de côté (environ 400 Ko au
+// lieu de 3 à 5 Mo). La réduction efface ces données : d'où la lecture avant,
+// et leur envoi dans des champs à part (photo_lat, photo_lon, photo_taken).
+// L'envoi reste un simple formulaire, comme toute écriture de l'app.
+const COTE_MAX = 2000, MAX_PHOTOS = {{ max_photos }}, MAX_OCTETS = {{ max_bytes }};
+
+async function lireExif(fichier) {
+    try {
+        const v = new DataView(await fichier.slice(0, 256 * 1024).arrayBuffer());
+        if (v.getUint16(0) !== 0xFFD8) return {};           // pas un JPEG
+        let off = 2;
+        while (off + 10 < v.byteLength) {
+            const marqueur = v.getUint16(off), taille = v.getUint16(off + 2);
+            if (marqueur === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) return lireTiff(v, off + 10);
+            if ((marqueur & 0xFF00) !== 0xFF00) break;
+            off += 2 + taille;
+        }
+    } catch (e) { /* données illisibles : la photo part sans */ }
+    return {};
+}
+function lireTiff(v, t) {
+    const le = v.getUint16(t) === 0x4949;
+    const u16 = o => v.getUint16(t + o, le), u32 = o => v.getUint32(t + o, le);
+    const ifd = o => { const tags = {}, n = u16(o);
+        for (let i = 0; i < n; i++) { const e = o + 2 + i * 12; tags[u16(e)] = { count: u32(e + 4), off: e + 8 }; }
+        return tags; };
+    const ascii = tag => { const o = tag.count > 4 ? u32(tag.off) : tag.off; let s = '';
+        for (let i = 0; i < tag.count - 1; i++) s += String.fromCharCode(v.getUint8(t + o + i)); return s; };
+    const rationnels = tag => { const o = u32(tag.off), r = [];
+        for (let i = 0; i < tag.count; i++) r.push(u32(o + i * 8) / u32(o + i * 8 + 4)); return r; };
+    const res = {}, ifd0 = ifd(u32(4));
+    if (ifd0[0x8769]) {                                      // sous-répertoire Exif
+        const ex = ifd(u32(ifd0[0x8769].off));
+        if (ex[0x9003]) {                                    // DateTimeOriginal « 2026:09:24 18:02:11 »
+            const d = ascii(ex[0x9003]);
+            if (/^\d{4}:\d\d:\d\d \d\d:\d\d:\d\d/.test(d)) res.taken = d.slice(0, 10).replace(/:/g, '-') + d.slice(10, 19);
+        }
+    }
+    if (ifd0[0x8825]) {                                      // sous-répertoire GPS
+        const g = ifd(u32(ifd0[0x8825].off));
+        if (g[2] && g[4]) {
+            const la = rationnels(g[2]), lo = rationnels(g[4]);
+            let lat = la[0] + la[1] / 60 + la[2] / 3600, lon = lo[0] + lo[1] / 60 + lo[2] / 3600;
+            if (g[1] && ascii(g[1]) === 'S') lat = -lat;
+            if (g[3] && ascii(g[3]) === 'W') lon = -lon;
+            if (isFinite(lat) && isFinite(lon) && !(lat === 0 && lon === 0)) { res.lat = lat; res.lon = lon; }
+        }
+    }
+    return res;
+}
+
+async function reduire(fichier) {
+    // Une photo que le navigateur ne sait pas ouvrir (HEIC sur un Mac sous
+    // Chrome…) part telle quelle : le serveur la garde, sans la réduire.
+    const url = URL.createObjectURL(fichier);
+    try {
+        const img = new Image(); img.src = url; await img.decode();
+        const k = Math.min(1, COTE_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+        if (!blob) return fichier;
+        return new File([blob], fichier.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (e) { return fichier; } finally { URL.revokeObjectURL(url); }
+}
+
+document.querySelectorAll('.composer').forEach(function (form) {
+    const texte = form.querySelector('textarea'), choix = form.querySelector('.choix-photos');
+    const envoi = form.querySelector('.envoi-photos'), geo = form.querySelector('.geo-champs');
+    const apercus = form.querySelector('.apercus'), publier = form.querySelector('.publier');
+    const etat = form.querySelector('.composer-etat');
+    const photos = [];     // { fichier, lat, lon, taken, url }
+    let enCours = 0;
+
+    function maj() {
+        // Le champ envoyé et ses champs de position, dans l'ordre des aperçus.
+        const dt = new DataTransfer();
+        geo.replaceChildren();
+        photos.forEach(function (p) {
+            dt.items.add(p.fichier);
+            [['photo_lat', p.lat], ['photo_lon', p.lon], ['photo_taken', p.taken]].forEach(function ([nom, val]) {
+                const i = document.createElement('input'); i.type = 'hidden'; i.name = nom; i.value = val ?? ''; geo.appendChild(i);
+            });
+        });
+        envoi.files = dt.files;
+        apercus.replaceChildren(...photos.map(function (p, n) {
+            const d = document.createElement('div'); d.className = 'apercu';
+            d.innerHTML = '<img alt=""><button type="button" class="retirer" title="Retirer">✕</button>' +
+                          (p.lat != null ? '<span class="geo" title="Position lue dans la photo">📍</span>' : '');
+            d.querySelector('img').src = p.url;
+            d.querySelector('.retirer').onclick = function () { URL.revokeObjectURL(p.url); photos.splice(n, 1); maj(); };
+            return d;
+        }));
+        publier.hidden = !(texte.value.trim() || photos.length) || enCours > 0;
+        etat.textContent = enCours ? 'Préparation des photos…' : '';
+    }
+    async function ajouter(fichiers) {
+        // Signale une saisie en cours à la mise à jour en direct (base.html) :
+        // une page qui se rechargerait perdrait les photos choisies.
+        texte.dispatchEvent(new Event('input', { bubbles: true }));
+        for (const f of fichiers) {
+            if (!f.type.startsWith('image/') && !/\.(heic|heif|jpe?g|png|webp)$/i.test(f.name)) continue;
+            if (photos.length + enCours >= MAX_PHOTOS) { alert(MAX_PHOTOS + ' photos au plus par publication.'); break; }
+            enCours++; maj();
+            const exif = await lireExif(f);
+            const petit = await reduire(f);
+            enCours--;
+            if (petit.size > MAX_OCTETS) { alert('« ' + f.name + ' » est trop volumineuse.'); maj(); continue; }
+            photos.push({ fichier: petit, lat: exif.lat, lon: exif.lon, taken: exif.taken, url: URL.createObjectURL(petit) });
+            maj();
+        }
+    }
+    choix.addEventListener('change', function () { ajouter([...choix.files]); choix.value = ''; });
+    texte.addEventListener('input', maj);
+    ['dragenter', 'dragover'].forEach(t => form.addEventListener(t, e => { e.preventDefault(); form.classList.add('survol'); }));
+    ['dragleave', 'drop'].forEach(t => form.addEventListener(t, () => form.classList.remove('survol')));
+    form.addEventListener('drop', function (e) { e.preventDefault(); ajouter([...e.dataTransfer.files]); });
+    form.addEventListener('submit', function (e) {
+        if (enCours) { e.preventDefault(); return; }
+        publier.disabled = true; etat.textContent = 'Envoi…';
+    });
+    maj();
+});
+</script>
+
+{% endblock %}

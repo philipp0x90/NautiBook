@@ -17,7 +17,7 @@ import subprocess
 import aiosqlite
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import quote
 from utils import get_sensor_data, get_position
 import passwords
@@ -379,6 +379,39 @@ async def init_db():
             )
         """)
 
+        # Carnet de voyage : des publications (un texte, des photos, ou les
+        # deux), rangées par croisière. L'auteur est une fiche équipier et non
+        # un compte : repasser quelqu'un Mousse supprime son compte, pas ce
+        # qu'il a écrit (ON DELETE SET NULL, et l'auteur devient anonyme
+        # seulement si sa fiche disparaît).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS carnet_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ship_id INTEGER NOT NULL REFERENCES ship_info(id) ON DELETE CASCADE,
+                cruise_id INTEGER REFERENCES cruises(id) ON DELETE CASCADE,
+                crew_member_id INTEGER REFERENCES crew_members(id) ON DELETE SET NULL,
+                text TEXT,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+        """)
+        # Une photo d'une publication. lat / lon : la position de la prise de
+        # vue lue dans la photo (geo_source « photo »), sinon celle du bateau
+        # au moment de publier (« bateau »), sinon rien. taken_at : l'heure de
+        # prise de vue, quand la photo la donne.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS carnet_photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entry_id INTEGER NOT NULL REFERENCES carnet_entries(id) ON DELETE CASCADE,
+                photo_path TEXT NOT NULL,
+                lat REAL,
+                lon REAL,
+                geo_source TEXT,
+                taken_at DATETIME,
+                position INTEGER
+            )
+        """)
+
         # Comptes de connexion. Un compte appartient à une fiche équipier, une
         # fiche a au plus un compte ; un équipier sans compte est « Mousse »
         # (lecture seule), ce n'est pas un rang stocké. Le rang est en
@@ -585,6 +618,7 @@ async def _migrate(db):
                 print(f"Migration: {column} « {value} » → {number}")
 
     await _move_crew_photos(db)
+    await _migrate_gallery_to_carnet(db)
     await _rename_doc_folder(db)
 
     # L'adresse d'un contact, un seul texte libre, devient quatre champs comme
@@ -727,6 +761,10 @@ DOC_MAX_BYTES = 20 * 1024 * 1024
 CREW_SUBDIR = "SailingCrew"
 (IMG_DIR / CREW_SUBDIR).mkdir(exist_ok=True)
 
+# Photos du carnet de voyage, protégées par la rubrique « carnet ».
+CARNET_SUBDIR = "Carnet"
+(IMG_DIR / CARNET_SUBDIR).mkdir(exist_ok=True)
+
 # Documents du navire, ajoutés depuis sa fiche (section « Documents »). PDF et
 # images, comme les factures, mais un plafond plus haut : un manuel moteur en
 # PDF dépasse volontiers les 20 Mo d'une facture.
@@ -802,6 +840,40 @@ async def _rename_doc_folder(db):
         "UPDATE expenses SET document_path = ? || substr(document_path, ?) WHERE document_path LIKE ?",
         (new_prefix, len(old_prefix) + 1, old_prefix + "%"),
     )
+
+
+async def _migrate_gallery_to_carnet(db):
+    """Les photos de l'ancienne galerie (trip_photos) deviennent des
+    publications du carnet de voyage, une par photo, son commentaire pour
+    texte. Rejouée à chaque démarrage : une photo déjà reprise (même chemin)
+    est sautée. Les fichiers ne bougent pas, leur chemin non plus."""
+    cursor = await db.execute(
+        """SELECT p.photo_path, p.comment, p.lat, p.lon, p.created_at,
+                  COALESCE(p.cruise_id, r.cruise_id), c.ship_id
+           FROM trip_photos p
+           LEFT JOIN routes r ON p.route_id = r.id
+           LEFT JOIN cruises c ON c.id = COALESCE(p.cruise_id, r.cruise_id)
+           WHERE p.photo_path NOT IN (SELECT photo_path FROM carnet_photos)"""
+    )
+    rows = await cursor.fetchall()
+    if not rows:
+        return
+    cursor = await db.execute("SELECT MIN(id) FROM ship_info")
+    first_ship = (await cursor.fetchone())[0]
+    for path, comment, lat, lon, created, cruise_id, ship_id in rows:
+        ship_id = ship_id or first_ship
+        if ship_id is None:
+            continue
+        cursor = await db.execute(
+            "INSERT INTO carnet_entries (ship_id, cruise_id, text, created_at) VALUES (?, ?, ?, ?)",
+            (ship_id, cruise_id, comment, created),
+        )
+        await db.execute(
+            "INSERT INTO carnet_photos (entry_id, photo_path, lat, lon, geo_source, position) "
+            "VALUES (?, ?, ?, ?, ?, 0)",
+            (cursor.lastrowid, path, lat, lon, "photo" if lat is not None else None),
+        )
+    print(f"Migration: {len(rows)} photo(s) de la galerie reprise(s) dans le carnet de voyage")
 
 
 async def _move_crew_photos(db):
@@ -972,7 +1044,7 @@ ACCESS_GRID = {
     "identite":   ("caché",  "voir",   "modifier", "tout"),   # identité, adresse des équipiers
     "croisieres": ("voir",   "voir",   "modifier", "tout"),   # croisières, routes, escales
     "journal":    ("voir",   "voir",   "modifier", "tout"),   # lignes du journal de bord
-    "galerie":    ("voir",   "modifier", "modifier", "tout"),
+    "carnet":     ("voir",   "modifier", "modifier", "tout"),   # Carnet de voyage (ex-Galerie)
     "outils":     ("voir",   "voir",   "modifier", "tout"),   # météo, carte
     "parametres": ("caché",  "caché",  "voir",     "tout"),   # SignalK, sauvegarde
 }
@@ -1015,7 +1087,7 @@ SECTION_RULES = [
     (r"^/logbook(/|$)", "journal"),
     (r"^/(cruises|routes|stopovers)(/|$)", "croisieres"),
     (r"^/api/(routes|cruises|all-cruises)/", "croisieres"),
-    (r"^/gallery(/|$)", "galerie"),
+    (r"^/(carnet|gallery)(/|$)", "carnet"),
     (r"^/tools(/|$)", "outils"),
     (r"^/settings(/|$)", "parametres"),
 ]
@@ -1158,10 +1230,15 @@ async def require_login_to_write(request: Request, call_next):
 
 # Fichiers d'IMG/ : il faut être connecté, et avoir le droit « voir » de la
 # rubrique dont relève le dossier. Un fichier à la racine d'IMG/ (photos des
-# tâches, de la galerie) demande seulement d'être connecté. Le Mousse, sans
-# compte, ne voit donc aucun de ces fichiers — les pages qu'il consulte
-# montrent à la place les initiales ou un cadenas (fichier_visible).
-IMG_FOLDER_SECTIONS = {"Invoices-Receipts": "comptes", "Documents": "navire", "SailingCrew": "equipiers"}
+# tâches) demande seulement d'être connecté. Le Mousse, sans compte, ne voit
+# que les dossiers d'IMG_OPEN_FOLDERS (photos du carnet et des équipiers) — ailleurs, les
+# pages qu'il consulte montrent les initiales ou un cadenas (fichier_visible).
+IMG_FOLDER_SECTIONS = {"Invoices-Receipts": "comptes", "Documents": "navire", "SailingCrew": "equipiers",
+                       "Carnet": "carnet"}
+# Dossiers visibles sans connexion : les photos du carnet de voyage et celles
+# des équipiers, que le Mousse peut regarder (choix de l'utilisateur,
+# 02/10/2026). Factures et documents du navire restent réservés aux comptes.
+IMG_OPEN_FOLDERS = {"Carnet", "SailingCrew"}
 
 
 def can_see_file(user: Optional[dict], url: Optional[str]) -> bool:
@@ -1169,10 +1246,13 @@ def can_see_file(user: Optional[dict], url: Optional[str]) -> bool:
     d'IMG/ (photo donnée par une URL externe) n'est pas concernée."""
     if not url or not url.startswith(IMG_URL + "/"):
         return True
-    if user is None:
-        return False
     rel = url[len(IMG_URL) + 1:]
-    section = IMG_FOLDER_SECTIONS.get(rel.split("/", 1)[0]) if "/" in rel else None
+    folder = rel.split("/", 1)[0] if "/" in rel else None
+    section = IMG_FOLDER_SECTIONS.get(folder)
+    if user is None:
+        # Le Mousse ne voit que les dossiers ouverts sans connexion, et
+        # seulement si la grille lui donne « voir » sur leur rubrique.
+        return folder in IMG_OPEN_FOLDERS and can(None, f"{section}.voir")
     return section is None or can(user, f"{section}.voir")
 
 
@@ -4102,16 +4182,214 @@ async def tools_chart(request: Request):
 
 # ── Gallery ───────────────────────────────────────────────────────────────────
 
-@app.get("/gallery", response_class=HTMLResponse)
-async def gallery(request: Request):
+# ── Carnet de voyage ──────────────────────────────────────────────────────────
+#
+# L'ancienne galerie. Des publications — un texte, des photos, ou les deux —
+# rangées par croisière, l'auteur étant l'équipier connecté. La page s'ouvre
+# sur la croisière en cours ; un menu en choisit une autre ou « Voir tout ».
+# Chacun corrige ses propres publications ; supprimer reste à l'Amiral (grille
+# des droits, rubrique « carnet »).
+#
+# Les photos arrivent déjà réduites par le navigateur, qui a lu avant cela leur
+# position et leur heure de prise de vue (EXIF) — la réduction les efface — et
+# les envoie dans des champs à part. Sans position dans la photo, celle du
+# bateau (SignalK) au moment de publier.
+
+CARNET_MAX_PHOTOS = 20
+
+
+@app.get("/gallery", include_in_schema=False)
+async def gallery_redirect():
+    return RedirectResponse(url="/carnet", status_code=301)
+
+
+async def _boat_position() -> Optional[tuple]:
+    """Position du bateau (SignalK), ou None. Trois secondes au plus : hors
+    couverture ou serveur éteint, la publication ne doit pas attendre."""
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(get_position), timeout=3)
+    except Exception:
+        return None
+
+
+def _float_or_none(value):
+    try:
+        return float(value) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+async def _store_carnet_photos(db, entry_id: int, files: List[UploadFile], lats, lons, takens,
+                               start: int = 0) -> int:
+    """Enregistre les photos d'une publication. Renvoie le nombre gardé."""
+    files = [f for f in files if f and f.filename][:CARNET_MAX_PHOTOS]
+    if not files:
+        return 0
+    boat = None
+    kept = 0
+    for i, upload in enumerate(files):
+        path = await _save_upload(upload, IMG_SUFFIXES, CARNET_SUBDIR, DOC_MAX_BYTES)
+        if not path:
+            continue
+        lat = _float_or_none(lats[i] if i < len(lats) else None)
+        lon = _float_or_none(lons[i] if i < len(lons) else None)
+        source = "photo" if lat is not None and lon is not None else None
+        if source is None:
+            if boat is None:
+                boat = await _boat_position() or ()
+            if boat:
+                lat, lon, source = boat[0], boat[1], "bateau"
+        taken = (takens[i] if i < len(takens) else None) or None
+        await db.execute(
+            "INSERT INTO carnet_photos (entry_id, photo_path, lat, lon, geo_source, taken_at, position) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (entry_id, path, lat if source else None, lon if source else None, source, taken, start + i),
+        )
+        kept += 1
+    return kept
+
+
+@app.get("/carnet", response_class=HTMLResponse)
+async def carnet(request: Request, croisiere: Optional[str] = None, edit: Optional[int] = None):
+    ship_id = get_current_ship_id(request)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("SELECT * FROM trip_photos ORDER BY created_at DESC")
-        photos = await cursor.fetchall()
+        ship = await _fetch_ship(db, ship_id)
+        current = await _current_cruise_id(db, ship_id)
+        cursor = await db.execute(
+            "SELECT id, name, start_time FROM cruises WHERE ship_id = ? "
+            "ORDER BY COALESCE(start_time, created_at) DESC", (ship_id,))
+        cruises = [dict(c) for c in await cursor.fetchall()]
+        # « tout », un id de croisière du navire, ou par défaut celle en cours.
+        voir_tout = croisiere == "tout"
+        selected = None if voir_tout else (
+            int(croisiere) if croisiere and croisiere.isdigit()
+            and any(c["id"] == int(croisiere) for c in cruises) else current)
+        where, args = "e.ship_id = ?", [ship_id]
+        if not voir_tout:
+            where += " AND e.cruise_id IS ?"
+            args.append(selected)
+        cursor = await db.execute(
+            f"""SELECT e.*, c.name AS cruise_name, m.first_name, m.last_name, m.photo_path AS author_photo
+                FROM carnet_entries e
+                LEFT JOIN cruises c ON e.cruise_id = c.id
+                LEFT JOIN crew_members m ON e.crew_member_id = m.id
+                WHERE {where} ORDER BY e.created_at DESC, e.id DESC""", args)
+        entries = [dict(e) for e in await cursor.fetchall()]
+        if entries:
+            ids = [e["id"] for e in entries]
+            cursor = await db.execute(
+                f"SELECT * FROM carnet_photos WHERE entry_id IN ({','.join('?' * len(ids))}) "
+                "ORDER BY entry_id, position, id", ids)
+            photos = {}
+            for p in await cursor.fetchall():
+                photos.setdefault(p["entry_id"], []).append(dict(p))
+            for e in entries:
+                e["photos"] = photos.get(e["id"], [])
+    # Regroupées par jour, dans l'ordre de la liste.
+    days = []
+    for e in entries:
+        day = (e["created_at"] or "")[:10]
+        if not days or days[-1]["day"] != day:
+            days.append({"day": day, "entries": []})
+        days[-1]["entries"].append(e)
+    user = _template_user(request)
     return templates.TemplateResponse(
-        "gallery/index.html",
-        {"request": request, "active_section": "gallery", "photos": [dict(p) for p in photos]},
+        "carnet/index.html",
+        {"request": request, "active_section": "gallery",
+         "current_ship": dict(ship) if ship else None,
+         "cruises": cruises, "current_cruise": current, "selected": selected, "voir_tout": voir_tout,
+         "days": days, "editing": edit,
+         "my_crew_id": user["crew_member_id"] if user else None,
+         "max_photos": CARNET_MAX_PHOTOS, "max_bytes": DOC_MAX_BYTES},
     )
+
+
+@app.post("/carnet/new")
+async def carnet_new(request: Request, text: Optional[str] = Form(None), cruise_id: Optional[str] = Form(None),
+                     photo_files: List[UploadFile] = File(default=[]),
+                     photo_lat: List[str] = Form(default=[]), photo_lon: List[str] = Form(default=[]),
+                     photo_taken: List[str] = Form(default=[]), back: Optional[str] = Form(None)):
+    ship_id = get_current_ship_id(request)
+    user = _template_user(request)
+    text = (text or "").strip() or None
+    has_photo = any(f and f.filename for f in photo_files)
+    if not text and not has_photo:
+        return RedirectResponse(url=_safe_next(back, "/carnet"), status_code=303)
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        # La croisière doit être une du navire ; à défaut, celle en cours.
+        cid = int(cruise_id) if cruise_id and cruise_id.isdigit() else None
+        if cid is not None:
+            cursor = await db.execute("SELECT 1 FROM cruises WHERE id = ? AND ship_id = ?", (cid, ship_id))
+            if not await cursor.fetchone():
+                cid = None
+        if cid is None:
+            cid = await _current_cruise_id(db, ship_id)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor = await db.execute(
+            "INSERT INTO carnet_entries (ship_id, cruise_id, crew_member_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
+            (ship_id, cid, user["crew_member_id"] if user else None, text, now),
+        )
+        entry_id = cursor.lastrowid
+        kept = await _store_carnet_photos(db, entry_id, photo_files, photo_lat, photo_lon, photo_taken)
+        if not text and not kept:
+            await db.execute("DELETE FROM carnet_entries WHERE id = ?", (entry_id,))
+        await db.commit()
+    return RedirectResponse(url=_safe_next(back, "/carnet") + f"#publication-{entry_id}", status_code=303)
+
+
+async def _own_entry(db, request, entry_id: int):
+    """La publication, si l'utilisateur peut la corriger : la sienne, ou
+    n'importe laquelle pour l'Amiral."""
+    cursor = await db.execute("SELECT id, crew_member_id FROM carnet_entries WHERE id = ?", (entry_id,))
+    entry = await cursor.fetchone()
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Publication introuvable")
+    user = _template_user(request)
+    if not (user and (user["rank"] == "amiral" or user["crew_member_id"] == entry[1])):
+        raise HTTPException(status_code=403, detail="Seul son auteur peut corriger une publication")
+    return entry
+
+
+@app.post("/carnet/{entry_id}/edit")
+async def carnet_edit(request: Request, entry_id: int, text: Optional[str] = Form(None),
+                      photo_files: List[UploadFile] = File(default=[]),
+                      photo_lat: List[str] = Form(default=[]), photo_lon: List[str] = Form(default=[]),
+                      photo_taken: List[str] = Form(default=[]), back: Optional[str] = Form(None)):
+    """Correction par son auteur : le texte, et des photos en plus. Retirer une
+    photo est une suppression — réservée à l'Amiral."""
+    async with connect() as db:
+        await _own_entry(db, request, entry_id)
+        await db.execute("UPDATE carnet_entries SET text = ?, updated_at = ? WHERE id = ?",
+                         ((text or "").strip() or None, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), entry_id))
+        cursor = await db.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM carnet_photos WHERE entry_id = ?", (entry_id,))
+        start = (await cursor.fetchone())[0]
+        await _store_carnet_photos(db, entry_id, photo_files, photo_lat, photo_lon, photo_taken, start)
+        await db.commit()
+    return RedirectResponse(url=_safe_next(back, "/carnet") + f"#publication-{entry_id}", status_code=303)
+
+
+@app.post("/carnet/{entry_id}/delete")
+async def carnet_delete(entry_id: int, back: Optional[str] = Form(None)):
+    """Suppression d'une publication (Amiral). Ses photos partent de la base
+    avec elle ; les fichiers restent dans IMG/Carnet/, comme partout."""
+    async with connect() as db:
+        await db.execute("DELETE FROM carnet_entries WHERE id = ?", (entry_id,))
+        await db.commit()
+    return RedirectResponse(url=_safe_next(back, "/carnet"), status_code=303)
+
+
+@app.post("/carnet/photos/{photo_id}/delete")
+async def carnet_photo_delete(photo_id: int, back: Optional[str] = Form(None)):
+    """Retire une photo d'une publication (Amiral) ; le fichier reste."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT entry_id FROM carnet_photos WHERE id = ?", (photo_id,))
+        row = await cursor.fetchone()
+        await db.execute("DELETE FROM carnet_photos WHERE id = ?", (photo_id,))
+        await db.commit()
+    anchor = f"#publication-{row[0]}" if row else ""
+    return RedirectResponse(url=_safe_next(back, "/carnet") + anchor, status_code=303)
 
 
 @app.get("/logbook/{line_id}/edit", response_class=HTMLResponse)
@@ -4401,6 +4679,19 @@ SEARCH_SECTIONS = [
         # Le résultat ouvre le document lui-même : c'est ce qu'on cherchait.
         "url": lambda r: r["path"],
         "label": lambda r: r["title"] or "Document",
+    },
+    {
+        "title": "Carnet de voyage",
+        "section": "carnet",
+        "alias": "e",
+        "fields": ["text"],
+        "sql": "SELECT e.id, e.text, e.cruise_id, e.created_at AS date, c.name AS cruise_name "
+               "FROM carnet_entries e LEFT JOIN cruises c ON e.cruise_id = c.id "
+               "WHERE e.ship_id = :ship AND ({where}) ORDER BY e.created_at DESC",
+        # Ouvre le carnet de la croisière de la publication, sur elle.
+        "url": lambda r: f"/carnet?croisiere={r['cruise_id'] or 'tout'}#publication-{r['id']}",
+        "label": lambda r: (r["text"] or "")[:60] + ("…" if len(r["text"] or "") > 60 else ""),
+        "context": lambda r: r["cruise_name"],
     },
     {
         "title": "To Do",

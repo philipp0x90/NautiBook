@@ -225,6 +225,20 @@
         }
         #photo-lightbox.open { display: flex; }
         #photo-lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, .5); }
+        /* Précédente / suivante, quand la page a plusieurs photos agrandissables. */
+        #photo-lightbox .lb-fleche {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 54px; height: 54px; border-radius: 50%; border: 0; cursor: pointer;
+            background: rgba(255, 255, 255, .18); color: #fff; font-size: 34px; line-height: 50px; padding: 0;
+        }
+        #photo-lightbox .lb-fleche:hover { background: rgba(255, 255, 255, .32); }
+        #photo-lightbox .lb-prec { left: 16px; }
+        #photo-lightbox .lb-suiv { right: 16px; }
+        #photo-lightbox .lb-compte {
+            position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+            color: #fff; font-size: 13px; background: rgba(0, 0, 0, .45); padding: 3px 10px; border-radius: 10px;
+        }
+        #photo-lightbox [hidden] { display: none !important; }
 
         /* ── Data table ── */
         .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -255,11 +269,11 @@
         }
         #maj-bandeau.open { display: block; }
 
-        /* 1090 et non 780 : six onglets pleine taille demandent ~960 px, plus
-           les 48 px de la loupe et les 48 du compte, sinon « Gallerie » touche
-           les icônes, puis sort de l'écran, au lieu de passer en version
-           compacte. */
-        @media (max-width: 1090px) {
+        /* 1200 et non 780 : six onglets pleine taille, dont « Carnet de voyage »,
+           plus la loupe, le compte et la roue crantée, ne tiennent plus sous
+           1190 px environ (mesuré) ; sinon le dernier onglet touche les icônes,
+           puis sort de l'écran, au lieu de passer en version compacte. */
+        @media (max-width: 1200px) {
             nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
             .topbar { padding: 8px 10px; }
         }
@@ -342,7 +356,7 @@
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'gallery' else '' }}">
-                <a href="/gallery">Gallerie</a>
+                <a href="/carnet">Carnet de voyage</a>
             </li>
         </ul>
     </nav>
@@ -402,6 +416,11 @@
    dans base.html plutôt qu'une par écran qui affiche une vignette. #}
 <div id="photo-lightbox" onclick="this.classList.remove('open')" title="Fermer">
     <img id="photo-lightbox-img" src="" alt="">
+    <button type="button" class="lb-fleche lb-prec" title="Photo précédente (←)" aria-label="Photo précédente"
+            onclick="event.stopPropagation(); photoVoisine(-1)">‹</button>
+    <button type="button" class="lb-fleche lb-suiv" title="Photo suivante (→)" aria-label="Photo suivante"
+            onclick="event.stopPropagation(); photoVoisine(1)">›</button>
+    <div class="lb-compte"></div>
 </div>
 
 <div id="maj-bandeau" onclick="location.reload()" title="Recharger la page">
@@ -512,15 +531,59 @@ function choixAutre(select) {
 // stopPropagation, parce qu'une vignette vit souvent dans une ligne cliquable
 // (rowLink) qui ne doit pas s'ouvrir en même temps. La source est lue sur
 // l'image elle-même, ce qui évite d'interpoler un chemin dans du JavaScript.
+// La série parcourue : toutes les photos agrandissables de la page, dans leur
+// ordre d'affichage. Une image qui n'est pas dans la page (un document ouvert
+// depuis la fiche navire) s'affiche seule, sans flèches.
+let lbSerie = [], lbIndex = -1;
+
 function agrandirPhoto(event, img) {
     event.stopPropagation();
-    document.getElementById('photo-lightbox-img').src = img.src;
+    lbSerie = [...document.querySelectorAll('img[onclick*="agrandirPhoto"]')]
+        .filter(i => i.offsetParent !== null || i === img);
+    lbIndex = lbSerie.indexOf(img);
+    if (lbIndex < 0) { lbSerie = [img]; lbIndex = 0; }
+    montrerPhoto();
     document.getElementById('photo-lightbox').classList.add('open');
 }
 
+function montrerPhoto() {
+    const lb = document.getElementById('photo-lightbox');
+    document.getElementById('photo-lightbox-img').src = lbSerie[lbIndex].src;
+    const plusieurs = lbSerie.length > 1;
+    lb.querySelector('.lb-prec').hidden = !plusieurs || lbIndex === 0;
+    lb.querySelector('.lb-suiv').hidden = !plusieurs || lbIndex === lbSerie.length - 1;
+    const compte = lb.querySelector('.lb-compte');
+    compte.hidden = !plusieurs;
+    compte.textContent = (lbIndex + 1) + ' / ' + lbSerie.length;
+}
+
+function photoVoisine(sens) {
+    const n = lbIndex + sens;
+    if (n < 0 || n >= lbSerie.length) return;
+    lbIndex = n;
+    montrerPhoto();
+}
+
 document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') document.getElementById('photo-lightbox').classList.remove('open');
+    const lb = document.getElementById('photo-lightbox');
+    if (!lb.classList.contains('open')) return;
+    if (e.key === 'Escape') lb.classList.remove('open');
+    else if (e.key === 'ArrowLeft') photoVoisine(-1);
+    else if (e.key === 'ArrowRight') photoVoisine(1);
 });
+
+// Sur iPad : glisser le doigt vers la gauche ou la droite change de photo.
+(function () {
+    let x0 = null;
+    const lb = document.getElementById('photo-lightbox');
+    lb.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+    lb.addEventListener('touchend', e => {
+        if (x0 === null) return;
+        const dx = e.changedTouches[0].clientX - x0;
+        x0 = null;
+        if (Math.abs(dx) > 50) { photoVoisine(dx < 0 ? 1 : -1); e.preventDefault(); }
+    });
+})();
 
 // ── Mise à jour automatique entre appareils ──────────────────────────────────
 // Le serveur pousse un numéro de révision sur /api/changes (voir main.py) à
