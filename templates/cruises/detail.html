@@ -209,7 +209,7 @@
     <div style="display:grid;gap:6px;margin-bottom:12px">
         {% for m in aboard %}
         <div style="display:flex;align-items:center;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid #edf2f7">
-            {% if m.photo_path %}
+            {% if m.photo_path and fichier_visible(request, m.photo_path) %}
             <img src="{{ m.photo_path }}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">
             {% else %}
             <div style="width:30px;height:30px;border-radius:50%;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-weight:700;flex-shrink:0">{{ (m.first_name or m.last_name or '?')[0] | upper }}</div>

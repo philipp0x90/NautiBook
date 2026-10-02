@@ -2,6 +2,7 @@
 {% block title %}Gallerie — NautiBook{% endblock %}
 
 {% block head %}
+<style>.photo-verrou{display:flex;align-items:center;justify-content:center;background:#e8eef3;border-radius:6px;font-size:28px;aspect-ratio:1;color:#7d8fa3}</style>
 <style>
     body { background: #111; }
     .wrap { background: #111; }
@@ -34,8 +35,14 @@
 
 {% if photos %}
 <div class="photo-grid">
+    {# Photos d'IMG/ réservées aux comptes (serve_img) : un cadenas pour le
+       Mousse plutôt qu'une image cassée. #}
     {% for p in photos %}
+    {% if fichier_visible(request, p.photo_path) %}
     <img src="{{ p.photo_path }}" alt="{{ p.comment or '' }}" loading="lazy">
+    {% else %}
+    <div class="photo-verrou" title="Connectez-vous pour voir les photos">🔒</div>
+    {% endif %}
     {% endfor %}
 </div>
 {% else %}

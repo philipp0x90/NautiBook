@@ -31,12 +31,14 @@
             {% if item.title and item.task %}
             <div style="font-size:13px;color:#555;margin-bottom:4px;white-space:pre-wrap">{{ item.task }}</div>
             {% endif %}
-            {% if item.photo_path %}
+            {% if item.photo_path and fichier_visible(request, item.photo_path) %}
             <div style="margin:6px 0">
                 <img src="{{ item.photo_path }}" alt="" class="photo-zoom"
                      onclick="agrandirPhoto(event, this)" title="Agrandir"
                      style="max-height:120px;border-radius:6px;border:1px solid #dde5ee">
             </div>
+            {% elif item.photo_path %}
+            <div class="meta" style="margin:6px 0" title="Photo réservée aux équipiers connectés">🔒 Photo — connectez-vous pour la voir</div>
             {% endif %}
             <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
                 {% if item.due_date %}

@@ -92,7 +92,9 @@
            aussitôt (formulaire à part, multipart). #}
         <form method="POST" action="/crew/{{ member.id }}/photo" enctype="multipart/form-data">
             <label class="photo-equipier" title="Changer la photo">
-                {% if member.photo_path %}
+                {# Photo dans IMG/ : réservée aux comptes (serve_img) ; un
+                   Mousse voit les initiales, comme pour une fiche sans photo. #}
+                {% if member.photo_path and fichier_visible(request, member.photo_path) %}
                 <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
                      style="width:160px;height:160px;object-fit:cover;border-radius:8px;display:block">
                 {% else %}

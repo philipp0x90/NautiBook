@@ -53,7 +53,7 @@
             <tr style="cursor:pointer" title="Ouvrir cette fiche"
                 onclick="rowLink(event, '/crew/{{ m.id }}')">
                 <td style="width:1%">
-                    {% if m.photo_path %}
+                    {% if m.photo_path and fichier_visible(request, m.photo_path) %}
                     <img src="{{ m.photo_path }}" alt="" class="crew-thumb">
                     {% else %}
                     <div class="crew-thumb-empty">{{ (m.first_name or m.last_name or '?')[0] | upper }}</div>

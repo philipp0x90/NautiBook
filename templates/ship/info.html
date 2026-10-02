@@ -250,8 +250,13 @@
                 {# Un PDF s'ouvre dans un nouvel onglet, où le lecteur du
                    navigateur permet de défiler et de zoomer ; une image, en
                    plein écran comme les photos. #}
+                {# Fichier dans IMG/Documents/ : il faut être connecté pour l'ouvrir. #}
+                {% if fichier_visible(request, d.path) %}
                 <tr style="cursor:pointer" title="Afficher le document"
                     onclick="ouvrirDocument(event, '{{ d.path }}', {{ 'true' if pdf else 'false' }})">
+                {% else %}
+                <tr title="Connectez-vous pour ouvrir ce document">
+                {% endif %}
                     <td style="font-weight:600">{{ d.title or '—' }}</td>
                     <td>
                         {% if pdf %}<span class="doc-type doc-pdf">PDF</span>

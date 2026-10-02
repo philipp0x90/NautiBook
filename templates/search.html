@@ -51,7 +51,7 @@
 <section class="card search-section">
     <h3>{{ sec.title }} <span style="font-weight:400">({{ sec.results | length }}{{ '+' if sec.more else '' }})</span></h3>
     {% for r in sec.results %}
-    <a href="{{ r.url }}" class="search-result">
+    <a href="{{ r.url if fichier_visible(request, r.url) else '/ship/info' }}" class="search-result">
         <span class="titre">{{ r.label }}</span>
         {% if r.context %}<span class="contexte">{{ r.context }}</span>{% endif %}
         {% if r.date %}<span class="contexte">{{ r.date | datefr }}</span>{% endif %}

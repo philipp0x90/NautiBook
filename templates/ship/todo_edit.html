@@ -55,12 +55,14 @@
 
     <div>
         <label>Photo</label>
-        {% if item.photo_path %}
+        {% if item.photo_path and fichier_visible(request, item.photo_path) %}
         <div style="margin:4px 0">
             <img src="{{ item.photo_path }}" alt="" class="photo-zoom"
                  onclick="agrandirPhoto(event, this)" title="Agrandir"
                  style="max-height:120px;border-radius:6px;border:1px solid #dde5ee">
         </div>
+        {% elif item.photo_path %}
+        <div class="meta" style="margin:6px 0" title="Photo réservée aux équipiers connectés">🔒 Photo — connectez-vous pour la voir</div>
         {% endif %}
         <input type="file" name="photo_file" accept="image/*">
         <div class="meta" style="margin-top:4px">Choisir un fichier remplace la photo actuelle.</div>

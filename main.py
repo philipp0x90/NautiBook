@@ -677,7 +677,9 @@ IMG_URL = "/IMG"
 IMG_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
 
 IMG_DIR.mkdir(exist_ok=True)
-app.mount(IMG_URL, StaticFiles(directory=IMG_DIR), name="img")
+# Pas de montage StaticFiles pour IMG/ : ses fichiers (factures, documents,
+# photos des équipiers) passent par la route serve_img, plus bas, qui exige une
+# connexion et le droit de la rubrique (IMG_FOLDER_SECTIONS).
 
 # Icônes du site (onglet, écran d'accueil de l'iPad, Android). Contrairement à
 # IMG/, le dossier est suivi par git : c'est du code, pas des données, et il
@@ -1047,9 +1049,9 @@ SESSION_DAYS = 30
 OPEN_POST_PATHS = ("/login", "/recover", "/setup")
 # Changer de navire ne pose qu'un cookie : un Mousse peut le faire.
 OPEN_POST_PATTERN = re.compile(r"^/(crew/\d+/become-admiral|ship/select/\d+)$")
-# Ni session ni contrôle pour les fichiers et le flux en direct : ils n'écrivent
-# rien, et le flux reste ouvert en permanence.
-NO_SESSION_PREFIXES = ("/IMG", "/icons", "/favicon", "/apple-touch-icon", "/api/changes")
+# Ni session ni contrôle pour les icônes et le flux en direct : publics, et le
+# flux reste ouvert en permanence. Les fichiers d'IMG/, eux, sont contrôlés.
+NO_SESSION_PREFIXES = ("/icons", "/favicon", "/apple-touch-icon", "/api/changes")
 
 
 def can(user: Optional[dict], permission: str) -> bool:
@@ -1154,6 +1156,43 @@ async def require_login_to_write(request: Request, call_next):
     return await call_next(request)
 
 
+# Fichiers d'IMG/ : il faut être connecté, et avoir le droit « voir » de la
+# rubrique dont relève le dossier. Un fichier à la racine d'IMG/ (photos des
+# tâches, de la galerie) demande seulement d'être connecté. Le Mousse, sans
+# compte, ne voit donc aucun de ces fichiers — les pages qu'il consulte
+# montrent à la place les initiales ou un cadenas (fichier_visible).
+IMG_FOLDER_SECTIONS = {"Invoices-Receipts": "comptes", "Documents": "navire", "SailingCrew": "equipiers"}
+
+
+def can_see_file(user: Optional[dict], url: Optional[str]) -> bool:
+    """Ce fichier peut-il être montré à cet utilisateur ? Une adresse hors
+    d'IMG/ (photo donnée par une URL externe) n'est pas concernée."""
+    if not url or not url.startswith(IMG_URL + "/"):
+        return True
+    if user is None:
+        return False
+    rel = url[len(IMG_URL) + 1:]
+    section = IMG_FOLDER_SECTIONS.get(rel.split("/", 1)[0]) if "/" in rel else None
+    return section is None or can(user, f"{section}.voir")
+
+
+@app.get(IMG_URL + "/{file_path:path}", include_in_schema=False)
+async def serve_img(request: Request, file_path: str):
+    if not can_see_file(request.state.user, f"{IMG_URL}/{file_path}"):
+        # Une page ouverte directement (un PDF dans un onglet) mène à la
+        # connexion ; une image dans une page reçoit un simple refus.
+        if request.state.user is None and "text/html" in request.headers.get("accept", ""):
+            return RedirectResponse(url=f"/login?next={quote(request.url.path)}", status_code=303)
+        return Response(status_code=403)
+    # resolve() puis vérification du parent : « ../logbook.db » ne sort pas d'IMG/.
+    full = (IMG_DIR / file_path).resolve()
+    if IMG_DIR.resolve() not in full.parents or not full.is_file():
+        raise HTTPException(status_code=404)
+    # private : le navigateur peut garder l'image une heure, aucun cache
+    # intermédiaire ne la partage.
+    return FileResponse(full, headers={"Cache-Control": "private, max-age=3600"})
+
+
 def _template_user(request) -> Optional[dict]:
     return getattr(request.state, "user", None)
 
@@ -1168,6 +1207,7 @@ def _voit(request, href: str, method: str = "GET") -> bool:
 
 
 templates.env.globals["voit"] = _voit
+templates.env.globals["fichier_visible"] = lambda request, url: can_see_file(_template_user(request), url)
 # Pour base.html, qui masque à l'écran ce que l'utilisateur ne peut pas faire :
 # les règles, et la liste de ses droits.
 templates.env.globals["regles_acces"] = lambda request: json.dumps({
