@@ -15,6 +15,13 @@
     .composer textarea { min-height: 70px; resize: vertical; font: inherit; font-size: 15px; }
     .composer.survol { outline: 2px dashed var(--accent); outline-offset: 4px; }
     .composer-bas { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    /* Bouton photo : l'icône seule, dans une pastille ronde ; son nom est
+       dans l'info-bulle et pour les lecteurs d'écran. */
+    .bouton-photo { background: #e8f4f9; color: #0f3a4a; cursor: pointer; margin: 0;
+                    width: 42px; height: 42px; padding: 0; display: inline-flex;
+                    align-items: center; justify-content: center; border-radius: 50%; }
+    .bouton-photo:hover { background: #d6ecf5; }
+    .icone-photo { width: 22px; height: 22px; display: block; }
     .composer-bas .dans { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
     .composer-bas .dans select { width: auto; height: 30px; font-size: 13px; }
     .composer-bas .espace { flex: 1; }
@@ -57,6 +64,7 @@
 </style>
 {% endblock %}
 
+{% from "carnet/_icone.html" import icone_carnet %}
 {% block content %}
 
 {# Une publication en cours d'écriture : la même zone sert à publier (en tête
@@ -67,8 +75,15 @@
     <textarea name="text" placeholder="Quoi de neuf à bord ?" maxlength="20000">{{ texte }}</textarea>
     <div class="apercus"></div>
     <div class="composer-bas">
-        <label class="btn" style="background:#e8f4f9;color:#0f3a4a;cursor:pointer;margin:0">
-            📷 Photos
+        <label class="btn bouton-photo" title="Ajouter des photos" aria-label="Ajouter des photos">
+            {# Appareil photo au trait, dessiné d'après l'icône fournie par
+               l'utilisateur ; currentColor, comme les autres icônes de l'app. #}
+            <svg class="icone-photo" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linejoin="round">
+                <path d="M4.5 7H7.6l.6-1.7C8.6 4.5 9.2 4 10.1 4h3.8c.9 0 1.5.5 1.9 1.3l.6 1.7h3.1A2.5 2.5 0 0 1 22 9.5v8A2.5 2.5 0 0 1 19.5 20h-15A2.5 2.5 0 0 1 2 17.5v-8A2.5 2.5 0 0 1 4.5 7z"/>
+                <circle cx="12" cy="13.2" r="3.7"/>
+                <circle cx="5.6" cy="10" r=".95" fill="currentColor" stroke="none"/>
+            </svg>
             <input type="file" accept="image/*" multiple hidden class="choix-photos">
         </label>
         {# Le champ réellement envoyé : rempli par le script avec les photos
@@ -76,7 +91,7 @@
         <input type="file" name="photo_files" multiple hidden class="envoi-photos">
         <div class="geo-champs" hidden></div>
         {% if avec_croisiere and cruises %}
-        <span class="dans">dans
+        <span class="dans">Ajouter à
             <select name="cruise_id">
                 {% for c in cruises %}
                 <option value="{{ c.id }}" {{ 'selected' if c.id == (selected or current_cruise) else '' }}>{{ c.name or 'Croisière sans nom' }}</option>
@@ -92,7 +107,9 @@
 {% endmacro %}
 
 <div class="section-bar">
-    <div class="section-bar-title">Carnet de voyage</div>
+    <div class="section-bar-title" style="display:flex;align-items:center;justify-content:center;gap:10px">
+        {{ icone_carnet(28, 'icone-carnet-titre') }} Carnet de voyage
+    </div>
 </div>
 
 <div class="carnet">
@@ -189,7 +206,7 @@
     {% endfor %}
     {% else %}
     <div class="vide">
-        <div style="font-size:36px;margin-bottom:8px">📖</div>
+        <div style="margin-bottom:10px;color:#9fb3c4">{{ icone_carnet(72, 'icone-carnet-vide') }}</div>
         {% if voir_tout %}Rien encore dans le carnet de ce navire.{% else %}Rien encore dans le carnet de cette croisière.{% endif %}
     </div>
     {% endfor %}
