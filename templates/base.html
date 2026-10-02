@@ -303,8 +303,10 @@
                     <a href="/ship/info">Infos</a>
                     <a href="/ship/todo">To Do</a>
                     <a href="/ship/fuel">Gasoil</a>
-                    <a href="/ship/expenses">Comptes</a>
-                    <a href="/ship/contacts">Carnet d'adresses</a>
+                    {# Entrées masquées selon le rang : voit() applique la même règle
+                       que le serveur (required_permission, main.py). #}
+                    {% if voit(request, '/ship/expenses') %}<a href="/ship/expenses">Comptes</a>{% endif %}
+                    {% if voit(request, '/ship/contacts') %}<a href="/ship/contacts">Carnet d'adresses</a>{% endif %}
                     <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
                     {# Emporte la page courante, pour y revenir une fois le navire
                        changé (voir SHIP_SWITCH_TARGETS). Pas depuis le choix
@@ -324,7 +326,7 @@
                 <div class="dropdown-menu">
                     <a href="/cruises/current">Croisière en cours</a>
                     <a href="/cruises/list">Liste des croisières</a>
-                    <a href="/cruises/new">Nouvelle croisière</a>
+                    {% if voit(request, '/cruises/new') %}<a href="/cruises/new">Nouvelle croisière</a>{% endif %}
                     <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
                     <a href="/cruises/stopovers">Escales</a>
                 </div>
@@ -373,9 +375,11 @@
     {# Roue crantée (Gear.svg), inlinée comme le logo et l'icône de navire : pas
        de dossier static, et fill="currentColor" à la place du #08204E du fichier
        pour que la couleur et le survol restent gouvernés par le CSS. #}
+    {% if voit(request, '/settings') %}
     <a href="/settings" class="topbar-settings" title="Paramètres" aria-label="Paramètres">
         <svg aria-hidden="true"><use href="#icon-settings"></use></svg>
     </a>
+    {% endif %}
 </header>
 
 <div class="wrap">
@@ -422,6 +426,66 @@ document.addEventListener('DOMContentLoaded', marquerDatesVides);
         }
     }, true);
 });
+
+// Droits à l'écran : ce que le rang ne permet pas n'est pas proposé. Le serveur
+// refuse de toute façon (require_login_to_write, required_permission) ; ceci
+// évite seulement de saisir une valeur pour se la voir refuser à l'envoi. Les
+// règles sont celles du serveur, transmises telles quelles.
+(function () {
+    const R = {{ regles_acces(request) | safe }};
+    const rules = R.rules.map(([rx, section]) => [new RegExp(rx), section]);
+    const perms = new Set(R.perms);
+    function requis(method, path) {
+        for (const [rx, section] of rules) {
+            if (!rx.test(path)) continue;
+            if (section === null || R.yesNo.includes(section)) return section;
+            if (method === 'POST' && !R.readOnlyPosts.includes(path))
+                return section + (path.endsWith('/delete') ? '.supprimer' : '.modifier');
+            return section + (/\/(new|edit|new-line)$/.test(path) ? '.modifier' : '.voir');
+        }
+        return null;
+    }
+    function permis(method, adresse) {
+        let u;
+        try { u = new URL(adresse, location.href); } catch (e) { return true; }
+        if (u.origin !== location.origin) return true;
+        const r = requis(method, u.pathname);
+        return r === null || perms.has(r);
+    }
+    window.nbPermis = permis;
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('form').forEach(function (f) {
+            if ((f.getAttribute('method') || 'GET').toUpperCase() !== 'POST') return;
+            const action = f.getAttribute('action') || location.pathname;
+            if (permis('POST', action)) return;
+            // Suppression ou création interdite : le formulaire disparaît.
+            if (/\/(delete|new)$/.test(action)) { f.style.display = 'none'; return; }
+            // Modification interdite : les champs restent lisibles, figés.
+            f.classList.add('lecture-seule');
+            f.querySelectorAll('input, select, textarea, button').forEach(function (el) {
+                if (el.type === 'hidden') return;
+                if (el.tagName === 'BUTTON' || el.type === 'submit' || el.type === 'file') el.style.display = 'none';
+                else el.disabled = true;
+            });
+            f.querySelectorAll('label').forEach(function (l) { l.style.pointerEvents = 'none'; });
+        });
+        // Champs rattachés à un formulaire figé par l'attribut form= (la
+        // facture d'une dépense, placée hors de son formulaire).
+        document.querySelectorAll('[form]').forEach(function (el) {
+            const f = document.getElementById(el.getAttribute('form'));
+            if (f && f.classList.contains('lecture-seule')) {
+                el.disabled = true;
+                const zone = el.closest('aside, .card');
+                if (zone) zone.querySelectorAll('label[for="' + el.id + '"]').forEach(function (l) { l.style.display = 'none'; });
+            }
+        });
+        // Liens vers une page interdite (« + Nouvelle dépense »…) : retirés.
+        document.querySelectorAll('a[href^="/"]').forEach(function (a) {
+            if (a.closest('nav, header')) return;
+            if (!permis('GET', a.getAttribute('href'))) a.style.display = 'none';
+        });
+    });
+})();
 
 // Whole-row links in tables: <tr onclick="rowLink(event, '/somewhere')">.
 // Ignores clicks that landed on something interactive, so the delete button

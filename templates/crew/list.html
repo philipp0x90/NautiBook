@@ -38,8 +38,12 @@
                 <th>Prénom</th>
                 <th>Nom</th>
                 <th style="text-align:center">Âge</th>
+                {# Nationalité et localité relèvent de l'identité : rubrique
+                   « identite », cachée au Mousse. #}
+                {% if peut(request, 'identite.voir') %}
                 <th>Nationalité</th>
                 <th>Localité</th>
+                {% endif %}
                 <th>Téléphone</th>
                 <th>Email</th>
             </tr>
@@ -60,8 +64,10 @@
                 {# Âge calculé depuis la date de naissance ; la colonne age de la
                    table n'est jamais lue ni écrite. #}
                 <td style="text-align:center">{{ m.birth_date | age }}</td>
+                {% if peut(request, 'identite.voir') %}
                 <td>{{ m.nationality or '' }}</td>
                 <td>{{ m.city or '' }}</td>
+                {% endif %}
                 <td style="white-space:nowrap">{{ m.phone or '' }}</td>
                 <td>{% if m.email %}<a href="mailto:{{ m.email }}" style="color:var(--accent)">{{ m.email }}</a>{% endif %}</td>
             </tr>

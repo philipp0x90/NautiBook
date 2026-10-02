@@ -103,6 +103,8 @@
         </form>
     </section>
 
+    {# Les achats sont des dépenses : rubrique « comptes » de la grille. #}
+    {% if peut(request, 'comptes.voir') %}
     <section>
         <h3 style="margin:0 0 12px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">
             Historique des achats
@@ -150,6 +152,7 @@
         </div>
         {% endif %}
     </section>
+    {% endif %}
 
 </div>
 

@@ -111,7 +111,7 @@
            identifiant et un mot de passe initial : c'est ce qui crée le compte. #}
         <div class="acces" id="acces">
             {% set rang = account.rank if account else none %}
-            {% if peut(request, 'gerer_roles') %}
+            {% if peut(request, 'rangs') %}
             <form method="POST" action="/crew/{{ member.id }}/rank" class="acces-form"
                   onsubmit="return verifierRang(this)">
                 {# L'Amiral ne se rétrograde pas : on nomme un autre Amiral depuis la
@@ -139,7 +139,7 @@
 
             {% if account %}
             <div class="meta" style="text-align:center">Identifiant « {{ account.username }} »</div>
-            {% if peut(request, 'gerer_roles') and utilisateur(request).id != account.id %}
+            {% if peut(request, 'rangs') and utilisateur(request).id != account.id %}
             <details class="acces-reset">
                 <summary>Réinitialiser son mot de passe</summary>
                 <form method="POST" action="/crew/{{ member.id }}/reset-password">
@@ -247,6 +247,9 @@
             </div>
         </section>
 
+        {# Adresse et identité : rubrique « identite » de la grille des droits,
+           cachée au Mousse (voir ACCESS_GRID). #}
+        {% if peut(request, 'identite.voir') %}
         <section style="display:grid;gap:12px">
             <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Adresse</h3>
             <div class="grid" style="grid-template-columns:2fr 1fr 2fr;gap:12px">
@@ -268,6 +271,7 @@
                 {{ champ('id_number', 'Numéro') }}
             </div>
         </section>
+        {% endif %}
     </div>
 </div>
 

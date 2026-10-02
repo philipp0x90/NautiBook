@@ -937,37 +937,116 @@ async def announce_changes(request: Request, call_next):
 # connexion. « Skipper » n'a rien à voir : c'est une fonction tenue sur une
 # croisière (cruise_crew.role), pas un grade.
 #
-# Les droits sont des *noms* (« modifier », « gerer_roles », plus tard
-# « voir_comptes »…), et PERMISSIONS dit quel rang en a lesquels. C'est la
-# seule table à remplir pour régler les accès : MENU_PERMISSIONS masque les
-# entrées du menu, PAGE_PERMISSIONS refuse les pages, avec les mêmes noms.
+# Les accès suivent la grille arrêtée par l'utilisateur (grille-permissions.csv,
+# 01/10/2026) : pour chaque rubrique de l'app et chaque rang, un niveau.
+#   caché     : absent du menu, page refusée
+#   voir      : lecture seule
+#   modifier  : ajouter et corriger (comprend voir)
+#   tout      : voir, modifier et supprimer
+# Les rubriques « imports » et « rangs » sont tout ou rien.
+#
+# Une seule règle relie une adresse à un droit (required_permission) : la
+# rubrique vient de SECTION_RULES, le niveau de la requête — ouvrir une page,
+# c'est voir ; ouvrir un formulaire (…/new, …/edit) ou enregistrer, modifier ;
+# …/delete, supprimer. Cette même règle décide du menu (voit), des pages
+# refusées (le middleware), de la recherche, et des boutons que base.html
+# masque à l'écran : changer un niveau ici change tout cela ensemble.
 
 RANKS = ["amiral", "capitaine", "matelot"]
 RANK_LABELS = {"amiral": "Amiral", "capitaine": "Capitaine", "matelot": "Matelot", None: "Mousse"}
 
-# Provisoire, en attendant la matrice des accès : Capitaine et Matelot ont les
-# mêmes droits ; seul l'Amiral gère les rangs ; le Mousse ne fait que lire.
-PERMISSIONS = {
-    "amiral": {"modifier", "gerer_roles"},
-    "capitaine": {"modifier"},
-    "matelot": {"modifier"},
-    None: set(),
+LEVELS = {"caché": [], "voir": ["voir"], "modifier": ["voir", "modifier"],
+          "tout": ["voir", "modifier", "supprimer"]}
+
+# Rubrique → niveau, pour Mousse (None), Matelot, Capitaine, Amiral.
+ACCESS_GRID = {
+    #               Mousse    Matelot   Capitaine   Amiral
+    "navire":     ("voir",   "voir",   "modifier", "tout"),   # Infos navire, documents
+    "todo":       ("voir",   "voir",   "modifier", "tout"),
+    "gasoil":     ("voir",   "voir",   "modifier", "tout"),
+    "comptes":    ("caché",  "caché",  "voir",     "tout"),
+    "contacts":   ("caché",  "caché",  "modifier", "tout"),   # Carnet d'adresses
+    "equipiers":  ("voir",   "voir",   "modifier", "tout"),   # nom, contact
+    "identite":   ("caché",  "voir",   "modifier", "tout"),   # identité, adresse des équipiers
+    "croisieres": ("voir",   "voir",   "modifier", "tout"),   # croisières, routes, escales
+    "journal":    ("voir",   "voir",   "modifier", "tout"),   # lignes du journal de bord
+    "galerie":    ("voir",   "modifier", "modifier", "tout"),
+    "outils":     ("voir",   "voir",   "modifier", "tout"),   # météo, carte
+    "parametres": ("caché",  "caché",  "voir",     "tout"),   # SignalK, sauvegarde
 }
-# Entrée du menu (son adresse) → droit requis pour la voir. Vide pour l'instant :
-# tout le menu est visible. Exemple : "/ship/expenses": "voir_comptes".
-MENU_PERMISSIONS: dict = {}
-# Début d'adresse → droit requis pour ouvrir la page. Mêmes noms que ci-dessus ;
-# une entrée masquée du menu doit aussi figurer ici, sans quoi son adresse
-# tapée à la main l'ouvre encore.
-PAGE_PERMISSIONS: dict = {}
+YES_NO_GRID = {
+    #               Mousse  Matelot  Capitaine  Amiral
+    "imports":    (False,  False,   False,     True),
+    "rangs":      (False,  False,   False,     True),
+}
+_RANK_COLUMN = {None: 0, "matelot": 1, "capitaine": 2, "amiral": 3}
+
+PERMISSIONS = {
+    rank: {f"{section}.{level}" for section, cells in ACCESS_GRID.items()
+           for level in LEVELS[cells[col]]}
+          | {section for section, cells in YES_NO_GRID.items() if cells[col]}
+    for rank, col in _RANK_COLUMN.items()
+}
+
+# Champs d'une fiche équipier rangés sous « identité, adresse » : ils suivent la
+# rubrique identite, les autres la rubrique equipiers.
+IDENTITY_FIELDS = ("birth_date", "birth_place", "nationality", "id_type", "id_number",
+                   "street", "postal_code", "city")
+
+# Adresse → rubrique. Première règle qui convient ; une adresse qu'aucune ne
+# couvre est libre (accueil, recherche, connexion…). Des expressions simples,
+# valables telles quelles en Python et en JavaScript (base.html les reprend).
+SECTION_RULES = [
+    (r"^/crew/\d+/become-admiral$", None),             # premier Amiral : libre
+    (r"^/ship/(expenses|contacts)/import", "imports"),
+    (r"^/ship/(info|documents|new)(/|$)", "navire"),
+    (r"^/ship/todo(/|$)", "todo"),
+    (r"^/ship/fuel(/|$)", "gasoil"),
+    (r"^/ship/expenses(/|$)", "comptes"),
+    (r"^/ship/contacts(/|$)", "contacts"),
+    (r"^/crew/\d+/(rank|reset-password)$", "rangs"),
+    (r"^/crew/\d+/field/(" + "|".join(IDENTITY_FIELDS) + r")$", "identite"),
+    # Le formulaire complet contient l'identité : il en suit la rubrique.
+    (r"^/crew/(new|\d+/edit)$", "identite"),
+    (r"^/crew(/|$)", "equipiers"),
+    (r"^/routes/\d+/new-line$", "journal"),
+    (r"^/logbook(/|$)", "journal"),
+    (r"^/(cruises|routes|stopovers)(/|$)", "croisieres"),
+    (r"^/api/(routes|cruises|all-cruises)/", "croisieres"),
+    (r"^/gallery(/|$)", "galerie"),
+    (r"^/tools(/|$)", "outils"),
+    (r"^/settings(/|$)", "parametres"),
+]
+_SECTION_RULES = [(re.compile(rx), section) for rx, section in SECTION_RULES]
+# Ouvrir ces pages, c'est déjà modifier : ce sont des formulaires de saisie.
+FORM_PAGE_RE = re.compile(r"/(new|edit|new-line)$")
+# POST qui n'écrivent rien : tester la connexion SignalK ne fait que lire.
+READ_ONLY_POSTS = ("/settings/test-signalk",)
+
+
+def required_permission(method: str, path: str) -> Optional[str]:
+    """Le droit qu'exige cette requête, ou None si elle est libre."""
+    for rx, section in _SECTION_RULES:
+        if rx.match(path):
+            break
+    else:
+        return None
+    if section is None or section in YES_NO_GRID:
+        return section
+    if method == "POST" and path not in READ_ONLY_POSTS:
+        return f"{section}.supprimer" if path.endswith("/delete") else f"{section}.modifier"
+    return f"{section}.modifier" if FORM_PAGE_RE.search(path) else f"{section}.voir"
+
 
 SESSION_COOKIE = "nb_session"
 SESSION_DAYS = 30
 # Écritures permises sans être connecté : se connecter, récupérer l'Amiral,
-# le tout premier réglage du serveur SignalK, et devenir le premier Amiral
-# (become_admiral vérifie lui-même qu'aucun compte n'existe encore).
+# le tout premier réglage du serveur SignalK, devenir le premier Amiral
+# (become_admiral vérifie lui-même qu'aucun compte n'existe encore), et
+# changer de navire.
 OPEN_POST_PATHS = ("/login", "/recover", "/setup")
-OPEN_POST_PATTERN = re.compile(r"^/crew/\d+/become-admiral$")
+# Changer de navire ne pose qu'un cookie : un Mousse peut le faire.
+OPEN_POST_PATTERN = re.compile(r"^/(crew/\d+/become-admiral|ship/select/\d+)$")
 # Ni session ni contrôle pour les fichiers et le flux en direct : ils n'écrivent
 # rien, et le flux reste ouvert en permanence.
 NO_SESSION_PREFIXES = ("/IMG", "/icons", "/favicon", "/apple-touch-icon", "/api/changes")
@@ -976,13 +1055,6 @@ NO_SESSION_PREFIXES = ("/IMG", "/icons", "/favicon", "/apple-touch-icon", "/api/
 def can(user: Optional[dict], permission: str) -> bool:
     """L'utilisateur (None = Mousse) a-t-il ce droit ?"""
     return permission in PERMISSIONS.get(user["rank"] if user else None, set())
-
-
-def _required_permission(path: str, table: dict) -> Optional[str]:
-    for prefix, permission in table.items():
-        if path == prefix or path.startswith(prefix.rstrip("/") + "/"):
-            return permission
-    return None
 
 
 def _token_hash(token: str) -> str:
@@ -1070,13 +1142,14 @@ async def require_login_to_write(request: Request, call_next):
             url=f"/login?ecrire=1&next={quote(_referer_path(request))}", status_code=303
         )
 
-    permission = _required_permission(path, PAGE_PERMISSIONS)
+    permission = required_permission(request.method, path)
     if permission and not can(user, permission):
         if user is None:
             return RedirectResponse(url=f"/login?next={quote(path)}", status_code=303)
-        return HTMLResponse(
-            "<p style='font-family:sans-serif;padding:40px'>Cette page n'est pas accessible "
-            "à votre rang. <a href='/'>Retour à l'accueil</a></p>", status_code=403,
+        return templates.TemplateResponse(
+            "auth/forbidden.html",
+            {"request": request, "active_section": None, "rang": RANK_LABELS[user["rank"]]},
+            status_code=403,
         )
     return await call_next(request)
 
@@ -1088,9 +1161,21 @@ def _template_user(request) -> Optional[dict]:
 # Pour les templates : qui est connecté, ses droits, et le menu qu'il voit.
 templates.env.globals["utilisateur"] = _template_user
 templates.env.globals["peut"] = lambda request, permission: can(_template_user(request), permission)
-templates.env.globals["voit"] = lambda request, href: (
-    (lambda perm: perm is None or can(_template_user(request), perm))(MENU_PERMISSIONS.get(href))
-)
+def _voit(request, href: str, method: str = "GET") -> bool:
+    """Cette adresse est-elle permise à l'utilisateur ? Sert au menu."""
+    permission = required_permission(method, href.split("?", 1)[0])
+    return permission is None or can(_template_user(request), permission)
+
+
+templates.env.globals["voit"] = _voit
+# Pour base.html, qui masque à l'écran ce que l'utilisateur ne peut pas faire :
+# les règles, et la liste de ses droits.
+templates.env.globals["regles_acces"] = lambda request: json.dumps({
+    "rules": SECTION_RULES,
+    "yesNo": list(YES_NO_GRID),
+    "readOnlyPosts": list(READ_ONLY_POSTS),
+    "perms": sorted(PERMISSIONS.get((_template_user(request) or {}).get("rank"), set())),
+})
 templates.env.globals["rank_labels"] = RANK_LABELS
 
 
@@ -4184,6 +4269,7 @@ def _excerpt(text: str, needle: str, width: int = 60):
 SEARCH_SECTIONS = [
     {
         "title": "Croisières",
+        "section": "croisieres",
         "alias": "c",
         "fields": ["name", "departure", "destination"],
         "sql": "SELECT c.id, c.name, c.departure, c.destination, c.start_time AS date "
@@ -4194,6 +4280,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "Routes",
+        "section": "croisieres",
         "alias": "r",
         "fields": ["name", "departure_location", "destination_location", "notes"],
         "sql": "SELECT r.id, r.name, r.departure_location, r.destination_location, r.notes, "
@@ -4207,6 +4294,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "Journal de bord",
+        "section": "journal",
         "alias": "l",
         "fields": ["notes", "visual_pos", "sails"],
         "sql": "SELECT l.id, l.notes, l.visual_pos, l.sails, l.timestamp AS date, "
@@ -4219,6 +4307,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "Escales",
+        "section": "croisieres",
         "alias": "s",
         "fields": ["name", "locality", "notes"],
         "sql": "SELECT s.id, s.route_id, s.name, s.locality, s.notes, s.arrival_date AS date "
@@ -4230,6 +4319,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "Comptes",
+        "section": "comptes",
         "fields": ["designation", "supplier", "expense_type", "description"],
         # Le montant se cherche aussi, sous la forme où il s'affiche (250,00).
         "amount": "unit_price",
@@ -4241,6 +4331,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "Contacts",
+        "section": "contacts",
         "fields": ["company", "contact_name", "category", "city", "country", "street",
                    "email", "phone", "notes"],
         "sql": "SELECT id, company, contact_name, category, city, country, street, email, phone, notes "
@@ -4252,6 +4343,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "Équipiers",
+        "section": "equipiers",
         "fields": ["first_name", "last_name", "city", "nationality", "email", "phone"],
         "sql": "SELECT id, first_name, last_name, city, nationality, email, phone "
                "FROM crew_members WHERE ({where}) "
@@ -4262,6 +4354,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "Documents du navire",
+        "section": "navire",
         "fields": ["title"],
         "sql": "SELECT id, title, path, created_at AS date "
                "FROM ship_documents WHERE ship_id = :ship AND ({where}) ORDER BY created_at DESC",
@@ -4271,6 +4364,7 @@ SEARCH_SECTIONS = [
     },
     {
         "title": "To Do",
+        "section": "todo",
         "fields": ["title", "task"],
         "sql": "SELECT id, title, task, status, due_date AS date "
                "FROM todo_items WHERE ship_id = :ship AND ({where}) ORDER BY id DESC",
@@ -4309,7 +4403,16 @@ async def search(request: Request, q: Optional[str] = None):
                 amount = amount.replace(".", "")
             amount = amount.replace(".", ",")
             amount = f"%{amount}%" if re.search(r"\d", amount) else None
+            user = _template_user(request)
             for sec in SEARCH_SECTIONS:
+                # Une rubrique que le rang ne voit pas n'est pas fouillée.
+                if not can(user, f"{sec['section']}.voir"):
+                    continue
+                fields = sec["fields"]
+                if sec["section"] == "equipiers" and not can(user, "identite.voir"):
+                    # Ni nationalité ni localité : elles relèvent de l'identité.
+                    fields = [f for f in fields if f not in IDENTITY_FIELDS]
+                sec = {**sec, "fields": fields}
                 alias = sec.get("alias")
                 where = " OR ".join(
                     f"fold({alias + '.' if alias else ''}{f}) LIKE :pattern ESCAPE '\\'"
@@ -4571,7 +4674,7 @@ async def set_crew_rank(request: Request, crew_id: int, rank: str = Form(...),
     → Amiral : transmission ; l'Amiral en place redevient Capitaine, dans la
     même transaction, si bien qu'il y a toujours exactement un Amiral. L'Amiral
     ne peut donc pas être rétrogradé directement : on en nomme un autre."""
-    _require(request, "gerer_roles")
+    _require(request, "rangs")
     back = f"/crew/{crew_id}"
     if rank not in RANKS + ["mousse"]:
         raise HTTPException(status_code=400, detail="Rang inconnu")
@@ -4617,7 +4720,7 @@ async def set_crew_rank(request: Request, crew_id: int, rank: str = Form(...),
 async def reset_crew_password(request: Request, crew_id: int, password: str = Form("")):
     """L'Amiral redonne un mot de passe à un équipier qui a oublié le sien ;
     ses sessions ouvertes sont fermées."""
-    _require(request, "gerer_roles")
+    _require(request, "rangs")
     back = f"/crew/{crew_id}"
     error = _password_problem(password, None)
     if error:

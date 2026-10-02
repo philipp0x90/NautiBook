@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Accès refusé — NautiBook{% endblock %}
+{% block head %}{% include "auth/_style.html" %}{% endblock %}
+{% block content %}
+<div class="card auth-card" style="text-align:center">
+    <h2>Accès réservé</h2>
+    <div>Cette page ou cette action n'est pas ouverte au rang <strong>{{ rang }}</strong>.</div>
+    <div class="meta">Les droits de chaque rang sont fixés par l'Amiral.</div>
+    <div style="display:flex;gap:10px;justify-content:center">
+        <a href="javascript:history.back()" class="btn" style="background:#eee;color:#333">← Retour</a>
+        <a href="/" class="btn btn-primary">Accueil</a>
+    </div>
+</div>
+{% endblock %}
