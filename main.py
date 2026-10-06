@@ -15,6 +15,7 @@ import re
 import unicodedata
 import subprocess
 import aiosqlite
+import requests
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
@@ -398,7 +399,8 @@ async def init_db():
         # Une photo d'une publication. lat / lon : la position de la prise de
         # vue lue dans la photo (geo_source « photo »), sinon celle du bateau
         # au moment de publier (« bateau »), sinon rien. taken_at : l'heure de
-        # prise de vue, quand la photo la donne.
+        # prise de vue, quand la photo la donne. place : le nom du lieu, cherché
+        # après coup (_fill_carnet_places) — NULL pas encore cherché, '' rien trouvé.
         await db.execute("""
             CREATE TABLE IF NOT EXISTS carnet_photos (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -408,7 +410,8 @@ async def init_db():
                 lon REAL,
                 geo_source TEXT,
                 taken_at DATETIME,
-                position INTEGER
+                position INTEGER,
+                place TEXT
             )
         """)
 
@@ -640,6 +643,11 @@ async def _migrate(db):
         await db.execute("ALTER TABLE todo_items DROP COLUMN tags")
         print("Migration: todo_items.tags dropped")
 
+    cursor = await db.execute("PRAGMA table_info(carnet_photos)")
+    if "place" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE carnet_photos ADD COLUMN place TEXT")
+        print("Migration: carnet_photos.place added")
+
 
 TRACK_INTERVAL = 30  # seconds between automatic GPS recordings
 
@@ -684,6 +692,7 @@ async def track_recorder_loop():
 async def lifespan(app: FastAPI):
     await init_db()
     print("Database initialized")
+    _start_place_lookup()
     if not TRACK_RECORDING:
         print("Automatic GPS recording disabled")
         yield
@@ -1078,7 +1087,7 @@ SECTION_RULES = [
     (r"^/ship/fuel(/|$)", "gasoil"),
     (r"^/ship/expenses(/|$)", "comptes"),
     (r"^/ship/contacts(/|$)", "contacts"),
-    (r"^/crew/\d+/(rank|reset-password)$", "rangs"),
+    (r"^/crew/\d+/(rank|reset-password|username)$", "rangs"),
     (r"^/crew/\d+/field/(" + "|".join(IDENTITY_FIELDS) + r")$", "identite"),
     # Le formulaire complet contient l'identité : il en suit la rubrique.
     (r"^/crew/(new|\d+/edit)$", "identite"),
@@ -4212,6 +4221,78 @@ async def _boat_position() -> Optional[tuple]:
         return None
 
 
+# ── Lieu des photos ──
+# Le nom du lieu d'une photo vient de Nominatim (OpenStreetMap), à partir de sa
+# position. Jamais pendant la publication : à bord, Internet manque souvent, et
+# publier ne doit pas attendre. Une tâche de fond cherche les photos dont place
+# est NULL, après chaque publication et au démarrage ; hors ligne, elles restent
+# NULL et seront reprises à la fois suivante. Rien trouvé (en mer) : '', pour ne
+# pas redemander. Nominatim demande une requête par seconde au plus, et un
+# User-Agent qui identifie l'app.
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
+NOMINATIM_AGENT = "NautiBook/1.0 (carnet de bord)"
+PLACE_KEYS = ("village", "town", "city", "hamlet", "island", "municipality", "county", "state")
+_place_cache: dict = {}
+_place_task: Optional[asyncio.Task] = None
+
+
+def _place_name(lat: float, lon: float) -> Optional[str]:
+    """Nom du lieu le plus proche ; '' si Nominatim n'en connaît pas, None
+    s'il n'a pas répondu (hors ligne)."""
+    key = (round(lat, 3), round(lon, 3))      # ~100 m : les photos d'un même endroit
+    if key in _place_cache:
+        return _place_cache[key]
+    try:
+        resp = requests.get(NOMINATIM_URL, timeout=5, headers={"User-Agent": NOMINATIM_AGENT},
+                            params={"format": "jsonv2", "lat": lat, "lon": lon, "zoom": 14,
+                                    "accept-language": "fr"})
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return None
+    # « Unable to geocode » : rien à cet endroit (la pleine mer). Toute autre
+    # réponse sans adresse — un refus passager, une limite atteinte — se retente.
+    if data.get("error") == "Unable to geocode":
+        name = ""
+    elif not data.get("address"):
+        return None
+    else:
+        address = data["address"]
+        name = next((address[k] for k in PLACE_KEYS if address.get(k)), "")
+    _place_cache[key] = name
+    return name
+
+
+async def _fill_carnet_places():
+    try:
+        while True:
+            async with connect() as db:
+                cursor = await db.execute(
+                    "SELECT id, lat, lon FROM carnet_photos WHERE place IS NULL AND lat IS NOT NULL ORDER BY id")
+                rows = await cursor.fetchall()
+            if not rows:
+                return
+            for photo_id, lat, lon in rows:
+                cached = (round(lat, 3), round(lon, 3)) in _place_cache
+                name = await asyncio.to_thread(_place_name, lat, lon)
+                if name is None:
+                    return                            # hors ligne : à la prochaine fois
+                async with connect() as db:
+                    await db.execute("UPDATE carnet_photos SET place = ? WHERE id = ?", (name, photo_id))
+                    await db.commit()
+                if not cached:
+                    await asyncio.sleep(1.5)
+    except Exception as e:
+        print(f"Lieu des photos : {e}")
+
+
+def _start_place_lookup():
+    """Lance la recherche des lieux, sauf si elle tourne déjà."""
+    global _place_task
+    if _place_task is None or _place_task.done():
+        _place_task = asyncio.create_task(_fill_carnet_places())
+
+
 def _float_or_none(value):
     try:
         return float(value) if value not in (None, "") else None
@@ -4336,6 +4417,7 @@ async def carnet_new(request: Request, text: Optional[str] = Form(None), cruise_
         if not text and not kept:
             await db.execute("DELETE FROM carnet_entries WHERE id = ?", (entry_id,))
         await db.commit()
+    _start_place_lookup()
     return RedirectResponse(url=_safe_next(back, "/carnet") + f"#publication-{entry_id}", status_code=303)
 
 
@@ -4356,18 +4438,36 @@ async def _own_entry(db, request, entry_id: int):
 async def carnet_edit(request: Request, entry_id: int, text: Optional[str] = Form(None),
                       photo_files: List[UploadFile] = File(default=[]),
                       photo_lat: List[str] = Form(default=[]), photo_lon: List[str] = Form(default=[]),
-                      photo_taken: List[str] = Form(default=[]), back: Optional[str] = Form(None)):
-    """Correction par son auteur : le texte, et des photos en plus. Retirer une
-    photo est une suppression — réservée à l'Amiral."""
+                      photo_taken: List[str] = Form(default=[]), cruise_id: Optional[str] = Form(None),
+                      back: Optional[str] = Form(None)):
+    """Correction par son auteur : le texte, la croisière, et des photos en
+    plus. Retirer une photo passe par carnet_photo_remove."""
     async with connect() as db:
         await _own_entry(db, request, entry_id)
-        await db.execute("UPDATE carnet_entries SET text = ?, updated_at = ? WHERE id = ?",
-                         ((text or "").strip() or None, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), entry_id))
+        # La croisière doit être une du navire de la publication ; sinon elle
+        # ne change pas.
+        cursor = await db.execute(
+            "SELECT c.id FROM cruises c JOIN carnet_entries e ON e.ship_id = c.ship_id "
+            "WHERE e.id = ? AND c.id = ?",
+            (entry_id, int(cruise_id) if cruise_id and cruise_id.isdigit() else None))
+        row = await cursor.fetchone()
+        cid = row[0] if row else None
+        await db.execute("UPDATE carnet_entries SET text = ?, cruise_id = COALESCE(?, cruise_id), updated_at = ? "
+                         "WHERE id = ?",
+                         ((text or "").strip() or None, cid, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), entry_id))
         cursor = await db.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM carnet_photos WHERE entry_id = ?", (entry_id,))
         start = (await cursor.fetchone())[0]
         await _store_carnet_photos(db, entry_id, photo_files, photo_lat, photo_lon, photo_taken, start)
         await db.commit()
-    return RedirectResponse(url=_safe_next(back, "/carnet") + f"#publication-{entry_id}", status_code=303)
+    _start_place_lookup()
+    # Le retour est l'adresse de la page en correction : sans edit=, sinon la
+    # publication se rouvrirait en correction une fois enregistrée.
+    back = re.sub(r"[?&]$", "", re.sub(r"([?&])edit=\d+&?", r"\1", _safe_next(back, "/carnet")))
+    # Changée de croisière, la publication n'est plus dans le carnet affiché :
+    # on suit celle-ci, sauf depuis « Voir tout », qui la montre de toute façon.
+    if cid is not None and "croisiere=tout" not in back:
+        back = f"/carnet?croisiere={cid}"
+    return RedirectResponse(url=back + f"#publication-{entry_id}", status_code=303)
 
 
 @app.post("/carnet/{entry_id}/delete")
@@ -4380,14 +4480,23 @@ async def carnet_delete(entry_id: int, back: Optional[str] = Form(None)):
     return RedirectResponse(url=_safe_next(back, "/carnet"), status_code=303)
 
 
-@app.post("/carnet/photos/{photo_id}/delete")
-async def carnet_photo_delete(photo_id: int, back: Optional[str] = Form(None)):
-    """Retire une photo d'une publication (Amiral) ; le fichier reste."""
+@app.post("/carnet/photos/{photo_id}/remove")
+async def carnet_photo_remove(request: Request, photo_id: int, back: Optional[str] = Form(None)):
+    """Retire une photo d'une publication ; le fichier reste. Son auteur le
+    peut pour les siennes, qui a carnet.supprimer (l'Amiral) pour toutes.
+    D'où « remove » et non « delete » : un …/delete exigerait carnet.supprimer
+    de tous (required_permission), et c'est ici que l'auteur est vérifié."""
     async with connect() as db:
-        cursor = await db.execute("SELECT entry_id FROM carnet_photos WHERE id = ?", (photo_id,))
+        cursor = await db.execute(
+            "SELECT p.entry_id, e.crew_member_id FROM carnet_photos p "
+            "JOIN carnet_entries e ON e.id = p.entry_id WHERE p.id = ?", (photo_id,))
         row = await cursor.fetchone()
-        await db.execute("DELETE FROM carnet_photos WHERE id = ?", (photo_id,))
-        await db.commit()
+        if row:
+            user = _template_user(request)
+            if not (can(user, "carnet.supprimer") or (user and user["crew_member_id"] == row[1])):
+                raise HTTPException(status_code=403, detail="Seul son auteur peut retirer cette photo")
+            await db.execute("DELETE FROM carnet_photos WHERE id = ?", (photo_id,))
+            await db.commit()
     anchor = f"#publication-{row[0]}" if row else ""
     return RedirectResponse(url=_safe_next(back, "/carnet") + anchor, status_code=303)
 
@@ -5064,6 +5173,36 @@ async def reset_crew_password(request: Request, crew_id: int, password: str = Fo
             await db.execute("DELETE FROM sessions WHERE user_id = ?", (account[0],))
             await db.commit()
     return RedirectResponse(url=f"{back}?info={quote('Mot de passe réinitialisé.')}#acces", status_code=303)
+
+
+@app.post("/crew/{crew_id}/username")
+async def change_crew_username(request: Request, crew_id: int, username: str = Form("")):
+    """L'Amiral, et lui seul, change l'identifiant d'un compte — le sien
+    compris. Le mot de passe et les sessions ouvertes restent. Le rang est
+    vérifié en plus du droit « rangs » : ce droit-ci ne suit pas la grille."""
+    _require(request, "rangs")
+    user = _template_user(request)
+    if not user or user["rank"] != "amiral":
+        raise HTTPException(status_code=403, detail="Réservé à l'Amiral")
+    back = f"/crew/{crew_id}"
+    username = username.strip()
+    async with connect() as db:
+        cursor = await db.execute("SELECT id, username FROM users WHERE crew_member_id = ?", (crew_id,))
+        account = await cursor.fetchone()
+        if account is None:
+            return RedirectResponse(url=f"{back}#acces", status_code=303)
+        error = _username_problem(username)
+        if not error:
+            # COLLATE NOCASE : « Paul » est pris par « paul », sauf par soi-même,
+            # ce qui permet de ne changer que la casse.
+            cursor = await db.execute("SELECT 1 FROM users WHERE username = ? AND id != ?", (username, account[0]))
+            if await cursor.fetchone():
+                error = f"L'identifiant « {username} » est déjà pris."
+        if error:
+            return RedirectResponse(url=f"{back}?erreur={quote(error)}#acces", status_code=303)
+        await db.execute("UPDATE users SET username = ? WHERE id = ?", (username, account[0]))
+        await db.commit()
+    return RedirectResponse(url=f"{back}?info={quote(f'Identifiant changé : « {username} ».')}#acces", status_code=303)
 
 
 # ── Setup (first run) ─────────────────────────────────────────────────────────

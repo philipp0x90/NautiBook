@@ -139,6 +139,11 @@
         .topbar-settings svg { width: 26px; height: 26px; display: block; }
         .topbar-settings:hover { color: var(--accent-dark); }
         .topbar-connecte { color: var(--accent); }
+        /* Prénom de la personne connectée, sous le pictogramme du compte. Le
+           lien s'élargit pour un prénom long, jusqu'à une limite où il se coupe. */
+        .topbar-connecte { flex-direction: column; width: auto; min-width: 48px; gap: 1px; }
+        .topbar-prenom { font-size: 11px; font-weight: 600; line-height: 1; max-width: 80px;
+                         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         /* ── Section sub-header bar ── */
         .section-bar {
@@ -192,6 +197,16 @@
             background: #f8fafc;
         }
         input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); background: #fff; }
+        /* Œil des champs mot de passe, posé par le script plus bas. */
+        .mdp { position: relative; display: block; }
+        .mdp input { padding-right: 38px; }
+        .mdp-oeil {
+            position: absolute; top: 0; right: 0; bottom: 0; width: 36px;
+            display: flex; align-items: center; justify-content: center;
+            background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted);
+        }
+        .mdp-oeil:hover, .mdp-oeil[aria-pressed=true] { color: var(--accent); }
+        .mdp-oeil svg { width: 18px; height: 18px; }
         /* Champ date encore vide : Safari y affiche la date du jour en gris
            comme indication, mais laisse les « / » en noir, et Chrome montre
            jj/mm/aaaa en noir. Tout en gris, séparateurs compris — le gris
@@ -238,6 +253,13 @@
             position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
             color: #fff; font-size: 13px; background: rgba(0, 0, 0, .45); padding: 3px 10px; border-radius: 10px;
         }
+        /* Légende d'une photo agrandie (date, lieu, coordonnées), si l'image en porte une. */
+        #photo-lightbox .lb-legende {
+            position: absolute; top: 14px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 32px);
+            color: #fff; font-size: 14px; text-align: center; background: rgba(0, 0, 0, .5);
+            padding: 5px 12px; border-radius: 10px; cursor: default;
+        }
+        #photo-lightbox .lb-legende a { color: #9fdcf0; font-size: 12px; display: block; }
         #photo-lightbox [hidden] { display: none !important; }
 
         /* ── Data table ── */
@@ -384,6 +406,7 @@
             <circle cx="12" cy="8" r="4"/>
             <path d="M4 21c1.5-4.5 4.5-6.5 8-6.5s6.5 2 8 6.5"/>
         </svg>
+        {% if moi %}<span class="topbar-prenom">{{ moi.first_name or moi.username }}</span>{% endif %}
     </a>
 
     {# Roue crantée (Gear.svg), inlinée comme le logo et l'icône de navire : pas
@@ -421,6 +444,10 @@
     <button type="button" class="lb-fleche lb-suiv" title="Photo suivante (→)" aria-label="Photo suivante"
             onclick="event.stopPropagation(); photoVoisine(1)">›</button>
     <div class="lb-compte"></div>
+    <div class="lb-legende" onclick="event.stopPropagation()" hidden>
+        <div class="lb-texte"></div>
+        <a class="lb-carte" target="_blank" rel="noopener" title="Voir sur la carte"></a>
+    </div>
 </div>
 
 <div id="maj-bandeau" onclick="location.reload()" title="Recharger la page">
@@ -444,6 +471,37 @@ document.addEventListener('DOMContentLoaded', marquerDatesVides);
             event.target.classList.toggle('date-vide', !event.target.value);
         }
     }, true);
+});
+
+// Champs mot de passe : un œil à droite affiche ce qu'on tape, sur toutes les
+// pages à la fois. Le champ redevient masqué à l'envoi du formulaire, pour que
+// le navigateur ne le mémorise pas comme un texte ordinaire.
+document.addEventListener('DOMContentLoaded', function () {
+    const OEIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const BARRE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.1 10.1 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+    document.querySelectorAll('input[type=password]').forEach(function (champ) {
+        const enveloppe = document.createElement('span');
+        enveloppe.className = 'mdp';
+        champ.parentNode.insertBefore(enveloppe, champ);
+        enveloppe.appendChild(champ);
+        const bouton = document.createElement('button');
+        bouton.type = 'button';
+        bouton.className = 'mdp-oeil';
+        bouton.tabIndex = -1;
+        function regler(visible) {
+            champ.type = visible ? 'text' : 'password';
+            bouton.setAttribute('aria-pressed', visible);
+            bouton.title = visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe';
+            bouton.innerHTML = visible ? BARRE : OEIL;
+        }
+        regler(false);
+        bouton.addEventListener('click', function () {
+            regler(champ.type === 'password');
+            champ.focus();
+        });
+        enveloppe.appendChild(bouton);
+        if (champ.form) champ.form.addEventListener('submit', function () { regler(false); });
+    });
 });
 
 // Droits à l'écran : ce que le rang ne permet pas n'est pas proposé. Le serveur
@@ -555,6 +613,14 @@ function montrerPhoto() {
     const compte = lb.querySelector('.lb-compte');
     compte.hidden = !plusieurs;
     compte.textContent = (lbIndex + 1) + ' / ' + lbSerie.length;
+    // Légende : data-legende (date, lieu) et data-coords / data-carte, posés
+    // sur la vignette par la page (le carnet) ; sans eux, rien ne s'affiche.
+    const d = lbSerie[lbIndex].dataset, legende = lb.querySelector('.lb-legende'), carte = lb.querySelector('.lb-carte');
+    legende.hidden = !(d.legende || d.coords);
+    lb.querySelector('.lb-texte').textContent = d.legende || '';
+    carte.hidden = !d.coords;
+    carte.textContent = d.coords || '';
+    if (d.carte) carte.href = d.carte; else carte.removeAttribute('href');
 }
 
 function photoVoisine(sens) {

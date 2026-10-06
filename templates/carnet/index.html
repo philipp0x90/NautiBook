@@ -8,11 +8,15 @@
     .carnet-filtre select { width: auto; min-width: 220px; height: 34px; }
 
     /* Zone d'écriture : toujours ouverte, en tête. */
-    .composer { display: grid; gap: 10px; }
+    .composer { display: grid; gap: 10px; position: relative; }
     /* hidden doit l'emporter sur le display de .btn : « Publier » n'apparaît
        que s'il y a quelque chose à publier. */
     .composer [hidden] { display: none !important; }
-    .composer textarea { min-height: 70px; resize: vertical; font: inherit; font-size: 15px; }
+    /* Le texte grandit avec ce qu'on écrit (ajuster(), plus bas), jusqu'aux
+       deux tiers de l'écran : au-delà il défile, et sur iPhone le bouton
+       photo et « Publier » restent visibles au-dessus du clavier. */
+    .composer textarea { min-height: 70px; max-height: 66vh; overflow-y: auto; resize: vertical;
+                         font: inherit; font-size: 15px; line-height: 1.5; }
     .composer.survol { outline: 2px dashed var(--accent); outline-offset: 4px; }
     .composer-bas { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     /* Bouton photo : l'icône seule, dans une pastille ronde ; son nom est
@@ -25,7 +29,8 @@
     .composer-bas .dans { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
     .composer-bas .dans select { width: auto; height: 30px; font-size: 13px; }
     .composer-bas .espace { flex: 1; }
-    .apercus { display: flex; gap: 8px; flex-wrap: wrap; }
+    .apercus, .deja { display: flex; gap: 8px; flex-wrap: wrap; }
+    .deja:empty { display: none; }
     .apercu { position: relative; width: 84px; height: 84px; border-radius: 8px; overflow: hidden; background: #e8eef3; }
     .apercu img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .apercu .retirer {
@@ -34,6 +39,27 @@
     }
     .apercu .geo { position: absolute; left: 4px; bottom: 3px; font-size: 12px; text-shadow: 0 0 3px #fff; }
     .composer-etat { font-size: 12px; color: var(--muted); }
+    /* Photo en préparation : vignette grise et cercle qui tourne, jusqu'à ce
+       que l'image réduite la remplace. */
+    .apercu.attente::after {
+        content: ""; position: absolute; inset: 0; margin: auto; width: 26px; height: 26px;
+        border: 3px solid #cfdbe6; border-top-color: var(--accent); border-radius: 50%;
+        animation: tourne .8s linear infinite;
+    }
+    @keyframes tourne { to { transform: rotate(360deg); } }
+    /* Envoi : la zone se voile, un voilier tangue sur la houle. */
+    .voile-envoi { position: absolute; inset: 0; z-index: 5; border-radius: inherit;
+                   background: rgba(255,255,255,.88); display: none;
+                   flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+                   color: var(--accent); font-size: 14px; font-weight: 600; }
+    .composer.envoi .voile-envoi { display: flex; }
+    .voile-envoi .voilier { width: 54px; height: 54px; color: #08204e; transform-origin: 50% 85%;
+                            animation: tangue 1.6s ease-in-out infinite; }
+    .voile-envoi .houle { width: 96px; height: 10px; overflow: hidden; margin-top: -8px; }
+    .voile-envoi .houle svg { width: 192px; height: 10px; display: block; animation: houle 1.6s linear infinite; }
+    @keyframes tangue { 0%, 100% { transform: rotate(-7deg) translateY(0); }
+                        50% { transform: rotate(7deg) translateY(-3px); } }
+    @keyframes houle { to { transform: translateX(-48px); } }
 
     /* Les publications. */
     .jour { margin: 6px 0 -6px; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted);
@@ -69,10 +95,20 @@
 
 {# Une publication en cours d'écriture : la même zone sert à publier (en tête
    de page) et à corriger (à la place d'une publication). #}
-{% macro composer(action, texte='', bouton='Publier', avec_croisiere=true) %}
-<form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer">
+{# En correction, existantes : les photos déjà publiées, montrées au-dessus des
+   nouvelles. Leur ✕ envoie un formulaire placé hors de celui-ci (attribut
+   form=), un formulaire ne pouvant en contenir un autre. #}
+{# croisiere : celle de la publication corrigée ; à la création, celle affichée,
+   sinon celle en cours. #}
+{% macro composer(action, texte='', bouton='Publier', croisiere=none, existantes=none) %}
+<form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer"
+      {% if existantes is not none %}data-correction="1"{% endif %}>
     <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
     <textarea name="text" placeholder="Quoi de neuf à bord ?" maxlength="20000">{{ texte }}</textarea>
+    <div class="deja">{% for ph in existantes or [] %}<div class="apercu">
+            {% if fichier_visible(request, ph.photo_path) %}<img src="{{ ph.photo_path }}" alt="">{% endif %}
+            <button type="submit" form="retirer-{{ ph.id }}" class="retirer" title="Retirer cette photo">✕</button>
+        </div>{% endfor %}</div>
     <div class="apercus"></div>
     <div class="composer-bas">
         <label class="btn bouton-photo" title="Ajouter des photos" aria-label="Ajouter des photos">
@@ -90,11 +126,11 @@
            réduites, dans l'ordre des aperçus. #}
         <input type="file" name="photo_files" multiple hidden class="envoi-photos">
         <div class="geo-champs" hidden></div>
-        {% if avec_croisiere and cruises %}
-        <span class="dans">Ajouter à
+        {% if cruises %}
+        <span class="dans">{{ 'Croisière' if existantes is not none else 'Ajouter à' }}
             <select name="cruise_id">
                 {% for c in cruises %}
-                <option value="{{ c.id }}" {{ 'selected' if c.id == (selected or current_cruise) else '' }}>{{ c.name or 'Croisière sans nom' }}</option>
+                <option value="{{ c.id }}" {{ 'selected' if c.id == (croisiere or selected or current_cruise) else '' }}>{{ c.name or 'Croisière sans nom' }}</option>
                 {% endfor %}
             </select>
         </span>
@@ -102,6 +138,22 @@
         <span class="espace"></span>
         <span class="composer-etat"></span>
         <button type="submit" class="btn btn-primary publier" hidden>{{ bouton }}</button>
+    </div>
+    <div class="voile-envoi" aria-live="polite">
+        {# Voilier au trait, dessiné d'après le dessin fourni par l'utilisateur
+           (grand-voile, foc, coque), dans son repère d'origine de 1250 px. #}
+        <svg class="voilier" viewBox="95 20 1140 1220" aria-hidden="true" fill="none" stroke="currentColor"
+             stroke-width="42" stroke-linejoin="round" stroke-linecap="round">
+            <path d="M717 45 C560 270 350 470 250 650 C160 810 135 960 180 1085 C330 1010 520 1000 705 1110 C715 900 722 500 717 45 Z"/>
+            <path d="M750 258 C800 560 795 760 733 1090 C870 1010 1020 960 1155 1003 C1020 740 880 470 750 258 Z"/>
+            <path d="M125 1103 C500 1170 900 1120 1210 1025 C1120 1180 950 1215 600 1215 C350 1215 200 1180 125 1103 Z"/>
+        </svg>
+        <div class="houle" aria-hidden="true">
+            <svg viewBox="0 0 192 10" preserveAspectRatio="none" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M0 5 Q12 0 24 5 T48 5 T72 5 T96 5 T120 5 T144 5 T168 5 T192 5"/>
+            </svg>
+        </div>
+        <div>Envoi des photos…</div>
     </div>
 </form>
 {% endmacro %}
@@ -141,9 +193,15 @@
     {% set corrige = auteur or (utilisateur(request) and utilisateur(request).rank == 'amiral') %}
     {% if editing == e.id and corrige %}
     <div id="publication-{{ e.id }}">
-        {{ composer('/carnet/' ~ e.id ~ '/edit', e.text or '', 'Enregistrer', false) }}
+        {{ composer('/carnet/' ~ e.id ~ '/edit', e.text or '', 'Enregistrer', e.cruise_id, e.photos or []) }}
+        {% for ph in e.photos or [] %}
+        <form method="POST" action="/carnet/photos/{{ ph.id }}/remove" id="retirer-{{ ph.id }}" hidden
+              onsubmit="return confirm('Retirer cette photo ?')">
+            <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+        </form>
+        {% endfor %}
         <div class="meta" style="margin-top:4px">Les photos ajoutées s'ajoutent à celles déjà publiées.
-            <a href="{{ request.url.path }}{{ '?croisiere=tout' if voir_tout else ('?croisiere=' ~ selected if selected else '') }}#publication-{{ e.id }}" style="color:var(--accent)">Annuler</a></div>
+            <a href="{{ request.url.path }}{{ '?croisiere=tout' if voir_tout else ('?croisiere=' ~ selected if selected else '') }}#publication-{{ e.id }}" class="annuler-modif" style="color:var(--accent)">Annuler</a></div>
     </div>
     {% else %}
     <article class="card publication" id="publication-{{ e.id }}">
@@ -156,13 +214,13 @@
             <div class="pub-qui">
                 <div class="nom">{{ e.first_name or '' }} {{ (e.last_name or '') | upper }}{% if not e.first_name and not e.last_name %}Équipage{% endif %}</div>
                 <div class="quand">
-                    {{ (e.created_at or '')[11:16] }}{% if voir_tout and e.cruise_name %} · {{ e.cruise_name }}{% endif %}{% if e.updated_at %} · corrigé{% endif %}
+                    {{ (e.created_at or '')[11:16] }}{% if voir_tout and e.cruise_name %} · {{ e.cruise_name }}{% endif %}{% if e.updated_at %} · modifié{% endif %}
                 </div>
             </div>
             <div class="pub-actions">
                 {% if corrige %}
                 <a href="?{{ 'croisiere=tout&' if voir_tout else ('croisiere=' ~ selected ~ '&' if selected else '') }}edit={{ e.id }}#publication-{{ e.id }}"
-                   class="btn" style="background:#eee;color:#333;padding:3px 10px">✎ Corriger</a>
+                   class="btn" style="background:#eee;color:#333;padding:3px 10px">Modifier</a>
                 {% endif %}
                 <form method="POST" action="/carnet/{{ e.id }}/delete"
                       onsubmit="return confirm('Supprimer cette publication et ses photos du carnet ?')">
@@ -177,26 +235,37 @@
             {% for ph in e.photos %}
             <div class="pub-photo">
                 {% if fichier_visible(request, ph.photo_path) %}
-                <img src="{{ ph.photo_path }}" alt="" loading="lazy" onclick="agrandirPhoto(event, this)" title="Agrandir">
+                {# data-legende / data-coords / data-carte : la légende de la vue
+                   agrandie (base.html), où les coordonnées tiennent en clair. #}
+                {% set lieu = ph.place or ('Position de la photo' if ph.geo_source == 'photo' else 'Position du bateau') if ph.lat is not none else none %}
+                <img src="{{ ph.photo_path }}" alt="" loading="lazy" onclick="agrandirPhoto(event, this)" title="Agrandir"
+                     data-legende="{{ [ph.taken_at | datefr if ph.taken_at else none, lieu] | select | join(' · ') }}"
+                     {% if ph.lat is not none %}data-coords="{{ ph.lat | lat }}  {{ ph.lon | lon }}"
+                     data-carte="https://www.openstreetmap.org/?mlat={{ ph.lat }}&mlon={{ ph.lon }}#map=13/{{ ph.lat }}/{{ ph.lon }}"{% endif %}>
                 {% else %}
                 <div class="verrou" title="Connectez-vous pour voir les photos">🔒</div>
                 {% endif %}
-                {% if ph.lat is not none or (ph.taken_at and ph.taken_at[:10] != (e.created_at or '')[:10]) %}
+                {% if ph.lat is not none or ph.taken_at %}
                 <div class="legende">
-                    {% if ph.taken_at and ph.taken_at[:10] != (e.created_at or '')[:10] %}{{ ph.taken_at | datefr }}{% if ph.lat is not none %} · {% endif %}{% endif %}
+                    {% if ph.taken_at %}{{ ph.taken_at | datefr }}{% if ph.lat is not none %} · {% endif %}{% endif %}
                     {% if ph.lat is not none %}
-                    {# Position de la photo, sinon du bateau au moment de publier. #}
+                    {# Position de la photo, sinon du bateau au moment de publier. Le nom du
+                       lieu arrive après coup (_fill_carnet_places) ; d'ici là,
+                       ou en mer, la source de la position en tient lieu. #}
                     {# Les coordonnées dans l'info-bulle et le lien de carte : en
                        clair, elles ne tiennent pas sur une vignette. #}
                     <a href="https://www.openstreetmap.org/?mlat={{ ph.lat }}&mlon={{ ph.lon }}#map=13/{{ ph.lat }}/{{ ph.lon }}"
-                       target="_blank" rel="noopener" title="{{ ph.lat | lat }} {{ ph.lon | lon }}">📍 {{ 'photo' if ph.geo_source == 'photo' else 'bateau' }}</a>
+                       target="_blank" rel="noopener" title="{{ 'Position de la photo' if ph.geo_source == 'photo' else 'Position du bateau à la publication' }} : {{ ph.lat | lat }} {{ ph.lon | lon }}">{{ ph.place or ('photo' if ph.geo_source == 'photo' else 'bateau') }}</a>
                     {% endif %}
                 </div>
                 {% endif %}
-                <form method="POST" action="/carnet/photos/{{ ph.id }}/delete" onsubmit="return confirm('Retirer cette photo ?')">
+                {# Ses propres photos, ou toutes avec carnet.supprimer (l'Amiral). #}
+                {% if auteur or peut(request, 'carnet.supprimer') %}
+                <form method="POST" action="/carnet/photos/{{ ph.id }}/remove" onsubmit="return confirm('Retirer cette photo ?')">
                     <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
                     <button type="submit" title="Retirer cette photo">✕</button>
                 </form>
+                {% endif %}
             </div>
             {% endfor %}
         </div>
@@ -287,7 +356,7 @@ document.querySelectorAll('.composer').forEach(function (form) {
     const envoi = form.querySelector('.envoi-photos'), geo = form.querySelector('.geo-champs');
     const apercus = form.querySelector('.apercus'), publier = form.querySelector('.publier');
     const etat = form.querySelector('.composer-etat');
-    const photos = [];     // { fichier, lat, lon, taken, url }
+    const photos = [];     // { fichier, lat, lon, taken, url, attente }
     let enCours = 0;
 
     function maj() {
@@ -295,6 +364,7 @@ document.querySelectorAll('.composer').forEach(function (form) {
         const dt = new DataTransfer();
         geo.replaceChildren();
         photos.forEach(function (p) {
+            if (p.attente) return;
             dt.items.add(p.fichier);
             [['photo_lat', p.lat], ['photo_lon', p.lon], ['photo_taken', p.taken]].forEach(function ([nom, val]) {
                 const i = document.createElement('input'); i.type = 'hidden'; i.name = nom; i.value = val ?? ''; geo.appendChild(i);
@@ -303,40 +373,88 @@ document.querySelectorAll('.composer').forEach(function (form) {
         envoi.files = dt.files;
         apercus.replaceChildren(...photos.map(function (p, n) {
             const d = document.createElement('div'); d.className = 'apercu';
+            if (p.attente) { d.classList.add('attente'); d.title = 'Préparation…'; return d; }
             d.innerHTML = '<img alt=""><button type="button" class="retirer" title="Retirer">✕</button>' +
                           (p.lat != null ? '<span class="geo" title="Position lue dans la photo">📍</span>' : '');
             d.querySelector('img').src = p.url;
             d.querySelector('.retirer').onclick = function () { URL.revokeObjectURL(p.url); photos.splice(n, 1); maj(); };
             return d;
         }));
-        publier.hidden = !(texte.value.trim() || photos.length) || enCours > 0;
-        etat.textContent = enCours ? 'Préparation des photos…' : '';
+        // En correction, Enregistrer reste visible : vider le texte est une correction.
+        publier.hidden = !(texte.value.trim() || photos.length || form.dataset.correction) || enCours > 0;
+        etat.textContent = enCours ? 'Préparation des photos… (' + enCours + ' restante' + (enCours > 1 ? 's' : '') + ')' : '';
     }
     async function ajouter(fichiers) {
         // Signale une saisie en cours à la mise à jour en direct (base.html) :
         // une page qui se rechargerait perdrait les photos choisies.
         texte.dispatchEvent(new Event('input', { bubbles: true }));
+        // Toutes les vignettes d'attente d'abord, puis chacune remplacée par
+        // sa photo à mesure qu'elle est prête : on voit combien il en reste.
+        const file = [];
         for (const f of fichiers) {
             if (!f.type.startsWith('image/') && !/\.(heic|heif|jpe?g|png|webp)$/i.test(f.name)) continue;
-            if (photos.length + enCours >= MAX_PHOTOS) { alert(MAX_PHOTOS + ' photos au plus par publication.'); break; }
-            enCours++; maj();
+            if (photos.length >= MAX_PHOTOS) { alert(MAX_PHOTOS + ' photos au plus par publication.'); break; }
+            const p = { attente: true };
+            photos.push(p); file.push([p, f]);
+        }
+        enCours += file.length; maj();
+        for (const [p, f] of file) {
             const exif = await lireExif(f);
             const petit = await reduire(f);
             enCours--;
-            if (petit.size > MAX_OCTETS) { alert('« ' + f.name + ' » est trop volumineuse.'); maj(); continue; }
-            photos.push({ fichier: petit, lat: exif.lat, lon: exif.lon, taken: exif.taken, url: URL.createObjectURL(petit) });
+            if (petit.size > MAX_OCTETS) {
+                alert('« ' + f.name + ' » est trop volumineuse.');
+                photos.splice(photos.indexOf(p), 1); maj(); continue;
+            }
+            Object.assign(p, { attente: false, fichier: petit, lat: exif.lat, lon: exif.lon, taken: exif.taken,
+                               url: URL.createObjectURL(petit) });
             maj();
         }
     }
     choix.addEventListener('change', function () { ajouter([...choix.files]); choix.value = ''; });
+    function ajuster() {
+        texte.style.height = 'auto';
+        texte.style.height = (texte.scrollHeight + texte.offsetHeight - texte.clientHeight) + 'px';
+    }
     texte.addEventListener('input', maj);
+    texte.addEventListener('input', ajuster);
+    ajuster();     // en modification, la boîte s'ouvre à la taille du texte existant
     ['dragenter', 'dragover'].forEach(t => form.addEventListener(t, e => { e.preventDefault(); form.classList.add('survol'); }));
     ['dragleave', 'drop'].forEach(t => form.addEventListener(t, () => form.classList.remove('survol')));
     form.addEventListener('drop', function (e) { e.preventDefault(); ajouter([...e.dataTransfer.files]); });
     form.addEventListener('submit', function (e) {
         if (enCours) { e.preventDefault(); return; }
         publier.disabled = true; etat.textContent = 'Envoi…';
+        // Le voile seulement s'il y a des photos : un texte seul part aussitôt.
+        if (photos.length) form.classList.add('envoi');
     });
+    // Revenu sur la page par « Précédent » (cache du navigateur) : plus d'envoi en cours.
+    window.addEventListener('pageshow', function (e) {
+        if (e.persisted) { form.classList.remove('envoi'); publier.disabled = false; etat.textContent = ''; }
+    });
+    // En modification, cliquer en dehors de la publication l'enregistre ; sans
+    // rien de changé, on quitte simplement la modification (comme « Annuler »),
+    // pour ne pas la marquer « modifié » à tort. Le clic lui-même est absorbé :
+    // il ne fait qu'enregistrer. « Annuler » garde son rôle, et un clic commencé
+    // dans la zone (sélection de texte glissée au-dehors) ne compte pas.
+    if (form.dataset.correction) {
+        const choixCroisiere = form.querySelector('select[name=cruise_id]');
+        const depart = { texte: texte.value, croisiere: choixCroisiere ? choixCroisiere.value : null };
+        const annuler = form.parentElement.querySelector('.annuler-modif');
+        const dedans = cible => form.contains(cible) || (annuler && annuler.contains(cible));
+        let pressionDehors = false;
+        document.addEventListener('pointerdown', function (e) { pressionDehors = !dedans(e.target); }, true);
+        document.addEventListener('click', function (e) {
+            if (!pressionDehors || dedans(e.target)) return;
+            pressionDehors = false;
+            e.preventDefault(); e.stopPropagation();
+            if (enCours || publier.disabled) return;      // photos en préparation, ou déjà en route
+            const change = texte.value !== depart.texte || photos.length ||
+                           (choixCroisiere && choixCroisiere.value !== depart.croisiere);
+            if (change) form.requestSubmit();
+            else if (annuler) location.href = annuler.href;
+        }, true);
+    }
     maj();
 });
 </script>

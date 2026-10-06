@@ -141,6 +141,17 @@
 
             {% if account %}
             <div class="meta" style="text-align:center">Identifiant « {{ account.username }} »</div>
+            {# Changer un identifiant : l'Amiral seul, quelle que soit la grille. #}
+            {% if utilisateur(request) and utilisateur(request).rank == 'amiral' %}
+            <details class="acces-reset">
+                <summary>Changer l'identifiant</summary>
+                <form method="POST" action="/crew/{{ member.id }}/username">
+                    <input type="text" name="username" value="{{ account.username }}" placeholder="Nouvel identifiant"
+                           autocomplete="off" autocapitalize="none" autocorrect="off" minlength="3" maxlength="30" required>
+                    <button type="submit" class="btn btn-blue">Changer</button>
+                </form>
+            </details>
+            {% endif %}
             {% if peut(request, 'rangs') and utilisateur(request).id != account.id %}
             <details class="acces-reset">
                 <summary>Réinitialiser son mot de passe</summary>
