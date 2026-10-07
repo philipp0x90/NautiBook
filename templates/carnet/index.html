@@ -130,7 +130,7 @@
         <span class="dans">{{ 'Croisière' if existantes is not none else 'Ajouter à' }}
             <select name="cruise_id">
                 {% for c in cruises %}
-                <option value="{{ c.id }}" {{ 'selected' if c.id == (croisiere or selected or current_cruise) else '' }}>{{ c.name or 'Croisière sans nom' }}</option>
+                <option value="{{ c.id }}" {{ 'selected' if c.id == (croisiere or selected or default_cruise) else '' }}>{{ c.name or 'Croisière sans nom' }}</option>
                 {% endfor %}
             </select>
         </span>

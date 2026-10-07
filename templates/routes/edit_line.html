@@ -24,7 +24,14 @@
        ligne ; les champs restent étroits sans casser la colonne. */
     .dmm-row { display: flex; gap: 4px; align-items: center; }
     .dmm-row input { min-width: 0; }
+    /* Date et notes sur les mêmes colonnes que les champs du dessus : la date
+       dans la première, les notes sur les quatre autres. */
+    .date-notes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px 20px;
+                  align-items: start; }
+    .date-notes > :last-child { grid-column: 2 / -1; }
     @media (max-width: 900px) {
+        .date-notes { grid-template-columns: 1fr; }
+        .date-notes > :last-child { grid-column: auto; }
         .field-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; gap: 20px; }
         .field-group { grid-row: auto; grid-template-rows: none; }
     }
@@ -202,7 +209,7 @@
 
     </div>
 
-    <div style="display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:start">
+    <div class="date-notes">
         <div>
             {# Le séparateur stocké est un espace ; datetime-local veut un T. Le
                handler refait la conversion dans l'autre sens à l'enregistrement. #}

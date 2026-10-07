@@ -103,35 +103,16 @@
     {% endif %}
 </div>
 
-{# ── Départ / Arrivée info bar ── #}
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid #dde5ee;border-radius:8px;overflow:hidden;margin-bottom:12px">
-    {# Le lieu passe en <strong> avec la date : c'est une information de même
-       nature, pas une annotation. Seuls les mots « Départ : », « de : » et
-       « à : » restent en gris. Le nom du jour n'est écrit que s'il y a une
-       date. #}
-    <div style="padding:10px 18px;border-right:1px solid #dde5ee">
-        <span class="meta">Départ :</span>
-        <strong style="margin-left:8px">
-            {% if route.start_time %}
-                {{ route.start_time | jourfr }}
-                {{ route.start_time[:10] | datefr }} {{ route.start_time[11:16] if route.start_time|length > 10 else '' }}
-            {% else %}—{% endif %}
-        </strong>
-        {% if route.departure_location %}
-        <span class="meta"> — de :</span> <strong>{{ route.departure_location }}</strong>
-        {% endif %}
+{# ── Départ / Arrivée ── modifiables sur place, comme sur la page croisière. #}
+{% from "_bornes.html" import champ_date, champ_lieu %}
+<div class="bornes" style="margin-bottom:12px">
+    <div class="bornes-cote">
+        {{ champ_date('/routes/' ~ route.id ~ '/field/start_time', 'Départ', route.start_time, true) }}
+        {{ champ_lieu('/routes/' ~ route.id ~ '/field/departure_location', 'de', route.departure_location) }}
     </div>
-    <div style="padding:10px 18px;text-align:right">
-        <span class="meta">Arrivée :</span>
-        <strong style="margin-left:8px">
-            {% if route.end_time %}
-                {{ route.end_time | jourfr }}
-                {{ route.end_time[:10] | datefr }} {{ route.end_time[11:16] if route.end_time|length > 10 else '' }}
-            {% else %}—{% endif %}
-        </strong>
-        {% if route.destination_location %}
-        <span class="meta"> — à :</span> <strong>{{ route.destination_location }}</strong>
-        {% endif %}
+    <div class="bornes-cote bornes-arrivee">
+        {{ champ_date('/routes/' ~ route.id ~ '/field/end_time', 'Arrivée', route.end_time, true) }}
+        {{ champ_lieu('/routes/' ~ route.id ~ '/field/destination_location', 'à', route.destination_location) }}
     </div>
 </div>
 

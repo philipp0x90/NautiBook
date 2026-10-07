@@ -3177,6 +3177,8 @@ async def _cruise_crew(db, cruise_id: int):
     """
     cursor = await db.execute(
         """SELECT cc.id, cc.role, cc.embark_date, cc.disembark_date,
+                  CAST(julianday(substr(cc.disembark_date, 1, 10))
+                       - julianday(substr(cc.embark_date, 1, 10)) AS INTEGER) AS nights,
                   m.id AS member_id, m.first_name, m.last_name, m.gender, m.photo_path
            FROM cruise_crew cc
            JOIN crew_members m ON cc.crew_member_id = m.id
@@ -3295,15 +3297,16 @@ CRUISE_NUMBER = ("(SELECT COUNT(*) FROM cruises c2"
 ROUTE_NUMBER = ("(SELECT COUNT(*) FROM routes r2"
                 " WHERE r2.cruise_id IS r.cruise_id AND r2.id <= r.id)")
 
-# Where a cruise starts and where it has got to, read from its routes. The
-# declared departure wins for the start — it is the plan, and the first route
-# may not exist yet — whereas for the arrival the last route wins over the
-# declared destination, which is a goal, not a fact.
+# Where a cruise starts and where it ends. At both ends the place typed on the
+# cruise (departure / destination, editable in place on the cruise page) wins;
+# without one, the first route's departure and the last route's arrival stand
+# in. The arrival used to prefer the last route — the destination being a
+# goal, not a fact — but once editable, a typed arrival that a route silently
+# overrode would look like an edit that did not save.
 CRUISE_FROM = ("COALESCE(c.departure, (SELECT r4.departure_location FROM routes r4"
                " WHERE r4.cruise_id = c.id ORDER BY r4.id ASC LIMIT 1))")
-CRUISE_TO = ("COALESCE((SELECT COALESCE(r5.destination_location, r5.departure_location)"
-             " FROM routes r5 WHERE r5.cruise_id = c.id ORDER BY r5.id DESC LIMIT 1),"
-             " c.destination)")
+CRUISE_TO = ("COALESCE(c.destination, (SELECT COALESCE(r5.destination_location, r5.departure_location)"
+             " FROM routes r5 WHERE r5.cruise_id = c.id ORDER BY r5.id DESC LIMIT 1))")
 
 # Loch read on the cruise's logbook lines, for the cruise list. Also expect the
 # cruises table aliased as c.
@@ -3314,18 +3317,41 @@ LOCH_LAST = ("(SELECT MAX(l.log) FROM logbook_lines l"
 
 
 async def _current_cruise_id(db, ship_id: int) -> Optional[int]:
-    """The ship's current cruise: the latest by start date, falling back to
-    creation date. Resolved on the fly — no flag for it in the schema — so
-    every screen that needs to know must ask here rather than guess.
-    Expects db.row_factory set to aiosqlite.Row.
-    """
+    """La croisière en cours du navire, ou None. En cours = pas encore de date
+    de fin, et au moins un équipier pas encore débarqué. Une date (fin ou
+    débarquement) d'aujourd'hui ou d'avant compte comme passée, une date à
+    venir non, une date vide non plus. Si plusieurs croisières remplissent ces
+    conditions, la dernière commencée. Résolue à la volée — aucun drapeau dans
+    le schéma — donc tout écran qui en a besoin la demande ici.
+    Là où il faut une croisière quoi qu'il arrive (le carnet), voir
+    _default_cruise_id."""
+    today = date.today().isoformat()
+    cursor = await db.execute(
+        "SELECT c.id FROM cruises c WHERE c.ship_id = ? "
+        "AND (COALESCE(c.end_time, '') = '' OR substr(c.end_time, 1, 10) > ?) "
+        "AND EXISTS (SELECT 1 FROM cruise_crew cc WHERE cc.cruise_id = c.id "
+        "    AND (COALESCE(cc.disembark_date, '') = '' OR substr(cc.disembark_date, 1, 10) > ?)) "
+        "ORDER BY COALESCE(c.start_time, c.created_at) DESC LIMIT 1",
+        (ship_id, today, today),
+    )
+    row = await cursor.fetchone()
+    return row[0] if row else None
+
+
+async def _default_cruise_id(db, ship_id: int) -> Optional[int]:
+    """La croisière à proposer par défaut : celle en cours, sinon la dernière
+    commencée. Pour le carnet : une croisière finie la veille reste celle où
+    l'on écrit le lendemain, à la marina."""
+    current = await _current_cruise_id(db, ship_id)
+    if current is not None:
+        return current
     cursor = await db.execute(
         "SELECT id FROM cruises WHERE ship_id = ? "
         "ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1",
         (ship_id,),
     )
     row = await cursor.fetchone()
-    return row["id"] if row else None
+    return row[0] if row else None
 
 @app.get("/cruises", response_class=HTMLResponse)
 async def cruises_index(request: Request):
@@ -3340,9 +3366,8 @@ async def current_cruise(request: Request):
         cursor = await db.execute(
             f"SELECT c.*, {CRUISE_NUMBER} AS number,"
             f" {CRUISE_FROM} AS from_location, {CRUISE_TO} AS to_location"
-            " FROM cruises c WHERE c.ship_id = ? "
-            "ORDER BY COALESCE(c.start_time, c.created_at) DESC LIMIT 1",
-            (ship_id,),
+            " FROM cruises c WHERE c.id = ?",
+            (await _current_cruise_id(db, ship_id),),
         )
         cruise = await cursor.fetchone()
         if cruise is None:
@@ -3559,13 +3584,23 @@ async def cruise_arrival(cruise_id: int):
     return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
 
 
-@app.post("/cruises/{cruise_id}/set-end")
-async def cruise_set_end(cruise_id: int, end_time: Optional[str] = Form(None)):
+# Champs de l'en-tête d'une croisière modifiables sur place, avec leur type.
+# Le nom du champ est interpolé dans l'UPDATE : cette liste est ce qui tient
+# l'adresse hors du SQL, comme EDITABLE_LINE_FIELDS.
+CRUISE_FIELDS = {"start_time": "date", "end_time": "date", "departure": "text", "destination": "text"}
+
+
+@app.post("/cruises/{cruise_id}/field/{field}")
+async def cruise_set_field(cruise_id: int, field: str, value: Optional[str] = Form(None)):
+    """Départ, arrivée (dates et lieux) modifiés sur place depuis la page de la
+    croisière. Une case vidée efface la valeur."""
+    if field not in CRUISE_FIELDS:
+        raise HTTPException(status_code=404, detail="Champ non modifiable")
+    value = (value or "").strip() or None
+    if value and CRUISE_FIELDS[field] == "date" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise HTTPException(status_code=400, detail="Date invalide")
     async with connect() as db:
-        await db.execute(
-            "UPDATE cruises SET end_time = ? WHERE id = ?",
-            (end_time or None, cruise_id),
-        )
+        await db.execute(f"UPDATE cruises SET {field} = ? WHERE id = ?", (value, cruise_id))
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
 
@@ -3743,13 +3778,8 @@ async def current_route(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT r.id FROM routes r
-               WHERE r.cruise_id = (
-                   SELECT id FROM cruises WHERE ship_id = ?
-                   ORDER BY COALESCE(start_time, created_at) DESC LIMIT 1
-               )
-               ORDER BY r.id DESC LIMIT 1""",
-            (ship_id,),
+            "SELECT id FROM routes WHERE cruise_id = ? ORDER BY id DESC LIMIT 1",
+            (await _current_cruise_id(db, ship_id),),
         )
         latest = await cursor.fetchone()
     if latest:
@@ -3779,6 +3809,27 @@ async def route_arrivee(
         )
         await db.commit()
     return RedirectResponse(url="/cruises/current", status_code=303)
+
+
+# Départ / arrivée d'une route, modifiables sur place depuis sa page, avec leur
+# type ; même rôle que CRUISE_FIELDS (le nom du champ va dans l'UPDATE).
+ROUTE_FIELDS = {"start_time": "datetime", "end_time": "datetime",
+                "departure_location": "text", "destination_location": "text"}
+
+
+@app.post("/routes/{route_id}/field/{field}")
+async def route_set_field(route_id: int, field: str, value: Optional[str] = Form(None)):
+    """Une case vidée efface la valeur. L'heure arrive d'un datetime-local
+    (« 2026-09-18T07:53 »), la forme que les routes stockent déjà."""
+    if field not in ROUTE_FIELDS:
+        raise HTTPException(status_code=404, detail="Champ non modifiable")
+    value = (value or "").strip() or None
+    if value and ROUTE_FIELDS[field] == "datetime" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?", value):
+        raise HTTPException(status_code=400, detail="Date invalide")
+    async with connect() as db:
+        await db.execute(f"UPDATE routes SET {field} = ? WHERE id = ?", (value, route_id))
+        await db.commit()
+    return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
 
 
 @app.post("/routes/{route_id}/delete")
@@ -4337,15 +4388,17 @@ async def carnet(request: Request, croisiere: Optional[str] = None, edit: Option
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, ship_id)
         current = await _current_cruise_id(db, ship_id)
+        default = await _default_cruise_id(db, ship_id)
         cursor = await db.execute(
             "SELECT id, name, start_time FROM cruises WHERE ship_id = ? "
             "ORDER BY COALESCE(start_time, created_at) DESC", (ship_id,))
         cruises = [dict(c) for c in await cursor.fetchall()]
-        # « tout », un id de croisière du navire, ou par défaut celle en cours.
+        # « tout », un id de croisière du navire, ou par défaut celle en cours
+        # (à défaut, la dernière).
         voir_tout = croisiere == "tout"
         selected = None if voir_tout else (
             int(croisiere) if croisiere and croisiere.isdigit()
-            and any(c["id"] == int(croisiere) for c in cruises) else current)
+            and any(c["id"] == int(croisiere) for c in cruises) else default)
         where, args = "e.ship_id = ?", [ship_id]
         if not voir_tout:
             where += " AND e.cruise_id IS ?"
@@ -4379,7 +4432,7 @@ async def carnet(request: Request, croisiere: Optional[str] = None, edit: Option
         "carnet/index.html",
         {"request": request, "active_section": "gallery",
          "current_ship": dict(ship) if ship else None,
-         "cruises": cruises, "current_cruise": current, "selected": selected, "voir_tout": voir_tout,
+         "cruises": cruises, "current_cruise": current, "default_cruise": default, "selected": selected, "voir_tout": voir_tout,
          "days": days, "editing": edit,
          "my_crew_id": user["crew_member_id"] if user else None,
          "max_photos": CARNET_MAX_PHOTOS, "max_bytes": DOC_MAX_BYTES},
@@ -4399,14 +4452,14 @@ async def carnet_new(request: Request, text: Optional[str] = Form(None), cruise_
         return RedirectResponse(url=_safe_next(back, "/carnet"), status_code=303)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        # La croisière doit être une du navire ; à défaut, celle en cours.
+        # La croisière doit être une du navire ; à défaut, celle en cours, ou la dernière.
         cid = int(cruise_id) if cruise_id and cruise_id.isdigit() else None
         if cid is not None:
             cursor = await db.execute("SELECT 1 FROM cruises WHERE id = ? AND ship_id = ?", (cid, ship_id))
             if not await cursor.fetchone():
                 cid = None
         if cid is None:
-            cid = await _current_cruise_id(db, ship_id)
+            cid = await _default_cruise_id(db, ship_id)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor = await db.execute(
             "INSERT INTO carnet_entries (ship_id, cruise_id, crew_member_id, text, created_at) VALUES (?, ?, ?, ?, ?)",

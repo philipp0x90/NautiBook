@@ -48,6 +48,78 @@
     }
     .date-edit:hover { background: #fff; border-color: #cfe3ef; color: #333; }
     .date-edit:focus { background: #fff; border-color: var(--accent); color: #333; outline: none; }
+    /* Équipage : les lignes et le formulaire « Embarquer » partagent les
+       mêmes colonnes — équipier, deux dates, nuits à bord, boutons — pour
+       que les dates s'alignent d'une ligne à l'autre et sur les cases du
+       formulaire. La colonne des noms est bornée : sur grand écran, les dates
+       restent près des noms, et l'espace libre va aux boutons, à droite. */
+    .equipage-titre { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .equipage-titre span { font-weight: 400; letter-spacing: 0; }
+    .equipage-grille { display: grid; grid-template-columns: minmax(0, 400px) 130px 130px 80px 1fr;
+                       gap: 10px; align-items: center; }
+    .equipage-grille .actions { display: flex; gap: 6px; justify-content: flex-end; }
+    .equipage-tete { font-size: 11px; font-weight: 700; color: var(--muted); padding: 0 0 4px;
+                     border-bottom: 1px solid #edf2f7; }
+    .equipage-tete > span:nth-child(2), .equipage-tete > span:nth-child(3) { padding-left: 11px; }
+    .equipage-ligne { font-size: 14px; padding: 7px 0; border-bottom: 1px solid #edf2f7; }
+    .equipage-ligne:hover { background: #f7fbfd; }
+    .equipage-qui { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .equipage-avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+                       background: #dde5ee; display: flex; align-items: center; justify-content: center;
+                       color: #7d8fa3; font-weight: 700; }
+    .equipage-nom { color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .equipage-nom strong { text-transform: uppercase; }
+    .equipage-nom:hover { color: var(--accent); }
+    .badge-skipper { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 9px;
+                     font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .equipage-nuits { font-size: 13px; color: var(--muted); }
+    /* Champs date : Safari leur donne une largeur minimale et une hauteur à
+       lui (différente selon qu'ils sont vides ou remplis), qui débordaient
+       de la colonne et se chevauchaient. Hauteur fixe, apparence native
+       retirée, et min-width: 0 sur eux comme sur leur cellule de grille. */
+    .equipage-grille > * { min-width: 0; }
+    .equipage-grille input[type=date] {
+        display: block; width: 100%; min-width: 0; height: 34px; box-sizing: border-box;
+        -webkit-appearance: none; appearance: none; line-height: normal;
+    }
+    .equipage-grille input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+    /* Dates des lignes : du texte ordinaire, l'icône calendrier n'apparaissant qu'au survol. */
+    .equipage-grille .date-edit { height: 30px; padding: 3px 10px; font: inherit; font-size: 14px; color: #333; }
+    .equipage-grille .date-edit::-webkit-calendar-picker-indicator { opacity: 0; }
+    .equipage-grille .date-edit:hover::-webkit-calendar-picker-indicator,
+    .equipage-grille .date-edit:focus::-webkit-calendar-picker-indicator { opacity: .6; }
+    /* ✕ d'effacement de la date de débarquement, dans la case, à droite ;
+       discret jusqu'au survol de la ligne. */
+    .date-cellule { position: relative; }
+    .effacer-date { position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+                    width: 20px; height: 20px; border: 0; border-radius: 50%; padding: 0; cursor: pointer;
+                    background: transparent; color: #b8c4d0; font-size: 11px; }
+    .equipage-ligne:hover .effacer-date { color: #991b1b; }
+    .effacer-date:hover { background: #fee2e2; }
+    /* L'icône calendrier de Chrome tomberait sous le ✕ : retirée là où il y en
+       a un. La date reste modifiable en cliquant dessus. */
+    .date-cellule:has(.effacer-date) .date-edit::-webkit-calendar-picker-indicator { display: none; }
+    /* « Nommer skipper » au trait : il ne doit pas se confondre avec le badge. */
+    .btn-nommer { background: #fff; color: var(--accent); border: 1px solid var(--accent); border-radius: 12px;
+                  padding: 2px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+    .btn-nommer:hover { background: var(--accent); color: #fff; }
+    .btn-retirer { width: 24px; height: 24px; border-radius: 50%; border: 0; padding: 0; cursor: pointer;
+                   background: #fee2e2; color: #991b1b; font-size: 12px; }
+    .btn-retirer:hover { background: #fca5a5; }
+    /* Formulaire d'ajout : un encadré à part, pour ne pas passer pour une ligne. */
+    .equipage-ajout { margin-top: 14px; background: #f7fafc; border: 1px dashed #d5e0ea; border-radius: 8px; padding: 10px 12px; }
+    .equipage-ajout-titre { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+    .equipage-ajout label { font-size: 12px; }
+    .equipage-ajout input, .equipage-ajout select { background: #fff; }
+    /* Petit écran : le nom et les boutons sur une ligne, les deux dates dessous. */
+    @media (max-width: 760px) {
+        .equipage-grille { grid-template-columns: 1fr 1fr 130px; row-gap: 4px; }  /* 130 px fixes : les dates restent alignées, bouton ou pas */
+        .equipage-grille > :first-child { grid-column: 1 / 3; }
+        .equipage-grille .actions { grid-column: 3; grid-row: 1; }
+        .equipage-ajout .equipage-grille > :first-child { grid-column: 1 / -1; }
+        .equipage-ajout .equipage-grille .actions { grid-column: 1 / -1; grid-row: auto; justify-content: flex-start; }
+        .equipage-tete, .equipage-nuits, .equipage-grille > div:empty { display: none; }
+    }
 </style>
 {% endblock %}
 
@@ -57,8 +129,9 @@
 <div class="stub">
     <div style="font-size:36px;margin-bottom:12px"><svg class="icon-boat"><use href="#icon-boat"></use></svg></div>
     <div>Aucune croisière en cours.</div>
-    <div style="margin-top:16px">
+    <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
         <a href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
+        <a href="/cruises/list" class="btn btn-blue">Liste des croisières</a>
     </div>
 </div>
 {% else %}
@@ -70,11 +143,12 @@
    sur l'ensemble et paraissaient décalés vers le bas. Le nom est modifiable sur
    place, comme les colonnes du journal de bord : un formulaire à un seul champ
    qui s'envoie au changement. #}
+{# Ni suppression ni création de croisière sur cette page : elles se font
+   depuis la liste des croisières. /cruises/current, la page du bord consultée
+   en navigation, n'a pas non plus « + Nouvelle route », que garde la même
+   croisière ouverte depuis la liste (/cruises/{id}). #}
+{% set page_en_cours = request.url.path == '/cruises/current' %}
 <div class="cruise-header">
-    <form style="grid-area:sup" method="POST" action="/cruises/{{ cruise.id }}/delete"
-          onsubmit="return confirm('Supprimer cette croisière et toutes ses routes ?')">
-        <button type="submit" class="btn btn-orange">— Supprimer croisière</button>
-    </form>
     <form style="grid-area:nom;min-width:0;text-align:center" method="POST" action="/cruises/{{ cruise.id }}/set-name">
         <input type="text" name="name" class="cruise-name" value="{{ cruise.name or '' }}"
                placeholder="Croisière sans nom"
@@ -85,52 +159,27 @@
     {% if cruise.number %}
     <div style="grid-area:num;font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
     {% endif %}
-    <a style="grid-area:new" href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
     {% if is_current is defined and is_current %}
     <div style="grid-area:mention;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
     {% endif %}
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid #dde5ee;border-radius:8px;overflow:hidden;margin-bottom:16px">
-    {# Nom du jour devant la date, et le lieu à côté, dans la même graisse —
-       comme sur la page route. Les dates d'une croisière sont saisies sans
-       heure : il n'y a rien à afficher après. Les lieux viennent des routes,
-       voir CRUISE_FROM / CRUISE_TO dans main.py. #}
-    <div style="padding:14px 20px;border-right:1px solid #dde5ee">
-        <span style="font-size:14px;color:var(--muted)">Départ :</span>
-        <strong style="font-size:16px;margin-left:8px">
-            {% if cruise.start_time %}{{ cruise.start_time | jourfr }} {{ cruise.start_time | datefr }}{% else %}—{% endif %}
-        </strong>
-        {% if cruise.from_location %}
-        <span style="font-size:14px;color:var(--muted)"> — de :</span>
-        <strong style="font-size:16px">{{ cruise.from_location }}</strong>
-        {% endif %}
+{# Départ et arrivée : dates et lieux modifiables sur place, un formulaire
+   par champ envoyé au changement (cruise_set_field), comme le nom. Le nom du
+   jour devant la date reste du texte. Sans lieu saisi, celui des routes est
+   proposé en gris (placeholder) — voir CRUISE_FROM / CRUISE_TO dans main.py.
+   Le ✕ efface une date : une case date ne se vide pas commodément à la main. #}
+{% from "_bornes.html" import champ_date, champ_lieu %}
+<div class="bornes">
+    <div class="bornes-cote">
+        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/start_time', 'Départ', cruise.start_time) }}
+        {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/departure', 'de', cruise.departure, cruise.from_location) }}
     </div>
-    <div style="padding:10px 20px;text-align:right;display:flex;align-items:center;justify-content:flex-end;gap:8px">
-        <span style="font-size:14px;color:var(--muted)">Arrivée :</span>
-        <strong style="font-size:16px">
-            {% if cruise.end_time %}{{ cruise.end_time | jourfr }} {{ cruise.end_time | datefr }}{% else %}—{% endif %}
-        </strong>
-        {% if cruise.to_location %}
-        <span style="font-size:14px;color:var(--muted)">— à :</span>
-        <strong style="font-size:16px">{{ cruise.to_location }}</strong>
-        {% endif %}
-        <button type="button" onclick="document.getElementById('end-edit').classList.toggle('hidden')"
-                style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px 6px">✎</button>
+    <div class="bornes-cote bornes-arrivee">
+        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/end_time', 'Arrivée', cruise.end_time) }}
+        {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/destination', 'à', cruise.destination, cruise.to_location) }}
     </div>
 </div>
-<div id="end-edit" class="hidden" style="margin:-8px 0 16px;padding:10px 16px;background:#f7fbfd;border:1px solid #dde5ee;border-radius:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    <form method="POST" action="/cruises/{{ cruise.id }}/set-end" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label style="font-size:13px;margin:0">Date d'arrivée :</label>
-        <input type="date" name="end_time" value="{{ cruise.end_time[:10] if cruise.end_time else '' }}" style="width:160px">
-        <button type="submit" class="btn btn-blue" style="padding:4px 12px;font-size:13px">Enregistrer</button>
-    </form>
-    <form method="POST" action="/cruises/{{ cruise.id }}/set-end" onsubmit="return confirm('Effacer la date d\'arrivée ?')">
-        <input type="hidden" name="end_time" value="">
-        <button type="submit" class="btn btn-orange" style="padding:4px 12px;font-size:13px">Effacer</button>
-    </form>
-</div>
-<style>#end-edit.hidden{display:none!important}</style>
 
 {% if routes %}
 <div style="overflow-x:auto;margin-bottom:16px">
@@ -187,7 +236,9 @@
     <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
     {% endif %}
     <div style="flex:1;text-align:center;display:flex;gap:8px;justify-content:center">
+        {% if not page_en_cours %}
         <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
+        {% endif %}
         {% if not cruise.end_time %}
         <form method="POST" action="/cruises/{{ cruise.id }}/arrival" style="display:inline"
               onsubmit="return confirm('Marquer l\'arrivée de cette croisière ?')">
@@ -202,58 +253,62 @@
 
 {# Équipage — cruise_crew. Le rôle est stocké en anglais ('skipper' / 'crew'),
    comme le DEFAULT de la colonne, et traduit seulement à l'affichage. #}
-<div class="card" style="margin-bottom:16px;padding:14px">
-    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Équipage</h4>
+<div class="card equipage" style="margin-bottom:16px;padding:14px">
+    <h4 class="equipage-titre">Équipage{% if aboard %} <span>· {{ aboard | length }}</span>{% endif %}</h4>
 
     {% if aboard %}
-    <div style="display:grid;gap:6px;margin-bottom:12px">
-        {% for m in aboard %}
-        <div style="display:flex;align-items:center;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid #edf2f7">
+    <div class="equipage-grille equipage-tete">
+        <span>Équipier</span><span>Embarquement</span><span>Débarquement</span><span>À bord</span><span></span>
+    </div>
+    {% for m in aboard %}
+    <div class="equipage-grille equipage-ligne">
+        <div class="equipage-qui">
             {% if m.photo_path and fichier_visible(request, m.photo_path) %}
-            <img src="{{ m.photo_path }}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;flex-shrink:0">
+            <img src="{{ m.photo_path }}" alt="" class="equipage-avatar">
             {% else %}
-            <div style="width:30px;height:30px;border-radius:50%;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-weight:700;flex-shrink:0">{{ (m.first_name or m.last_name or '?')[0] | upper }}</div>
+            <div class="equipage-avatar">{{ (m.first_name or m.last_name or '?')[0] | upper }}</div>
             {% endif %}
-
-            <a href="/crew/{{ m.member_id }}" style="color:inherit;text-decoration:none">
-                {{ m.first_name or '' }} <strong style="text-transform:uppercase">{{ m.last_name or '' }}</strong>
+            <a href="/crew/{{ m.member_id }}" class="equipage-nom">
+                {{ m.first_name or '' }} <strong>{{ m.last_name or '' }}</strong>
             </a>
+            {% if m.role == 'skipper' %}<span class="badge-skipper">Skipper</span>{% endif %}
+        </div>
 
-            {% if m.role == 'skipper' %}
-            <span style="background:var(--accent);color:#fff;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:700">Skipper</span>
+        {# Dates modifiables sur place : un formulaire par champ, jamais un
+           partagé, sinon deux modifications concurrentes s'écrasent. Vider
+           la case efface la date. #}
+        <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/embark_date">
+            <input type="date" name="value" class="date-edit" value="{{ m.embark_date[:10] if m.embark_date else '' }}"
+                   title="Embarquement" onchange="this.form.submit()">
+        </form>
+        {# ✕ : remet la date de débarquement à vide — une case date ne se vide
+           pas commodément à la main, surtout dans Safari. #}
+        <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/disembark_date" class="date-cellule">
+            <input type="date" name="value" class="date-edit" value="{{ m.disembark_date[:10] if m.disembark_date else '' }}"
+                   title="Débarquement" onchange="this.form.submit()">
+            {% if m.disembark_date %}
+            <button type="button" class="effacer-date" title="Effacer la date de débarquement"
+                    onclick="this.form.elements.value.value = ''; this.form.submit()">✕</button>
             {% endif %}
+        </form>
+        <div class="equipage-nuits">{% if m.nights is not none %}{{ m.nights }} nuit{{ 's' if m.nights > 1 else '' }}{% else %}—{% endif %}</div>
 
-            {# Dates modifiables sur place : un formulaire par champ, jamais un
-               partagé, sinon deux modifications concurrentes s'écrasent. Vider
-               la case efface la date. #}
-            <div style="flex:1;display:flex;align-items:center;gap:4px">
-                <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/embark_date">
-                    <input type="date" name="value" class="date-edit" value="{{ m.embark_date[:10] if m.embark_date else '' }}"
-                           title="Embarquement" onchange="this.form.submit()">
-                </form>
-                <span class="meta">→</span>
-                <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/date/disembark_date">
-                    <input type="date" name="value" class="date-edit" value="{{ m.disembark_date[:10] if m.disembark_date else '' }}"
-                           title="Débarquement" onchange="this.form.submit()">
-                </form>
-            </div>
-
+        <div class="actions">
             {% if m.role != 'skipper' %}
-            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/skipper" style="display:inline">
-                <button type="submit" class="btn btn-blue" style="padding:3px 10px;font-size:12px"
-                        title="Désigner {{ m.gender | equipier('cet') }} comme skipper">Skipper</button>
+            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/skipper">
+                <button type="submit" class="btn-nommer"
+                        title="Désigner {{ m.gender | equipier('cet') }} comme skipper">Nommer skipper</button>
             </form>
             {% endif %}
             {# Débarquer ne touche pas la fiche de la personne, seulement son
                embarquement sur cette croisière. #}
-            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/delete" style="display:inline"
+            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/delete"
                   onsubmit="return confirm('Retirer {{ m.gender | equipier('cet') }} de la croisière ?')">
-                <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px"
-                        title="Retirer de la croisière">✕</button>
+                <button type="submit" class="btn-retirer" title="Retirer de la croisière">✕</button>
             </form>
         </div>
-        {% endfor %}
     </div>
+    {% endfor %}
     {% else %}
     <div class="meta" style="margin-bottom:12px">Aucun équipier embarqué.</div>
     {% endif %}
@@ -261,27 +316,30 @@
     {% if available_crew %}
     {# Dates préremplies depuis la croisière : un équipier embarque en général
        au départ et débarque à l'arrivée. #}
-    <form method="POST" action="/cruises/{{ cruise.id }}/crew"
-          style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-        <div style="flex:1;min-width:180px">
-            <label style="font-size:12px">Équipier</label>
-            <select name="crew_member_id" required>
-                {% for m in available_crew %}
-                <option value="{{ m.id }}">{{ m.last_name or '' }} {{ m.first_name or '' }}</option>
-                {% endfor %}
-            </select>
+    <form method="POST" action="/cruises/{{ cruise.id }}/crew" class="equipage-ajout">
+        <div class="equipage-ajout-titre">Embarquer un équipier</div>
+        <div class="equipage-grille" style="align-items:end">
+            <div>
+                <label>Équipier</label>
+                <select name="crew_member_id" required>
+                    {% for m in available_crew %}
+                    <option value="{{ m.id }}">{{ m.last_name or '' }} {{ m.first_name or '' }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Embarquement</label>
+                <input type="date" name="embark_date"
+                       value="{{ cruise.start_time[:10] if cruise.start_time else '' }}">
+            </div>
+            <div>
+                <label>Débarquement</label>
+                <input type="date" name="disembark_date"
+                       value="{{ cruise.end_time[:10] if cruise.end_time else '' }}">
+            </div>
+            <div></div>
+            <div class="actions"><button type="submit" class="btn btn-yellow">+ Embarquer</button></div>
         </div>
-        <div>
-            <label style="font-size:12px">Embarquement</label>
-            <input type="date" name="embark_date" style="width:150px"
-                   value="{{ cruise.start_time[:10] if cruise.start_time else '' }}">
-        </div>
-        <div>
-            <label style="font-size:12px">Débarquement</label>
-            <input type="date" name="disembark_date" style="width:150px"
-                   value="{{ cruise.end_time[:10] if cruise.end_time else '' }}">
-        </div>
-        <button type="submit" class="btn btn-yellow">+ Embarquer</button>
     </form>
     {% elif not aboard %}
     <div>
@@ -289,7 +347,7 @@
         <span class="meta" style="margin-left:8px">Aucune fiche d'équipier n'existe encore.</span>
     </div>
     {% else %}
-    <div class="meta">Tous les équipiers connus sont déjà embarqués.
+    <div class="meta" style="margin-top:10px">Tous les équipiers connus sont déjà embarqués.
         <a href="/crew/new" style="color:var(--accent)">Créer une nouvelle fiche</a>.</div>
     {% endif %}
 </div>

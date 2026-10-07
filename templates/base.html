@@ -299,6 +299,46 @@
             nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
             .topbar { padding: 8px 10px; }
         }
+        /* ── Départ / arrivée d'une croisière ou d'une route (_bornes.html) ──
+           Dates et lieux modifiables sur place, qui se lisent comme du texte en
+           gras et se signalent au survol. */
+        .bornes { display: grid; grid-template-columns: 1fr 1fr; border: 2px solid #dde5ee; border-radius: 8px;
+                  overflow: hidden; margin-bottom: 16px; }
+        .bornes-cote { padding: 10px 16px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .bornes-cote + .bornes-cote { border-left: 1px solid #dde5ee; }
+        .bornes-arrivee { justify-content: flex-end; }
+        .bornes-label { font-size: 16px; color: #1a1a2e; }   /* comme les valeurs, sans le gras */
+        .bornes-jour { font-size: 16px; font-weight: 700; }
+        .bornes-form { position: relative; display: inline-flex; align-items: center; }
+        .bornes-edit { font: inherit; font-size: 16px; font-weight: 700; color: #1a1a2e; padding: 3px 6px;
+                       background: transparent; border: 1px solid transparent; border-radius: 6px; height: 34px; }
+        .bornes-edit:hover { background: #fff; border-color: #cfe3ef; }
+        .bornes-edit:focus { background: #fff; border-color: var(--accent); outline: none; }
+        .bornes-edit::placeholder { color: #9aa8b6; font-weight: 400; }
+        /* Date collée au nom du jour : texte calé à gauche (Safari le centre),
+           case à peine plus large que la date, sans marge avec le jour. */
+        .bornes-date { width: 130px; padding-left: 3px; text-align: left; -webkit-appearance: none; appearance: none; }
+        .bornes-date.avec-heure { width: 178px; }   /* datetime-local : la date et l'heure */
+        .bornes-date::-webkit-date-and-time-value { text-align: left; margin: 0; }
+        .bornes-jour + .bornes-form { margin-left: -4px; }
+        .bornes-date::-webkit-calendar-picker-indicator { opacity: 0; }
+        .bornes-date:hover::-webkit-calendar-picker-indicator { opacity: .6; }
+        .bornes-form:has(.bornes-effacer) .bornes-date::-webkit-calendar-picker-indicator { display: none; }
+        /* Case du lieu à la taille du texte : sans quoi l'espace vide restait à
+           droite du lieu, et le bloc Arrivée, calé à droite, paraissait centré.
+           field-sizing suit la saisie (Chrome) ; size, posé par le gabarit
+           d'après le texte, sert ailleurs (Safari). */
+        .bornes-lieu { width: auto; field-sizing: content; min-width: 3em; max-width: 16em; padding-left: 3px; }
+        .bornes-label + .bornes-form { margin-left: -2px; }
+        .bornes-effacer { position: absolute; right: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%;
+                          padding: 0; cursor: pointer; background: transparent; color: #b8c4d0; font-size: 11px; }
+        .bornes-cote:hover .bornes-effacer { color: #991b1b; }
+        .bornes-effacer:hover { background: #fee2e2; }
+        @media (max-width: 760px) {
+            .bornes { grid-template-columns: 1fr; }
+            .bornes-cote + .bornes-cote { border-left: 0; border-top: 1px solid #dde5ee; }
+            .bornes-arrivee { justify-content: flex-start; }
+        }
     </style>
     {% block head %}{% endblock %}
 </head>

@@ -1,0 +1,37 @@
+{# Départ / arrivée, modifiables sur place : la page croisière et la page route.
+   Un formulaire par champ, envoyé au changement. Le nom du jour devant la date
+   reste du texte. Styles : .bornes-* dans base.html.
+
+   champ_date : avec_heure pour un datetime-local (routes) ; le ✕ efface la
+   date, une case date ne se vidant pas commodément à la main.
+   champ_lieu : derive, le lieu déduit d'ailleurs, proposé en gris quand
+   aucun n'est saisi. #}
+{% macro champ_date(action, label, valeur, avec_heure=false) %}
+<span class="bornes-label">{{ label }} :</span>
+{% if valeur %}<span class="bornes-jour">{{ valeur | jourfr }}</span>{% endif %}
+<form method="POST" action="{{ action }}" class="bornes-form">
+    {% if avec_heure %}
+    <input type="datetime-local" name="value" class="bornes-edit bornes-date avec-heure"
+           value="{{ (valeur[:16] | replace(' ', 'T')) if valeur else '' }}"
+           title="{{ label }} — date et heure" onchange="this.form.submit()">
+    {% else %}
+    <input type="date" name="value" class="bornes-edit bornes-date" value="{{ valeur[:10] if valeur else '' }}"
+           title="{{ label }} — date" onchange="this.form.submit()">
+    {% endif %}
+    {% if valeur %}
+    <button type="button" class="bornes-effacer" title="Effacer"
+            onclick="if (confirm('Effacer ?')) { this.form.elements.value.value = ''; this.form.submit(); }">✕</button>
+    {% endif %}
+</form>
+{% endmacro %}
+
+{% macro champ_lieu(action, prefixe, valeur, derive=none) %}
+<span class="bornes-label">{{ prefixe }} :</span>
+<form method="POST" action="{{ action }}" class="bornes-form">
+    {% set texte = valeur or derive or 'Lieu' %}
+    <input type="text" name="value" class="bornes-edit bornes-lieu" value="{{ valeur or '' }}"
+           size="{{ [texte | length + 1, 4] | max }}"
+           placeholder="{{ derive or 'Lieu' }}" title="Modifier le lieu (Entrée pour enregistrer)"
+           onchange="this.form.submit()">
+</form>
+{% endmacro %}
