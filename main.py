@@ -3875,7 +3875,8 @@ async def route_arrivee(
 # Départ / arrivée d'une route, modifiables sur place depuis sa page, avec leur
 # type ; même rôle que CRUISE_FIELDS (le nom du champ va dans l'UPDATE).
 ROUTE_FIELDS = {"start_time": "datetime", "end_time": "datetime",
-                "departure_location": "text", "destination_location": "text"}
+                "departure_location": "text", "destination_location": "text",
+                "notes": "text"}   # le journal de la route (FileMaker), panneau Journal
 
 
 @app.post("/routes/{route_id}/field/{field}")
@@ -3890,7 +3891,7 @@ async def route_set_field(route_id: int, field: str, value: Optional[str] = Form
     async with connect() as db:
         await db.execute(f"UPDATE routes SET {field} = ? WHERE id = ?", (value, route_id))
         await db.commit()
-    return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+    return RedirectResponse(url=f"/routes/{route_id}" + ("#journal" if field == "notes" else ""), status_code=303)
 
 
 @app.post("/routes/{route_id}/delete")
@@ -4741,9 +4742,11 @@ async def _set_line_field(line_id: int, field: str, value: Optional[str]):
         if row is None:
             raise HTTPException(status_code=404, detail="Entry not found")
         route_id = row[0]
+        # Blancs autour retirés : une note faite d'un retour à la ligne
+        # n'est pas une note, et s'afficherait vide dans le Journal.
         await db.execute(
             f"UPDATE logbook_lines SET {field} = ? WHERE id = ?",
-            (value or None, line_id),
+            ((value or "").strip() or None, line_id),
         )
         await db.commit()
     return f"/routes/{route_id}" if route_id else f"/logbook/{line_id}"
@@ -4751,14 +4754,16 @@ async def _set_line_field(line_id: int, field: str, value: Optional[str]):
 
 @app.post("/logbook/{line_id}/field/{field}")
 async def update_line_field(line_id: int, field: str, value: Optional[str] = Form(None)):
-    """Inline edit of one logbook-line column from the route page."""
-    return RedirectResponse(url=await _set_line_field(line_id, field, value), status_code=303)
+    """Inline edit of one logbook-line column from the route page. A note
+    comes back to the Journal section rather than the top of the page."""
+    url = await _set_line_field(line_id, field, value)
+    return RedirectResponse(url=url + ("#journal" if field == "notes" else ""), status_code=303)
 
 
 @app.post("/logbook/note")
 async def add_line_note(line_id: int = Form(...), value: Optional[str] = Form(None)):
-    """Journal panel: annotate a line picked from the dropdown of unannotated ones."""
-    return RedirectResponse(url=await _set_line_field(line_id, "notes", value), status_code=303)
+    """Journal: annotate a line picked from the dropdown of unannotated ones."""
+    return RedirectResponse(url=await _set_line_field(line_id, "notes", value) + "#journal", status_code=303)
 
 
 # ── Recherche ─────────────────────────────────────────────────────────────────

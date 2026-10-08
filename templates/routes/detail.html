@@ -5,7 +5,32 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-    .route-layout { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
+    .route-layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+    /* Journal, sous le tableau. */
+    .journal { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px 16px; margin: 16px 0; }
+    .journal h4 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px;
+                  display: flex; align-items: center; }
+    .journal h4 .btn { margin-left: auto; text-transform: none; letter-spacing: 0; padding: 3px 12px; font-size: 12px; }
+    .journal [hidden] { display: none !important; }
+    .j-notes { background: #f7fafc; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+    .j-notes-titre { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+    .j-entree { display: grid; grid-template-columns: 110px 1fr; gap: 14px; padding: 8px 0; border-top: 1px solid #edf2f7; }
+    /* Ajout : la colonne de l'heure à la taille du menu, pas plus. */
+    .j-ajout .j-entree { grid-template-columns: auto 1fr; }
+    .j-quand { font-size: 13px; font-weight: 700; padding-top: 4px; }
+    .j-quand span { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+    .j-quand select { font-size: 13px; padding: 4px 6px; width: auto; max-width: 220px; }
+    .j-texte { width: 100%; font: inherit; font-size: 14px; line-height: 1.5; resize: none; overflow: hidden;
+               padding: 3px 6px; background: transparent; border: 1px solid transparent; border-radius: 6px; }
+    .j-texte:hover { border-color: #cfe3ef; background: #fff; }
+    .j-texte:focus, .j-texte.j-edit { border-color: var(--accent); background: #fff; outline: none; }
+    .j-texte::placeholder { color: #9aa8b6; font-style: italic; }
+    .j-ajout .j-texte { min-height: 5em; }   /* trois lignes pour écrire */
+    .j-boutons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+    .j-boutons .btn { padding: 4px 12px; font-size: 12px; }
+    .j-boutons .btn:not(.btn-blue) { background: #eee; color: #333; }
+    .j-ajout { margin-bottom: 8px; }
+    @media (max-width: 640px) { .j-entree { grid-template-columns: 1fr; gap: 4px; } }
     .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .log-table th {
         padding: 5px 7px; background: #5bc8e0; color: #fff; font-weight: 700;
@@ -44,8 +69,6 @@
     .log-table .add-row td { background: #e8f7fb; }
     .log-table .add-row td a { color: var(--accent-dark); font-weight: 700; text-decoration: none; font-size: 14px; }
 
-    .info-panel { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px; }
-    .info-panel h4 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
     .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #edf2f7; }
     .stat-row:last-child { border-bottom: none; }
 
@@ -222,53 +245,100 @@
         </div>
     </div>
 
-    {# ── Journal / Notes panel ── #}
-    <div class="info-panel">
-        <h4>✏ Journal / Notes</h4>
-        {% set notes_lines = lines | selectattr('notes') | list %}
-        {% set blank_lines = lines | rejectattr('notes') | list %}
-        {% if notes_lines %}
-        <div style="max-height:260px;overflow-y:auto;display:grid;gap:6px">
-            {% for ln in notes_lines %}
-            <div style="font-size:12px">
-                <div style="color:var(--muted);font-size:11px;margin-bottom:2px">{{ ln.timestamp[11:16] if ln.timestamp else '' }}</div>
-                <form method="POST" action="/logbook/{{ ln.id }}/field/notes">
-                    <textarea name="value" class="inline-edit"
-                              rows="{{ [(ln.notes or '').splitlines() | length or 1, 8] | min }}"
-                              title="Modifier la note (vider le champ la supprime)"
-                              onchange="this.form.submit()">{{ ln.notes }}</textarea>
-                </form>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div style="color:var(--muted);font-size:13px">Aucune note.</div>
-        {% endif %}
-
-        {% if blank_lines %}
-        <form method="POST" action="/logbook/note"
-              style="margin-top:10px;padding-top:10px;border-top:1px solid #edf2f7;display:grid;gap:6px">
-            <label style="margin:0">Annoter la ligne de</label>
-            <select name="line_id" style="font-size:12px;padding:4px 6px">
-                {% for ln in blank_lines %}
-                <option value="{{ ln.id }}">
-                    {{ ln.timestamp[11:16] if ln.timestamp else 'Ligne #' ~ ln.id }}{% if ln.visual_pos %} — {{ ln.visual_pos }}{% endif %}
-                </option>
-                {% endfor %}
-            </select>
-            <textarea name="value" rows="2" required placeholder="Observations, événements…"
-                      style="font-size:12px"></textarea>
-            <button type="submit" class="btn btn-blue" style="justify-self:end;padding:4px 14px;font-size:12px">
-                Ajouter
-            </button>
-        </form>
-        {% endif %}
-        {% if route.notes %}
-        <div style="margin-top:10px;padding-top:8px;border-top:1px solid #edf2f7;font-size:13px;color:#333;white-space:pre-wrap">{{ route.notes }}</div>
-        {% endif %}
-    </div>
-
 </div>
+
+{# ── Journal ── sous le tableau, sur toute la largeur. D'abord les notes des
+   lignes dans l'ordre des heures, puis les Notes de la route (ce qui ne se
+   rattache à aucun moment : le journal repris de FileMaker à l'import).
+   Modification sur place, mais enregistrée par un bouton : « Enregistrer » et
+   « Annuler » n'apparaissent qu'une fois le texte touché, Échap annule, et un
+   clic ailleurs n'enregistre rien — un texte long à moitié écrit ne part pas
+   sur une fausse manœuvre (script en bas de page). Vider un texte et
+   l'enregistrer le supprime. #}
+{% set notes_lines = lines | selectattr('notes') | list %}
+{% set blank_lines = lines | rejectattr('notes') | list %}
+{% macro texte_journal(action, valeur, indice) %}
+<form method="POST" action="{{ action }}" class="j-form">
+    <textarea name="value" class="j-texte" rows="1" placeholder="{{ indice }}"
+              title="Cliquer pour modifier">{{ valeur or '' }}</textarea>
+    <div class="j-boutons" hidden>
+        <button type="button" class="btn j-annuler">Annuler</button>
+        <button type="submit" class="btn btn-blue">Enregistrer</button>
+    </div>
+</form>
+{% endmacro %}
+<section class="journal" id="journal">
+    <h4>Journal
+        {% if blank_lines %}
+        <button type="button" class="btn btn-yellow j-bouton-ajout"
+                onclick="document.getElementById('j-ajout').hidden = false; document.querySelector('#j-ajout textarea').focus(); this.hidden = true">
+            + Ajouter une note</button>
+        {% endif %}
+    </h4>
+
+    {% if blank_lines %}
+    {# Une note se rattache à une ligne : par défaut la dernière qui n'en a
+       pas encore ; les lignes annotées se modifient dans la liste. #}
+    <form method="POST" action="/logbook/note" id="j-ajout" class="j-ajout" hidden>
+        <div class="j-entree">
+            <div class="j-quand">
+                <select name="line_id" aria-label="Ligne à annoter">
+                    {% for ln in blank_lines %}
+                    <option value="{{ ln.id }}" {{ 'selected' if loop.last else '' }}>
+                        {{ ln.timestamp[11:16] if ln.timestamp else '—' }}{% if ln.visual_pos %} · {{ ln.visual_pos }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <textarea name="value" class="j-texte j-edit" rows="2" required placeholder="Observations, événements…"></textarea>
+                <div class="j-boutons">
+                    <button type="button" class="btn j-annuler-ajout"
+                            onclick="this.form.hidden = true; this.form.reset(); document.querySelector('.j-bouton-ajout').hidden = false">Annuler</button>
+                    <button type="submit" class="btn btn-blue">Enregistrer</button>
+                </div>
+            </div>
+        </div>
+    </form>
+    {% endif %}
+
+    {% for ln in notes_lines %}
+    <div class="j-entree">
+        <div class="j-quand">{{ ln.timestamp[11:16] if ln.timestamp else '—' }}
+            {% if ln.visual_pos %}<span>{{ ln.visual_pos }}</span>{% endif %}</div>
+        {{ texte_journal('/logbook/' ~ ln.id ~ '/field/notes', ln.notes, '') }}
+    </div>
+    {% endfor %}
+    {% if not notes_lines and lines %}
+    <div class="meta" style="padding-top:8px">Aucune note sur les lignes de cette route.</div>
+    {% endif %}
+
+    <div class="j-notes">
+        <div class="j-notes-titre">Notes</div>
+        {{ texte_journal('/routes/' ~ route.id ~ '/field/notes', route.notes,
+                         "Ce qui ne se rattache à aucun moment précis de la route — cliquer pour écrire…") }}
+    </div>
+</section>
+
+<script>
+// Journal : chaque texte grandit avec son contenu ; « Enregistrer / Annuler »
+// n'apparaissent qu'une fois le texte modifié. Échap ou Annuler remettent le
+// texte d'origine. Un clic ailleurs n'enregistre rien.
+document.querySelectorAll('.journal textarea').forEach(function (t) {
+    // Une zone encore masquée (l'ajout) mesure 0 : on la laisse à sa hauteur
+    // de CSS jusqu'à ce qu'elle soit visible et qu'on y tape.
+    const ajuster = () => { if (!t.offsetParent) return;
+        t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; };
+    ajuster();
+    const form = t.closest('.j-form');
+    if (!form) { t.addEventListener('input', ajuster); return; }
+    const boutons = form.querySelector('.j-boutons'), origine = t.value;
+    function annuler() { t.value = origine; ajuster(); boutons.hidden = true; t.classList.remove('j-edit'); t.blur(); }
+    t.addEventListener('input', function () { ajuster(); boutons.hidden = t.value === origine; t.classList.toggle('j-edit', t.value !== origine); });
+    t.addEventListener('keydown', function (e) { if (e.key === 'Escape') annuler(); });
+    form.querySelector('.j-annuler').addEventListener('click', annuler);
+});
+</script>
 
 {# ── Bottom panels ── #}
 <div class="bottom-grid">
