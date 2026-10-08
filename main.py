@@ -3298,8 +3298,16 @@ async def remove_cruise_crew(cruise_id: int, assignment_id: int):
 # at 1..N with no gaps: delete one and those after it shift down. Ids stay
 # untouched underneath, so links and foreign keys still resolve.
 # Each expects its table aliased as c (cruises) or r (routes).
-CRUISE_NUMBER = ("(SELECT COUNT(*) FROM cruises c2"
-                 " WHERE c2.ship_id IS c.ship_id AND c2.id <= c.id)")
+#
+# Cruises are counted in order of their start date (CRUISE_ORDER: start date,
+# else creation date, then id to break ties), not of creation: a cruise
+# imported after the fact (FileMaker) takes its place in time, and the ones
+# after it shift up. The list, and the prev/next arrows of the cruise page
+# (_cruise_neighbours), follow the same order.
+CRUISE_KEY = "COALESCE({a}.start_time, {a}.created_at)"
+CRUISE_ORDER = "COALESCE(c.start_time, c.created_at), c.id"
+CRUISE_NUMBER = ("(SELECT COUNT(*) FROM cruises c2 WHERE c2.ship_id IS c.ship_id"
+                 f" AND ({CRUISE_KEY.format(a='c2')}, c2.id) <= ({CRUISE_KEY.format(a='c')}, c.id))")
 ROUTE_NUMBER = ("(SELECT COUNT(*) FROM routes r2"
                 " WHERE r2.cruise_id IS r.cruise_id AND r2.id <= r.id)")
 
@@ -3320,6 +3328,22 @@ LOCH_FIRST = ("(SELECT MIN(l.log) FROM logbook_lines l"
               " JOIN routes r3 ON l.route_id = r3.id WHERE r3.cruise_id = c.id)")
 LOCH_LAST = ("(SELECT MAX(l.log) FROM logbook_lines l"
              " JOIN routes r3 ON l.route_id = r3.id WHERE r3.cruise_id = c.id)")
+
+
+async def _cruise_neighbours(db, ship_id: int, cruise_id: int):
+    """Ids de la croisière précédente et de la suivante du navire, dans
+    l'ordre des dates de départ (le même que CRUISE_NUMBER) ; None aux bouts."""
+    key = f"({CRUISE_KEY.format(a='c')}, c.id)"
+    here = f"(SELECT {CRUISE_KEY.format(a='x')}, x.id FROM cruises x WHERE x.id = ?)"
+    found = []
+    for comparison, direction in (("<", "DESC"), (">", "ASC")):
+        cursor = await db.execute(
+            f"SELECT c.id FROM cruises c WHERE c.ship_id = ? AND {key} {comparison} {here} "
+            f"ORDER BY {CRUISE_KEY.format(a='c')} {direction}, c.id {direction} LIMIT 1",
+            (ship_id, cruise_id))
+        row = await cursor.fetchone()
+        found.append(row[0] if row else None)
+    return found[0], found[1]
 
 
 async def _current_cruise_id(db, ship_id: int) -> Optional[int]:
@@ -3392,16 +3416,7 @@ async def current_cruise(request: Request):
             (cruise_id,),
         )
         routes = await cursor.fetchall()
-        cursor = await db.execute(
-            "SELECT id FROM cruises WHERE ship_id = ? AND id < ? ORDER BY id DESC LIMIT 1",
-            (ship_id, cruise_id),
-        )
-        prev_cruise = await cursor.fetchone()
-        cursor = await db.execute(
-            "SELECT id FROM cruises WHERE ship_id = ? AND id > ? ORDER BY id ASC LIMIT 1",
-            (ship_id, cruise_id),
-        )
-        next_cruise = await cursor.fetchone()
+        prev_cruise_id, next_cruise_id = await _cruise_neighbours(db, ship_id, cruise_id)
         cursor = await db.execute(
             """SELECT s.* FROM stopovers s
                JOIN routes r ON s.route_id = r.id
@@ -3422,8 +3437,8 @@ async def current_cruise(request: Request):
             "stopovers": [dict(s) for s in stopovers],
             "aboard": aboard,
             "available_crew": available_crew,
-            "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
-            "next_cruise_id": next_cruise["id"] if next_cruise else None,
+            "prev_cruise_id": prev_cruise_id,
+            "next_cruise_id": next_cruise_id,
         },
     )
 
@@ -3502,7 +3517,7 @@ async def cruise_list(request: Request):
                        -- 12.299999999999955 pour 512.3 - 500.0.
                        ROUND(COALESCE(c.loch_end, {LOCH_LAST})
                              - COALESCE(c.loch_start, {LOCH_FIRST}), 1) AS distance
-                FROM cruises c WHERE c.ship_id = ? ORDER BY c.id ASC""",
+                FROM cruises c WHERE c.ship_id = ? ORDER BY {CRUISE_ORDER}""",
             (ship_id,),
         )
         cruises = await cursor.fetchall()
@@ -3587,16 +3602,7 @@ async def cruise_detail(request: Request, cruise_id: int):
             (cruise_id,),
         )
         routes = await cursor.fetchall()
-        cursor = await db.execute(
-            "SELECT id FROM cruises WHERE ship_id = ? AND id < ? ORDER BY id DESC LIMIT 1",
-            (ship_id, cruise_id),
-        )
-        prev_cruise = await cursor.fetchone()
-        cursor = await db.execute(
-            "SELECT id FROM cruises WHERE ship_id = ? AND id > ? ORDER BY id ASC LIMIT 1",
-            (ship_id, cruise_id),
-        )
-        next_cruise = await cursor.fetchone()
+        prev_cruise_id, next_cruise_id = await _cruise_neighbours(db, ship_id, cruise_id)
         cursor = await db.execute(
             """SELECT s.* FROM stopovers s
                JOIN routes r ON s.route_id = r.id
@@ -3621,8 +3627,8 @@ async def cruise_detail(request: Request, cruise_id: int):
             "stopovers": [dict(s) for s in stopovers],
             "aboard": aboard,
             "available_crew": available_crew,
-            "prev_cruise_id": prev_cruise["id"] if prev_cruise else None,
-            "next_cruise_id": next_cruise["id"] if next_cruise else None,
+            "prev_cruise_id": prev_cruise_id,
+            "next_cruise_id": next_cruise_id,
         },
     )
 

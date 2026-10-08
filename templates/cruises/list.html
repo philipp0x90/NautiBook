@@ -31,15 +31,16 @@
         <thead>
             <tr>
                 <th>Croisière</th>
-                <th>n°</th>
-                <th>De</th>
-                <th>À</th>
-                <th>Du</th>
-                <th>Au</th>
-                <th style="text-align:center">Durée (j.)</th>
-                <th style="text-align:right">début loch</th>
-                <th style="text-align:right">fin loch</th>
-                <th style="text-align:right">Distance</th>
+                <th style="text-align:center">#</th>
+                <th>Départ de</th>
+                <th>Arrivée à</th>
+                <th style="text-align:center">Du</th>
+                <th style="text-align:center">Au</th>
+                <th style="text-align:center">Jours</th>
+                {# Relevés de loch : titres sur deux lignes, centrés. #}
+                <th style="text-align:center">Départ<br>(NM)</th>
+                <th style="text-align:center">Arrivée<br>(NM)</th>
+                <th style="text-align:center">Milles<br>parcourus</th>
                 <th></th>
             </tr>
         </thead>
@@ -55,24 +56,24 @@
                     {{ c.name or '—' }}
                     {% if current %}<span class="chip-current">en cours</span>{% endif %}
                 </td>
-                <td>{{ '%03d'|format(c.number) }}</td>
+                <td style="text-align:center">{{ '%03d'|format(c.number) }}</td>
                 {# from_location / to_location : où la croisière part et où elle
                    en est arrivée, d'après ses routes. Voir CRUISE_FROM /
                    CRUISE_TO dans main.py pour les règles de repli. #}
                 <td>{{ c.from_location or '—' }}</td>
                 <td>{{ c.to_location or '—' }}</td>
-                <td style="white-space:nowrap">{{ c.start_time | datefr }}</td>
-                <td style="white-space:nowrap">{{ c.end_time | datefr }}</td>
+                <td style="white-space:nowrap;text-align:center">{{ c.start_time | datefr }}</td>
+                <td style="white-space:nowrap;text-align:center">{{ c.end_time | datefr }}</td>
                 {# `is not none` et non `or` : une croisière aller-retour dans la
                    journée dure 0 jour, ce qu'un `or` afficherait comme absent. #}
                 <td style="text-align:center">{{ c.duration_days if c.duration_days is not none else '—' }}</td>
                 {# loch_from / loch_to : la valeur saisie sur la croisière si
                    elle existe, sinon le loch relevé sur ses lignes de journal. #}
-                <td style="text-align:right">{{ c.loch_from if c.loch_from is not none else '—' }}</td>
-                <td style="text-align:right">{{ c.loch_to if c.loch_to is not none else '—' }}</td>
+                <td style="text-align:center">{{ c.loch_from | round | int if c.loch_from is not none else '—' }}</td>
+                <td style="text-align:center">{{ c.loch_to | round | int if c.loch_to is not none else '—' }}</td>
                 {# Écart des deux relevés de loch ; même remarque que la durée,
                    un écart nul est une information, pas une absence. #}
-                <td style="text-align:right">{{ c.distance if c.distance is not none else '—' }}</td>
+                <td style="text-align:center">{{ c.distance | round | int if c.distance is not none else '—' }}</td>
                 <td style="white-space:nowrap">
                     <form method="POST" action="/cruises/{{ c.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette croisière ?')">
@@ -89,7 +90,7 @@
             {% set total = cruises | map(attribute='distance') | select('number') | sum %}
             <tr>
                 <td colspan="9" style="text-align:right">Total</td>
-                <td style="text-align:right">{{ total | round(1) }}</td>
+                <td style="text-align:center">{{ total | round | int }}</td>
                 <td></td>
             </tr>
         </tfoot>
