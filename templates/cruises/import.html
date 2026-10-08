@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Importer une croisière — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    .import-steps { display: grid; gap: 16px; max-width: 900px; margin: 0 auto; }
+    .import-steps h3 { margin: 0 0 8px; font-size: 15px; }
+    .import-steps ol, .import-steps ul { margin: 6px 0 0; padding-left: 22px; font-size: 14px; }
+    .import-steps li { margin: 4px 0; }
+    .import-error { background: #fee2e2; color: #991b1b; border-radius: 8px; padding: 10px 14px; }
+    .import-ok { background: #dcfce7; color: #166534; border-radius: 8px; padding: 10px 14px; }
+    .import-steps details { font-size: 13px; margin-top: 8px; }
+    .import-steps details summary { cursor: pointer; color: var(--accent); }
+    .import-steps code { font-size: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left"><a href="/cruises/list" style="color:#fff;text-decoration:none">← Croisières</a></div>
+    <div class="section-bar-title">Importer une croisière (csv)</div>
+    <div class="section-bar-left" style="visibility:hidden" aria-hidden="true">← Croisières</div>
+</div>
+
+<div class="import-steps">
+
+    {% if resultat %}
+    <section class="import-ok">
+        <strong>« {{ resultat.nom }} » est importée</strong> sur {{ current_ship.name if current_ship else 'le navire' }} :
+        {{ resultat.routes }} routes, {{ resultat.lignes }} lignes de journal, {{ resultat.escales }} escales.
+        <div style="margin-top:4px">Équipage : {{ resultat.equipage | join(', ') }}.</div>
+        {% if resultat.remarques %}
+        <div style="margin-top:6px">À vérifier :</div>
+        <ul>{% for r in resultat.remarques %}<li>{{ r }}</li>{% endfor %}</ul>
+        {% endif %}
+        <div style="margin-top:10px">
+            <a href="/cruises/{{ resultat.cruise_id }}" class="btn btn-blue">Ouvrir la croisière</a>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if erreur %}<div class="import-error">{{ erreur }} Rien n'a été importé.</div>{% endif %}
+
+    <section class="card">
+        <h3>1. Exporter la croisière depuis FileMaker</h3>
+        <ol>
+            <li>Dans FileMaker, affichez la croisière à importer.</li>
+            <li>Exportez <strong>trois fichiers</strong>, un par table, avec « Fichier › Exporter les enregistrements » :
+                <strong>la croisière</strong>, <strong>ses routes</strong> et <strong>ses lignes</strong>
+                (seulement les enregistrements de cette croisière).</li>
+            <li>Format : <strong>« Valeurs séparées par des virgules (.csv) »</strong>,
+                jeu de caractères <strong>« Unicode (UTF-8) »</strong>.</li>
+            <li>Ne cochez pas « Appliquer le format de la rubrique actuelle ».</li>
+            <li>Mettez les <strong>noms des rubriques en première ligne</strong> : l'app reconnaît chaque fichier
+                et chaque colonne à son titre, dans n'importe quel ordre.</li>
+        </ol>
+        <details>
+            <summary>Rubriques à inclure dans chaque export</summary>
+            <ul>
+                <li><strong>Croisière</strong> : <code>{{ colonnes['croisière'] | join(', ') }}</code></li>
+                <li><strong>Routes</strong> : <code>{{ colonnes['routes'] | join(', ') }}</code></li>
+                <li><strong>Lignes</strong> : <code>{{ colonnes['lignes'] | join(', ') }}</code></li>
+            </ul>
+        </details>
+    </section>
+
+    <section class="card">
+        <h3>2. Ce que l'import fait</h3>
+        <ul>
+            <li>La croisière est créée sur le navire affiché en haut de l'écran
+                (<strong>{{ current_ship.name if current_ship else '—' }}</strong>), avec ses routes,
+                leurs lignes de journal, les escales et l'équipage.</li>
+            <li>Un équipier déjà connu est repris (même prénom, même début de nom) ; un autre reçoit une nouvelle fiche.</li>
+            <li>Conversions : positions en degrés-minutes-secondes, vent apparent 0–360° → angle bâbord/tribord,
+                « Speed » → SOG, sonde négative → profondeur, pression ou cap à 0 → vide.</li>
+            <li>Tout ou rien : à la moindre erreur, rien n'est importé. Une croisière déjà importée
+                (même nom, même date de départ) est refusée.</li>
+        </ul>
+    </section>
+
+    <form method="POST" action="/cruises/import" enctype="multipart/form-data" class="card">
+        <h3>3. Importer</h3>
+        <div style="display:grid;gap:12px;max-width:520px">
+            <div>
+                <label>Nom de la croisière dans NautiBook</label>
+                <input type="text" name="nom" value="{{ nom or '' }}" placeholder="Ex. : Tremiti 2025" required>
+            </div>
+            <div>
+                <label>Les trois fichiers exportés (sélectionnez-les ensemble)</label>
+                {# Pas d'attribut accept : sur iPad, Safari grise sinon les .csv
+                   (voir expenses_import.html). #}
+                <input type="file" name="fichiers" multiple required>
+            </div>
+            <div><button type="submit" class="btn btn-yellow">Importer la croisière</button></div>
+        </div>
+    </form>
+
+</div>
+{% endblock %}

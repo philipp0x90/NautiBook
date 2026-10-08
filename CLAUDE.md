@@ -18,6 +18,10 @@ pip install -r requirements.txt
 GARDER=30 ./backup.sh         # keep 30 snapshots instead of the default 10
 ```
 
+`NAUTIBOOK_DB=/path/to/copy.db uvicorn main:app --port 8001` serves another database than `logbook.db` — how a copy is checked in the app before anything touches the real one.
+
+`import_filemaker.py` imports one cruise from the old FileMaker solution, from its three CSV exports (cruise, routes, lines), each recognised by its column titles. Two doors onto the same `importer()`: the « Importer croisière (csv) » button at the foot of the cruise list (`/cruises/import`, right `imports`, onto the current ship), and the terminal, with the files in `import_filemaker/` (gitignored: it is personal data). One transaction, refuses a cruise already imported (same ship, name and start date); its docstring lists the field correspondences agreed with the user.
+
 `--reload` picks up Python and template edits without a restart. There are no tests, linters, or migration tooling.
 
 `backup.sh` needs no venv — only the system `sqlite3` and `rsync` — and locates the repo from its own path, so it can be called from anywhere. It exists because **`logbook.db` and `IMG/*` are gitignored, so they are the one thing GitHub does not carry between machines**; the code needs no backup, it is on the remote. Three decisions in it are deliberate and easy to undo by accident:

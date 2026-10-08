@@ -12,3 +12,4 @@ logbook.db.backup-*
 # Photos uploaded into IMG/ stay local; the folder itself is tracked
 IMG/*
 !IMG/.gitkeep
+import_filemaker/

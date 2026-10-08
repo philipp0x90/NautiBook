@@ -21,11 +21,9 @@
 
 {% block content %}
 
-{# La croisière en cours se repère dans le tableau et s'ouvre d'un clic sur sa
-   ligne ; le bouton qui y menait est donc superflu. #}
-<div style="display:flex;justify-content:flex-end;margin-bottom:20px">
-    <a href="/cruises/new" class="btn btn-yellow">+ Nouvelle croisière</a>
-</div>
+{# Pas de bouton « + Nouvelle croisière » : on en crée une depuis le menu
+   Croisières (base.html). La croisière en cours se repère dans le tableau et
+   s'ouvre d'un clic sur sa ligne. #}
 
 {% if cruises %}
 <div style="overflow-x:auto">
@@ -104,6 +102,13 @@
     <div style="margin-top:16px">
         <a href="/cruises/new" class="btn btn-yellow">+ Première croisière</a>
     </div>
+</div>
+{% endif %}
+
+{# Pied de page : l'import d'une croisière de l'ancienne solution FileMaker. #}
+{% if voit(request, '/cruises/import') %}
+<div style="margin-top:28px;padding-top:16px;border-top:1px solid #dde5ee;display:flex;justify-content:center">
+    <a href="/cruises/import" class="btn btn-blue">Importer croisière (csv)</a>
 </div>
 {% endif %}
 

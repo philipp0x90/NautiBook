@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, date, timedelta
 import asyncio
+import os
 import hashlib
 import secrets
 import time
@@ -21,10 +22,14 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
 from utils import get_sensor_data, get_position
+import import_filemaker
 import passwords
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
 
-DATABASE_URL = "logbook.db"
+# NAUTIBOOK_DB : une autre base que logbook.db, pour regarder une copie dans
+# l'app sans toucher la vraie (essai d'un import, par exemple) :
+#   NAUTIBOOK_DB=/tmp/copie.db uvicorn main:app --port 8001
+DATABASE_URL = os.environ.get("NAUTIBOOK_DB", "logbook.db")
 templates = Jinja2Templates(directory="templates")
 
 
@@ -1082,6 +1087,7 @@ IDENTITY_FIELDS = ("birth_date", "birth_place", "nationality", "id_type", "id_nu
 SECTION_RULES = [
     (r"^/crew/\d+/become-admiral$", None),             # premier Amiral : libre
     (r"^/ship/(expenses|contacts)/import", "imports"),
+    (r"^/cruises/import$", "imports"),
     (r"^/ship/(info|documents|new)(/|$)", "navire"),
     (r"^/ship/todo(/|$)", "todo"),
     (r"^/ship/fuel(/|$)", "gasoil"),
@@ -3420,6 +3426,55 @@ async def current_cruise(request: Request):
             "next_cruise_id": next_cruise["id"] if next_cruise else None,
         },
     )
+
+
+# ── Import d'une croisière FileMaker ──
+# La page « Importer croisière (csv) », au pied de la liste des croisières :
+# les trois exports FileMaker d'une croisière, un nom, et import_filemaker
+# fait le reste, sur le navire courant. Déclarée avant /cruises/{cruise_id}.
+
+async def _cruise_import_page(request, **context):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+    return templates.TemplateResponse("cruises/import.html", {
+        "request": request, "active_section": "cruises", "current_ship": dict(ship) if ship else None,
+        "colonnes": import_filemaker.COLONNES, **context})
+
+
+@app.get("/cruises/import", response_class=HTMLResponse)
+async def cruise_import_form(request: Request):
+    return await _cruise_import_page(request)
+
+
+@app.post("/cruises/import", response_class=HTMLResponse)
+async def cruise_import(request: Request, nom: Optional[str] = Form(None),
+                        fichiers: List[UploadFile] = File(default=[])):
+    """Importe d'un coup : rien à confirmer après coup, l'import étant une
+    seule transaction qui refuse une croisière déjà présente. Le compte rendu
+    dit ce qui est entré et ce qui a été corrigé en route."""
+    lus = {}
+    try:
+        for f in fichiers:
+            if not (f and f.filename):
+                continue
+            data = await f.read(IMPORT_MAX_BYTES + 1)
+            if len(data) > IMPORT_MAX_BYTES:
+                raise import_filemaker.ImportErreur(f"« {f.filename} » est trop volumineux.")
+            try:
+                contenu = data.decode("utf-8")
+            except UnicodeDecodeError:
+                raise import_filemaker.ImportErreur(
+                    f"« {f.filename} » n'est pas en Unicode (UTF-8) : refaites l'export en choisissant ce jeu de caractères.")
+            lus[f.filename] = import_filemaker.lire_texte(contenu)
+        if not lus:
+            raise import_filemaker.ImportErreur("Choisissez les trois fichiers exportés de FileMaker.")
+        exports = import_filemaker.reconnaitre(lus)
+        resultat = await asyncio.to_thread(import_filemaker.importer, DATABASE_URL, nom,
+                                           get_current_ship_id(request), exports)
+    except import_filemaker.ImportErreur as e:
+        return await _cruise_import_page(request, erreur=str(e), nom=nom)
+    return await _cruise_import_page(request, resultat=resultat)
 
 
 @app.get("/cruises/list", response_class=HTMLResponse)
