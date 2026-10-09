@@ -14,21 +14,25 @@
        du nom et non sur celle du nom plus la mention. */
     .cruise-header {
         display: grid;
-        grid-template-columns: auto 1fr auto auto;
+        /* Deux colonnes égales de part et d'autre : le nom est centré sur la
+           page, le numéro calé à droite dans la sienne. */
+        grid-template-columns: 1fr minmax(0, 420px) 1fr;
         grid-template-areas:
-            "sup nom num new"
-            ".   mention .   .";
+            ".   nom     num"
+            ".   mention .";
         align-items: center;
         gap: 6px 10px;
         margin-bottom: 16px;
     }
+    .cruise-num { justify-self: end; }
     /* Écran étroit : la grille s'empile, le nom en tête. */
     @media (max-width: 820px) {
         .cruise-header {
             grid-template-columns: 1fr;
-            grid-template-areas: "nom" "mention" "num" "sup" "new";
+            grid-template-areas: "nom" "mention" "num";
             justify-items: center;
         }
+        .cruise-header .cruise-num { justify-self: center; }
     }
     /* Le nom de la croisière : même cadre qu'avant, mais saisissable. Il se lit
        comme un titre au repos et ne se signale qu'au survol, comme les champs
@@ -61,6 +65,7 @@
     .equipage-tete { font-size: 11px; font-weight: 700; color: var(--muted); padding: 0 0 4px;
                      border-bottom: 1px solid #edf2f7; }
     .equipage-tete > span:nth-child(2), .equipage-tete > span:nth-child(3) { padding-left: 11px; }
+    .equipage-tete > span:nth-child(4) { padding-left: 0; }
     .equipage-ligne { font-size: 14px; padding: 7px 0; border-bottom: 1px solid #edf2f7; }
     .equipage-ligne:hover { background: #f7fbfd; }
     .equipage-qui { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -107,9 +112,14 @@
                    background: #fee2e2; color: #991b1b; font-size: 12px; }
     .btn-retirer:hover { background: #fca5a5; }
     /* Formulaire d'ajout : un encadré à part, pour ne pas passer pour une ligne. */
-    .equipage-ajout { margin-top: 14px; background: #f7fafc; border: 1px dashed #d5e0ea; border-radius: 8px; padding: 10px 12px; }
-    .equipage-ajout-titre { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
-    .equipage-ajout label { font-size: 12px; }
+    /* L'encadré déborde de sa marge intérieure (12 px + le trait) de chaque
+       côté : sa grille démarre ainsi au même bord que celle des lignes, et ses
+       colonnes tombent exactement sous les leurs. */
+    .equipage-ajout { margin: 14px -13px 0; background: #f7fafc; border: 1px dashed #d5e0ea; border-radius: 8px; padding: 10px 12px; }
+    .equipage-ajout-titre { font-size: 12px; font-weight: 700; color: var(--muted); }   /* comme les étiquettes des dates, pour s'aligner sur elles */
+    /* Étiquettes décalées comme le texte des cases (trait 1 px + 10 px), pour
+       qu'en-têtes, étiquettes et dates commencent tous au même aplomb. */
+    .equipage-ajout label { font-size: 12px; padding-left: 11px; }
     .equipage-ajout input, .equipage-ajout select { background: #fff; }
     /* Petit écran : le nom et les boutons sur une ligne, les deux dates dessous. */
     @media (max-width: 760px) {
@@ -157,7 +167,7 @@
     </form>
     {# Position among this ship's cruises, not the id — same %03d as the list. #}
     {% if cruise.number %}
-    <div style="grid-area:num;font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
+    <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
     {% endif %}
     {% if is_current is defined and is_current %}
     <div style="grid-area:mention;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
@@ -170,7 +180,7 @@
    proposé en gris (placeholder) — voir CRUISE_FROM / CRUISE_TO dans main.py.
    Le ✕ efface une date : une case date ne se vide pas commodément à la main. #}
 {% from "_bornes.html" import champ_date, champ_lieu %}
-<div class="bornes">
+<div class="bornes bornes-centre">
     <div class="bornes-cote">
         {{ champ_date('/cruises/' ~ cruise.id ~ '/field/start_time', 'Départ', cruise.start_time) }}
         {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/departure', 'de', cruise.departure, cruise.from_location) }}
@@ -254,11 +264,11 @@
 {# Équipage — cruise_crew. Le rôle est stocké en anglais ('skipper' / 'crew'),
    comme le DEFAULT de la colonne, et traduit seulement à l'affichage. #}
 <div class="card equipage" style="margin-bottom:16px;padding:14px">
-    <h4 class="equipage-titre">Équipage{% if aboard %} <span>· {{ aboard | length }}</span>{% endif %}</h4>
+    <h4 class="equipage-titre">Équipage</h4>
 
     {% if aboard %}
     <div class="equipage-grille equipage-tete">
-        <span>Équipier</span><span>Embarquement</span><span>Débarquement</span><span>À bord</span><span></span>
+        <span></span><span>Embarquement</span><span>Débarquement</span><span>À bord</span><span></span>
     </div>
     {% for m in aboard %}
     <div class="equipage-grille equipage-ligne">
@@ -317,13 +327,14 @@
     {# Dates préremplies depuis la croisière : un équipier embarque en général
        au départ et débarque à l'arrivée. #}
     <form method="POST" action="/cruises/{{ cruise.id }}/crew" class="equipage-ajout">
-        <div class="equipage-ajout-titre">Embarquer un équipier</div>
         <div class="equipage-grille" style="align-items:end">
             <div>
-                <label>Équipier</label>
-                <select name="crew_member_id" required>
+                {# Le titre de l'encadré sert d'étiquette au menu, sur la même ligne
+                   que « Embarquement » et « Débarquement ». #}
+                <label class="equipage-ajout-titre">Embarquer un équipier :</label>
+                <select name="crew_member_id" required aria-label="Personne à embarquer">
                     {% for m in available_crew %}
-                    <option value="{{ m.id }}">{{ m.last_name or '' }} {{ m.first_name or '' }}</option>
+                    <option value="{{ m.id }}">{{ m.first_name or '' }} {{ (m.last_name or '') | upper }}</option>
                     {% endfor %}
                 </select>
             </div>

@@ -28,6 +28,8 @@
         border-radius: 0 0 8px 8px; opacity: 0; transition: opacity .15s;
     }
     .photo-equipier:hover .changer { opacity: 1; }
+    .photo-retirer { background: none; border: 0; padding: 0; cursor: pointer; font-size: 12px; color: #991b1b; }
+    .photo-retirer:hover { text-decoration: underline; }
     /* Colonne photo et rang d'accès. */
     .colonne-photo { width: 160px; display: grid; gap: 10px; align-content: start; }
     .acces { display: grid; gap: 6px; }
@@ -91,7 +93,10 @@
         {# Un clic sur la photo ouvre le choix d'un fichier ; le choisir l'envoie
            aussitôt (formulaire à part, multipart). #}
         <form method="POST" action="/crew/{{ member.id }}/photo" enctype="multipart/form-data">
-            <label class="photo-equipier" title="Changer la photo">
+            {# data-depot-photo : une photo glissée ici est prise comme si on
+               l'avait choisie (base.html). #}
+            <label class="photo-equipier" data-depot-photo
+                   title="Changer la photo — cliquer ou y glisser une image. Toute photo convient : elle est recadrée en carré (visage au centre) et réduite automatiquement. JPEG, PNG ou HEIC.">
                 {# Photo dans IMG/ : réservée aux comptes (serve_img) ; un
                    Mousse voit les initiales, comme pour une fiche sans photo. #}
                 {% if member.photo_path and fichier_visible(request, member.photo_path) %}
@@ -103,9 +108,15 @@
                 </div>
                 {% endif %}
                 <span class="changer">{{ 'Changer la photo' if member.photo_path else 'Ajouter une photo' }}</span>
-                <input type="file" name="photo_file" accept="image/*" hidden onchange="this.form.submit()">
+                <input type="file" name="photo_file" accept="image/*" hidden data-photo-carree onchange="this.form.submit()">
             </label>
         </form>
+        {% if member.photo_path %}
+        <form method="POST" action="/crew/{{ member.id }}/photo/remove" style="text-align:center;margin-top:-4px"
+              onsubmit="return confirm('Supprimer la photo de cette fiche ?')">
+            <button type="submit" class="photo-retirer">Supprimer la photo</button>
+        </form>
+        {% endif %}
 
         {# Rang d'accès. Tout le monde le voit ; seul l'Amiral le change (menu
            déroulant). Sans compte, l'équipier est Mousse. Le choix d'un rang

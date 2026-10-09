@@ -1155,7 +1155,7 @@ async def _session_user(token: str) -> Optional[dict]:
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT u.id, u.username, u.rank, u.crew_member_id, m.first_name, m.last_name
+            """SELECT u.id, u.username, u.rank, u.crew_member_id, m.first_name, m.last_name, m.photo_path
                FROM sessions s JOIN users u ON s.user_id = u.id
                JOIN crew_members m ON u.crew_member_id = m.id
                WHERE s.token_hash = ? AND s.expires_at > ?""",
@@ -3150,6 +3150,30 @@ async def update_crew_photo(crew_id: int, photo_file: Optional[UploadFile] = Fil
     return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
 
 
+@app.post("/crew/{crew_id}/photo/remove")
+async def remove_crew_photo(crew_id: int):
+    """Retire la photo de la fiche, et efface son fichier s'il est dans IMG/
+    et qu'aucune autre fiche ne l'utilise. Sans risque pour les sauvegardes :
+    le miroir des photos de backup.sh garde les fichiers effacés ici.
+    « remove » et non « delete » : un …/delete exigerait equipiers.supprimer
+    (l'Amiral seul), alors que les Capitaines aussi retirent une photo."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT photo_path FROM crew_members WHERE id = ?", (crew_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Équipier introuvable")
+        path = row[0]
+        await db.execute("UPDATE crew_members SET photo_path = NULL WHERE id = ?", (crew_id,))
+        await db.commit()
+        if path and path.startswith(IMG_URL + "/"):
+            cursor = await db.execute("SELECT 1 FROM crew_members WHERE photo_path = ?", (path,))
+            if not await cursor.fetchone():
+                fichier = (IMG_DIR / path[len(IMG_URL) + 1:]).resolve()
+                if fichier.is_relative_to(IMG_DIR.resolve()) and fichier.is_file():
+                    fichier.unlink()
+    return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
+
+
 @app.post("/crew/{crew_id}/delete")
 async def delete_crew(crew_id: int):
     async with connect() as db:
@@ -3197,7 +3221,7 @@ async def _cruise_crew(db, cruise_id: int):
     cursor = await db.execute(
         """SELECT id, first_name, last_name FROM crew_members
            WHERE id NOT IN (SELECT crew_member_id FROM cruise_crew WHERE cruise_id = ?)
-           ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE""",
+           ORDER BY first_name COLLATE NOCASE, last_name COLLATE NOCASE""",   # affichés « prénom nom »
         (cruise_id,),
     )
     available = await cursor.fetchall()
@@ -3838,14 +3862,18 @@ async def current_route(request: Request):
     ship_id = get_current_ship_id(request)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
+        # Le menu Routes mène à la dernière route du navire en date (départ,
+        # sinon création), qu'une croisière soit en cours ou non : sans
+        # croisière en cours, il ne menait plus nulle part.
         cursor = await db.execute(
-            "SELECT id FROM routes WHERE cruise_id = ? ORDER BY id DESC LIMIT 1",
-            (await _current_cruise_id(db, ship_id),),
+            "SELECT r.id FROM routes r JOIN cruises c ON r.cruise_id = c.id WHERE c.ship_id = ? "
+            "ORDER BY COALESCE(r.start_time, r.created_at) DESC, r.id DESC LIMIT 1",
+            (ship_id,),
         )
         latest = await cursor.fetchone()
     if latest:
         return RedirectResponse(url=f"/routes/{latest['id']}", status_code=302)
-    return RedirectResponse(url="/cruises/current", status_code=302)
+    return RedirectResponse(url="/cruises/list", status_code=302)
 
 
 @app.post("/routes/{route_id}/arrivee")

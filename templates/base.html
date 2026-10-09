@@ -3,6 +3,25 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    {# Tablette (iPad) : la page est mise en page comme pour un écran de 880
+       points de large en paysage (620 en portrait), que l'iPad agrandit à sa
+       largeur réelle — environ ×1,35 sur un 11 pouces : texte de 13 px lu à
+       18 px, boutons plus grands au doigt. Un seul réglage pour toute l'app,
+       et les mises en page existantes restent cohérentes, puisque les media
+       queries voient la largeur de 880. Ni le Mac (pointeur fin) ni l'iPhone
+       (écran de moins de 700 points) ne sont concernés. Pour agrandir ou
+       réduire encore sur iPad : changer 880 / 620. #}
+    <script>
+    (function () {
+        if (!matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 700) return;
+        var meta = document.querySelector('meta[name=viewport]');
+        function regler() {
+            meta.setAttribute('content', 'width=' + (matchMedia('(orientation: landscape)').matches ? 880 : 620));
+        }
+        regler();
+        matchMedia('(orientation: landscape)').addEventListener('change', regler);
+    })();
+    </script>
     <title>{% block title %}NautiBook{% endblock %}</title>
     {# Icônes : dossier icons/ (voir main.py). apple-touch-icon sert l'iPad
        quand on ajoute NautiBook à l'écran d'accueil, le manifeste Android ;
@@ -72,23 +91,24 @@
         nav.main-nav { flex: 1; display: flex; justify-content: center; }
         nav ul { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; }
         nav li { position: relative; }
+        /* Onglets : une icône au trait et un libellé court dessous. L'onglet
+           de la section courante en bleu, souligné ; les autres en gris. */
         nav > ul > li > a {
-            display: block;
-            padding: 7px 28px;
-            color: #222;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+            min-width: 64px;
+            padding: 6px 12px 4px;
+            color: #6b7a90;
             text-decoration: none;
-            font-size: 24px;
-            font-weight: 500;
-            border-radius: 20px;
-            white-space: nowrap;
-            transition: background 0.12s;
+            border-bottom: 3px solid transparent;
+            transition: color 0.12s;
         }
-        nav > ul > li > a:hover { background: #e8f4f9; }
-        nav > ul > li.active > a {
-            background: var(--nav-active);
-            font-weight: 600;
-            color: #0f3a4a;
-        }
+        nav > ul > li > a:hover { color: #33415c; }
+        nav > ul > li.active > a { color: var(--accent-dark); border-bottom-color: var(--accent-dark); }
+        .nav-ic, nav .icone-carnet { width: 24px; height: 24px; display: block; flex-shrink: 0; }
+        .nav-lib { font-size: 13px; font-weight: 600; line-height: 1.1; white-space: nowrap; }
 
 
         /* Dropdown */
@@ -122,10 +142,15 @@
         }
         nav .dropdown-menu a:hover { background: #e8f4f9; }
 
+        /* Chercher, compte, réglages : même forme que les onglets (icône et
+           libellé), en bleu de l'ancre. */
         .topbar-settings {
-            width: 48px;
+            min-width: 64px;
             flex-shrink: 0;
             display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding: 6px 6px 7px;
             align-items: center;
             justify-content: center;
             cursor: pointer;
@@ -136,14 +161,16 @@
            comme pour le contour), donc le survol se règle ici. Le trait est
            épaissi dans le symbole : les rails du dessin d'origine ne font que
            0,9 px à cette taille, contre 2,8 px pour l'ancre. */
-        .topbar-settings svg { width: 26px; height: 26px; display: block; }
+        .topbar-settings svg { width: 24px; height: 24px; display: block; }
         .topbar-settings:hover { color: var(--accent-dark); }
         .topbar-connecte { color: var(--accent); }
         /* Prénom de la personne connectée, sous le pictogramme du compte. Le
            lien s'élargit pour un prénom long, jusqu'à une limite où il se coupe. */
-        .topbar-connecte { flex-direction: column; width: auto; min-width: 48px; gap: 1px; }
-        .topbar-prenom { font-size: 11px; font-weight: 600; line-height: 1; max-width: 80px;
-                         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* Zone où déposer une photo, pendant qu'on la survole. */
+        .depot-survol { outline: 2px dashed var(--accent); outline-offset: 3px; border-radius: 8px; }
+        /* Photo de la personne connectée, à la place du pictogramme. */
+        .topbar-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: block; }
+        .topbar-prenom { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
 
         /* ── Section sub-header bar ── */
         .section-bar {
@@ -295,9 +322,14 @@
            plus la loupe, le compte et la roue crantée, ne tiennent plus sous
            1190 px environ (mesuré) ; sinon le dernier onglet touche les icônes,
            puis sort de l'écran, au lieu de passer en version compacte. */
-        @media (max-width: 1200px) {
-            nav > ul > li > a { padding: 6px 12px; font-size: 13px; }
-            .topbar { padding: 8px 10px; }
+        /* Écran étroit (téléphone) : les icônes seules, les libellés restant
+           dans l'infobulle et pour les lecteurs d'écran. */
+        @media (max-width: 1000px) { .topbar { padding: 6px 10px; } }
+        @media (max-width: 700px) {
+            .nav-lib { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+            nav > ul > li > a, .topbar-settings { min-width: 0; padding: 8px 4px 5px; }
+            .topbar-logo { width: 34px; }
+            .topbar-logo svg { width: 28px; height: 28px; }
         }
         /* ── Départ / arrivée d'une croisière ou d'une route (_bornes.html) ──
            Dates et lieux modifiables sur place, qui se lisent comme du texte en
@@ -307,6 +339,11 @@
         .bornes-cote { padding: 10px 16px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .bornes-cote + .bornes-cote { border-left: 1px solid #dde5ee; }
         .bornes-arrivee { justify-content: flex-end; }
+        .bornes-groupe { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+        /* Pages route et croisière : les deux blocs se rejoignent au milieu — départ calé à
+           droite, arrivée à gauche. */
+        .bornes-centre .bornes-cote:first-child { justify-content: flex-end; }
+        .bornes-centre .bornes-arrivee { justify-content: flex-start; }
         .bornes-label { font-size: 16px; color: #1a1a2e; }   /* comme les valeurs, sans le gras */
         .bornes-jour { font-size: 16px; font-weight: 700; }
         .bornes-form { position: relative; display: inline-flex; align-items: center; }
@@ -317,20 +354,23 @@
         .bornes-edit::placeholder { color: #9aa8b6; font-weight: 400; }
         /* Date collée au nom du jour : texte calé à gauche (Safari le centre),
            case à peine plus large que la date, sans marge avec le jour. */
-        .bornes-date { width: 130px; padding-left: 3px; text-align: left; -webkit-appearance: none; appearance: none; }
-        .bornes-date.avec-heure { width: 178px; }   /* datetime-local : la date et l'heure */
+        /* Largeurs en em, à l'échelle du texte, avec la marge qu'il faut à
+           Safari, qui écrit « 02/09/2025, 10:15 » plus large que Chrome. */
+        .bornes-date { width: 8.4em; padding-left: 3px; text-align: left; -webkit-appearance: none; appearance: none; }
+        .bornes-date.avec-heure { width: 12em; }   /* datetime-local : la date et l'heure */
         .bornes-date::-webkit-date-and-time-value { text-align: left; margin: 0; }
         .bornes-jour + .bornes-form { margin-left: -4px; }
         .bornes-date::-webkit-calendar-picker-indicator { opacity: 0; }
         .bornes-date:hover::-webkit-calendar-picker-indicator { opacity: .6; }
-        .bornes-form:has(.bornes-effacer) .bornes-date::-webkit-calendar-picker-indicator { display: none; }
         /* Case du lieu à la taille du texte : sans quoi l'espace vide restait à
            droite du lieu, et le bloc Arrivée, calé à droite, paraissait centré.
            field-sizing suit la saisie (Chrome) ; size, posé par le gabarit
            d'après le texte, sert ailleurs (Safari). */
         .bornes-lieu { width: auto; field-sizing: content; min-width: 3em; max-width: 16em; padding-left: 3px; }
         .bornes-label + .bornes-form { margin-left: -2px; }
-        .bornes-effacer { position: absolute; right: 2px; width: 20px; height: 20px; border: 0; border-radius: 50%;
+        /* Le ✕ suit la case au lieu d'y être posé : il ne recouvre jamais la
+           date, quelle que soit la largeur que lui donne le navigateur. */
+        .bornes-effacer { flex: 0 0 auto; width: 20px; height: 20px; border: 0; border-radius: 50%;
                           padding: 0; cursor: pointer; background: transparent; color: #b8c4d0; font-size: 11px; }
         .bornes-cote:hover .bornes-effacer { color: #991b1b; }
         .bornes-effacer:hover { background: #fee2e2; }
@@ -338,6 +378,7 @@
             .bornes { grid-template-columns: 1fr; }
             .bornes-cote + .bornes-cote { border-left: 0; border-top: 1px solid #dde5ee; }
             .bornes-arrivee { justify-content: flex-start; }
+            .bornes-centre .bornes-cote:first-child { justify-content: flex-start; }   /* empilés : tout à gauche */
         }
     </style>
     {% block head %}{% endblock %}
@@ -351,12 +392,51 @@
     <symbol id="icon-boat" viewBox="0 0 512 512">
         <path fill="currentColor" fill-rule="evenodd" d="M 165 26 L 160 26 L 158 27 L 155 30 L 154 32 L 154 35 L 153 36 L 153 40 L 152 41 L 152 45 L 151 46 L 151 50 L 150 51 L 150 55 L 149 56 L 149 59 L 148 60 L 148 64 L 147 65 L 146 74 L 145 75 L 145 78 L 144 79 L 144 83 L 143 84 L 143 88 L 142 89 L 142 93 L 141 94 L 141 98 L 140 99 L 140 102 L 139 103 L 139 107 L 138 108 L 137 117 L 136 118 L 136 121 L 135 122 L 135 126 L 134 127 L 134 130 L 133 131 L 133 134 L 132 135 L 132 139 L 131 140 L 131 143 L 130 144 L 130 148 L 128 152 L 128 155 L 127 156 L 127 159 L 126 160 L 126 163 L 125 164 L 125 167 L 124 168 L 123 175 L 122 176 L 122 178 L 121 179 L 121 182 L 119 186 L 119 189 L 118 190 L 118 192 L 116 196 L 116 199 L 114 203 L 114 206 L 113 207 L 113 209 L 112 210 L 112 212 L 111 213 L 111 215 L 110 216 L 110 218 L 109 219 L 109 221 L 108 222 L 108 224 L 107 225 L 107 227 L 106 228 L 106 230 L 105 231 L 105 233 L 104 234 L 104 236 L 103 237 L 103 239 L 102 240 L 102 242 L 101 243 L 100 248 L 98 251 L 98 253 L 97 254 L 96 259 L 94 262 L 94 264 L 93 265 L 92 270 L 90 273 L 90 275 L 88 278 L 88 280 L 86 283 L 86 285 L 83 290 L 83 292 L 81 295 L 81 297 L 79 300 L 79 302 L 76 307 L 76 309 L 72 316 L 72 318 L 68 325 L 68 327 L 62 338 L 62 340 L 39 386 L 39 389 L 40 390 L 40 392 L 41 394 L 47 397 L 49 397 L 50 396 L 53 396 L 59 393 L 61 393 L 62 392 L 64 392 L 68 390 L 75 389 L 79 387 L 84 387 L 85 386 L 91 386 L 92 385 L 102 385 L 103 384 L 117 384 L 118 385 L 128 385 L 129 386 L 135 386 L 136 387 L 140 387 L 141 388 L 144 388 L 145 389 L 152 390 L 153 391 L 158 392 L 161 394 L 163 394 L 164 395 L 166 395 L 170 397 L 173 397 L 174 396 L 176 396 L 180 392 L 185 381 L 187 379 L 193 367 L 193 365 L 197 358 L 197 356 L 200 351 L 200 349 L 202 346 L 203 341 L 205 338 L 206 333 L 208 330 L 208 327 L 209 326 L 209 324 L 211 320 L 211 317 L 212 316 L 212 314 L 214 310 L 214 307 L 215 306 L 215 302 L 216 301 L 216 298 L 217 297 L 217 294 L 218 293 L 218 289 L 219 288 L 219 284 L 220 283 L 220 278 L 221 277 L 221 272 L 222 271 L 222 266 L 223 265 L 223 257 L 224 256 L 224 247 L 225 246 L 225 224 L 226 223 L 226 216 L 225 215 L 225 193 L 224 192 L 224 182 L 223 181 L 223 173 L 222 172 L 222 167 L 221 166 L 221 161 L 220 160 L 220 155 L 219 154 L 218 145 L 217 144 L 217 141 L 216 140 L 216 137 L 215 136 L 215 132 L 213 128 L 213 125 L 212 124 L 212 122 L 210 118 L 210 115 L 209 114 L 209 112 L 208 111 L 208 109 L 207 108 L 206 103 L 204 100 L 204 98 L 203 97 L 202 92 L 196 80 L 196 78 L 192 71 L 192 69 L 188 61 L 186 59 L 180 46 L 178 44 L 176 39 L 174 37 L 170 29 L 168 27 L 166 27 Z M 167 61 L 174 75 L 177 79 L 177 81 L 183 93 L 183 95 L 185 98 L 185 100 L 187 103 L 187 105 L 188 106 L 189 111 L 191 114 L 191 116 L 193 120 L 193 123 L 194 124 L 194 126 L 195 127 L 195 130 L 197 134 L 197 137 L 198 138 L 198 141 L 199 142 L 199 145 L 200 146 L 200 150 L 201 151 L 201 154 L 202 155 L 202 160 L 203 161 L 203 166 L 204 167 L 204 172 L 205 173 L 205 179 L 206 180 L 206 189 L 207 190 L 207 204 L 208 205 L 208 235 L 207 236 L 207 248 L 206 249 L 206 259 L 205 260 L 205 265 L 204 266 L 204 272 L 203 273 L 203 278 L 202 279 L 202 283 L 201 284 L 201 287 L 200 288 L 199 297 L 198 298 L 198 301 L 197 302 L 197 304 L 195 308 L 195 311 L 193 315 L 193 318 L 192 319 L 192 321 L 191 322 L 190 327 L 188 330 L 188 332 L 187 333 L 186 338 L 184 341 L 184 343 L 178 355 L 178 357 L 173 367 L 171 369 L 169 374 L 167 376 L 164 376 L 163 375 L 161 375 L 160 374 L 158 374 L 154 372 L 147 371 L 146 370 L 142 370 L 141 369 L 136 369 L 135 368 L 128 368 L 127 367 L 92 367 L 91 368 L 85 368 L 84 369 L 78 369 L 77 370 L 74 370 L 73 371 L 70 371 L 68 372 L 67 370 L 69 367 L 69 365 L 85 333 L 85 331 L 93 315 L 93 313 L 96 308 L 96 306 L 98 303 L 98 301 L 100 298 L 100 296 L 102 293 L 102 291 L 104 288 L 104 286 L 108 278 L 109 273 L 111 270 L 111 268 L 112 267 L 113 262 L 115 259 L 116 254 L 118 251 L 118 249 L 119 248 L 119 246 L 120 245 L 120 243 L 121 242 L 121 240 L 122 239 L 122 237 L 123 236 L 123 234 L 124 233 L 124 231 L 125 230 L 125 228 L 126 227 L 126 225 L 127 224 L 127 222 L 129 218 L 129 215 L 130 214 L 130 212 L 132 208 L 132 205 L 134 201 L 134 198 L 135 197 L 135 195 L 137 191 L 137 188 L 139 184 L 139 181 L 140 180 L 140 177 L 141 176 L 142 169 L 144 165 L 144 162 L 145 161 L 145 158 L 146 157 L 146 154 L 147 153 L 147 150 L 148 149 L 148 145 L 149 144 L 149 141 L 150 140 L 150 137 L 151 136 L 151 132 L 152 131 L 152 128 L 153 127 L 153 123 L 154 122 L 154 119 L 155 118 L 155 114 L 156 113 L 157 104 L 158 103 L 158 100 L 159 99 L 159 95 L 160 94 L 160 90 L 161 89 L 162 80 L 163 79 L 163 76 L 164 75 L 165 66 L 166 65 L 166 62 Z M 194 0 L 190 4 L 189 9 L 190 10 L 190 14 L 191 15 L 191 17 L 192 18 L 192 20 L 194 24 L 194 27 L 195 28 L 195 30 L 196 31 L 196 33 L 197 34 L 197 36 L 199 40 L 199 43 L 200 44 L 200 46 L 201 47 L 201 49 L 203 53 L 203 56 L 204 57 L 204 59 L 205 60 L 205 62 L 207 66 L 207 69 L 208 70 L 208 72 L 209 73 L 209 75 L 211 79 L 211 82 L 212 83 L 212 85 L 213 86 L 213 88 L 215 92 L 215 95 L 216 96 L 216 98 L 217 99 L 217 101 L 219 105 L 219 108 L 221 112 L 222 119 L 223 120 L 223 122 L 224 123 L 224 126 L 225 127 L 225 131 L 226 132 L 226 135 L 227 136 L 227 140 L 228 141 L 228 145 L 229 146 L 229 150 L 230 151 L 230 156 L 231 157 L 231 162 L 232 163 L 232 169 L 233 170 L 233 178 L 234 179 L 234 189 L 235 190 L 235 211 L 236 212 L 236 226 L 235 227 L 235 247 L 234 248 L 234 258 L 233 259 L 233 267 L 232 268 L 232 274 L 231 275 L 231 280 L 230 281 L 230 286 L 229 287 L 229 291 L 228 292 L 227 301 L 226 302 L 226 305 L 225 306 L 225 310 L 224 311 L 223 318 L 221 322 L 221 325 L 220 326 L 220 328 L 218 332 L 218 335 L 217 336 L 216 341 L 214 344 L 214 346 L 213 347 L 213 349 L 212 350 L 211 355 L 209 358 L 209 360 L 207 363 L 207 365 L 205 368 L 205 370 L 203 373 L 203 375 L 201 378 L 201 380 L 198 386 L 198 390 L 200 394 L 203 396 L 205 396 L 206 397 L 209 397 L 210 396 L 214 396 L 215 395 L 218 395 L 219 394 L 223 394 L 224 393 L 228 393 L 229 392 L 233 392 L 234 391 L 238 391 L 239 390 L 244 390 L 245 389 L 249 389 L 250 388 L 255 388 L 256 387 L 262 387 L 263 386 L 270 386 L 271 385 L 278 385 L 279 384 L 291 384 L 292 383 L 304 383 L 305 382 L 344 382 L 345 383 L 362 383 L 363 384 L 373 384 L 374 385 L 383 385 L 384 386 L 390 386 L 391 387 L 397 387 L 398 388 L 404 388 L 405 389 L 409 389 L 410 390 L 414 390 L 415 391 L 419 391 L 420 392 L 424 392 L 425 393 L 434 394 L 435 395 L 438 395 L 439 396 L 438 397 L 353 397 L 352 398 L 342 398 L 341 399 L 330 399 L 329 400 L 323 400 L 322 401 L 316 401 L 315 402 L 309 402 L 308 403 L 303 403 L 302 404 L 298 404 L 297 405 L 293 405 L 292 406 L 283 407 L 282 408 L 279 408 L 278 409 L 274 409 L 273 410 L 270 410 L 269 411 L 266 411 L 265 412 L 261 412 L 260 413 L 257 413 L 256 414 L 252 414 L 251 415 L 247 415 L 246 416 L 242 416 L 241 417 L 236 417 L 235 418 L 229 418 L 228 419 L 222 419 L 221 420 L 215 420 L 214 421 L 204 421 L 203 422 L 192 422 L 191 423 L 29 423 L 28 424 L 26 424 L 22 428 L 22 436 L 25 440 L 25 441 L 27 443 L 28 446 L 32 451 L 33 454 L 37 459 L 38 462 L 42 467 L 43 470 L 47 475 L 48 478 L 52 483 L 53 486 L 58 492 L 58 493 L 64 499 L 65 499 L 71 504 L 79 508 L 81 508 L 85 510 L 88 510 L 89 511 L 396 511 L 397 510 L 401 510 L 402 509 L 405 509 L 406 508 L 411 507 L 421 502 L 423 500 L 426 499 L 430 495 L 431 495 L 440 486 L 440 485 L 447 476 L 448 473 L 454 465 L 455 462 L 461 454 L 462 451 L 468 443 L 469 440 L 475 432 L 476 429 L 482 421 L 483 418 L 485 416 L 485 415 L 487 413 L 489 409 L 489 402 L 488 400 L 484 397 L 451 397 L 450 396 L 453 393 L 454 391 L 454 349 L 453 348 L 453 336 L 452 335 L 452 326 L 451 325 L 451 319 L 450 318 L 450 312 L 449 311 L 449 306 L 448 305 L 448 300 L 447 299 L 447 295 L 446 294 L 446 290 L 445 289 L 445 286 L 444 285 L 444 281 L 443 280 L 443 277 L 442 276 L 441 269 L 440 268 L 440 266 L 439 265 L 439 262 L 438 261 L 438 259 L 436 255 L 436 252 L 435 251 L 435 249 L 434 248 L 434 246 L 433 245 L 432 240 L 430 237 L 429 232 L 427 229 L 426 224 L 423 219 L 423 217 L 420 212 L 420 210 L 415 201 L 415 199 L 413 195 L 411 193 L 404 178 L 402 176 L 400 171 L 398 169 L 394 161 L 392 159 L 392 158 L 390 156 L 390 155 L 388 153 L 388 152 L 386 150 L 386 149 L 384 147 L 384 146 L 382 144 L 380 140 L 377 137 L 377 136 L 374 133 L 374 132 L 371 129 L 371 128 L 368 125 L 368 124 L 359 114 L 359 113 L 352 106 L 352 105 L 321 74 L 320 74 L 307 62 L 306 62 L 303 59 L 302 59 L 298 55 L 297 55 L 286 46 L 285 46 L 283 44 L 282 44 L 280 42 L 279 42 L 268 34 L 265 33 L 260 29 L 257 28 L 255 26 L 207 2 L 205 2 L 202 0 Z M 464 415 L 461 419 L 461 420 L 459 422 L 458 425 L 452 433 L 451 436 L 445 444 L 444 447 L 438 455 L 437 458 L 431 466 L 430 469 L 427 472 L 427 473 L 417 483 L 416 483 L 411 487 L 405 490 L 403 490 L 402 491 L 400 491 L 396 493 L 391 493 L 390 494 L 95 494 L 94 493 L 90 493 L 89 492 L 87 492 L 81 489 L 79 487 L 78 487 L 71 480 L 71 479 L 68 476 L 67 473 L 63 468 L 62 465 L 58 460 L 57 457 L 55 455 L 52 449 L 50 447 L 50 446 L 47 442 L 48 441 L 181 441 L 182 440 L 200 440 L 201 439 L 212 439 L 213 438 L 221 438 L 222 437 L 228 437 L 229 436 L 235 436 L 236 435 L 241 435 L 242 434 L 246 434 L 247 433 L 251 433 L 252 432 L 256 432 L 257 431 L 266 430 L 267 429 L 270 429 L 271 428 L 275 428 L 276 427 L 279 427 L 280 426 L 283 426 L 284 425 L 288 425 L 289 424 L 293 424 L 294 423 L 298 423 L 299 422 L 303 422 L 304 421 L 308 421 L 309 420 L 314 420 L 315 419 L 321 419 L 322 418 L 328 418 L 329 417 L 338 417 L 339 416 L 350 416 L 351 415 L 374 415 L 375 414 L 463 414 Z M 214 25 L 236 36 L 238 38 L 243 40 L 245 42 L 250 44 L 255 48 L 258 49 L 260 51 L 261 51 L 263 53 L 264 53 L 266 55 L 267 55 L 269 57 L 273 59 L 280 65 L 284 67 L 289 72 L 290 72 L 300 81 L 301 81 L 306 86 L 307 86 L 323 102 L 324 102 L 327 105 L 327 106 L 346 126 L 346 127 L 350 131 L 350 132 L 362 146 L 362 147 L 364 149 L 364 150 L 366 152 L 366 153 L 368 155 L 370 159 L 373 162 L 373 163 L 377 168 L 378 171 L 380 173 L 381 176 L 383 178 L 385 183 L 387 185 L 388 188 L 390 190 L 403 216 L 403 218 L 405 221 L 405 223 L 408 228 L 408 230 L 410 233 L 410 235 L 414 243 L 414 245 L 416 249 L 416 252 L 417 253 L 417 255 L 418 256 L 418 258 L 419 259 L 419 261 L 420 262 L 420 264 L 422 268 L 422 271 L 423 272 L 423 275 L 424 276 L 424 279 L 425 280 L 425 283 L 426 284 L 426 287 L 427 288 L 427 291 L 428 292 L 428 295 L 429 296 L 429 300 L 430 301 L 430 305 L 431 306 L 431 311 L 432 312 L 432 317 L 433 318 L 433 325 L 434 326 L 434 333 L 435 334 L 435 344 L 436 345 L 436 362 L 437 363 L 437 376 L 436 377 L 435 376 L 431 376 L 430 375 L 426 375 L 425 374 L 421 374 L 420 373 L 416 373 L 415 372 L 411 372 L 410 371 L 404 371 L 403 370 L 397 370 L 396 369 L 390 369 L 389 368 L 382 368 L 381 367 L 371 367 L 370 366 L 360 366 L 359 365 L 335 365 L 334 364 L 325 364 L 324 365 L 296 365 L 295 366 L 282 366 L 281 367 L 273 367 L 272 368 L 265 368 L 264 369 L 257 369 L 256 370 L 250 370 L 249 371 L 244 371 L 243 372 L 239 372 L 238 373 L 233 373 L 232 374 L 228 374 L 227 375 L 223 375 L 222 374 L 226 366 L 227 361 L 229 358 L 229 356 L 230 355 L 230 353 L 231 352 L 231 350 L 232 349 L 232 347 L 233 346 L 233 344 L 234 343 L 234 341 L 235 340 L 235 338 L 237 334 L 237 331 L 239 327 L 239 324 L 240 323 L 240 320 L 241 319 L 241 316 L 242 315 L 242 312 L 243 311 L 243 308 L 244 307 L 244 303 L 245 302 L 246 293 L 247 292 L 247 287 L 248 286 L 248 281 L 249 280 L 249 275 L 250 274 L 250 266 L 251 265 L 251 257 L 252 256 L 252 244 L 253 243 L 253 195 L 252 194 L 252 181 L 251 180 L 251 172 L 250 171 L 250 164 L 249 163 L 249 157 L 248 156 L 248 150 L 247 149 L 247 145 L 246 144 L 246 140 L 245 139 L 244 130 L 243 129 L 243 126 L 242 125 L 242 122 L 241 121 L 240 114 L 238 110 L 237 103 L 236 102 L 236 100 L 234 96 L 234 93 L 233 92 L 233 90 L 232 89 L 232 87 L 230 83 L 230 80 L 229 79 L 229 77 L 228 76 L 228 74 L 226 70 L 226 67 L 225 66 L 225 64 L 224 63 L 224 61 L 222 57 L 222 54 L 221 53 L 221 51 L 220 50 L 220 48 L 218 44 L 218 41 L 217 40 L 217 38 L 216 37 L 216 35 L 214 31 L 214 28 L 213 27 Z"/>
     </symbol>
+    {# Icônes des onglets, au trait (currentColor) : le voilier et le sextant
+       sont redessinés d'après les dessins fournis par l'utilisateur, dans leur
+       repère d'origine — d'où l'épaisseur de trait propre à chacun, réglée
+       pour peser comme les autres à 24 px. #}
+    <symbol id="nav-navire" viewBox="95 20 1140 1220">
+        <g fill="none" stroke="currentColor" stroke-width="80" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M717 45 C560 270 350 470 250 650 C160 810 135 960 180 1085 C330 1010 520 1000 705 1110 C715 900 722 500 717 45 Z"/>
+            <path d="M750 258 C800 560 795 760 733 1090 C870 1010 1020 960 1155 1003 C1020 740 880 470 750 258 Z"/>
+            <path d="M125 1103 C500 1170 900 1120 1210 1025 C1120 1180 950 1215 600 1215 C350 1215 200 1180 125 1103 Z"/>
+        </g>
+    </symbol>
+    <symbol id="nav-equipiers" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </g>
+    </symbol>
+    <symbol id="nav-croisieres" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.1 5.6a2 2 0 0 0 1.8 0l3.7-1.8A1 1 0 0 1 21 4.6v12.8a1 1 0 0 1-.6.9l-4.5 2.3a2 2 0 0 1-1.8 0l-4.2-2.1a2 2 0 0 0-1.8 0l-3.7 1.8A1 1 0 0 1 3 19.4V6.6a1 1 0 0 1 .6-.9l4.5-2.3a2 2 0 0 1 1.8 0z"/>
+            <path d="M15 5.8v15"/><path d="M9 3.2v15"/>
+        </g>
+    </symbol>
+    <symbol id="nav-routes" viewBox="0 0 24 24">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>
+        </g>
+    </symbol>
+    <symbol id="nav-outils" viewBox="10 10 500 500">
+        <g fill="none" stroke="currentColor" stroke-width="34" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="262" cy="62" r="40"/><path d="M262 102V392"/>
+            <path d="M234 92 50 388"/><path d="M290 92 474 388"/><path d="M50 388Q262 505 474 388"/>
+            <rect x="270" y="148" width="170" height="46" rx="23"/>
+            <circle cx="118" cy="140" r="34"/><path d="M152 140h50"/>
+            <circle cx="78" cy="238" r="28"/><path d="M106 238h36"/>
+            <circle cx="262" cy="420" r="26"/>
+        </g>
+    </symbol>
     <symbol id="icon-settings" viewBox="0 0 512 512">
         <path fill="currentColor" stroke="currentColor" stroke-width="22"
               stroke-linejoin="round" stroke-linecap="round" d="M87 32v71h18V32H87zm160 0v345h18V32h-18zm160 0v167h18V32h-18zM50 121c-5.14 0-9 3.9-9 9v28c0 5.1 3.86 9 9 9h92c5.1 0 9-3.9 9-9v-28c0-5.1-3.9-9-9-9H50zm37 64v295h18V185H87zm283 32c-5.1 0-9 3.9-9 9v28c0 5.1 3.9 9 9 9h92c5.1 0 9-3.9 9-9v-28c0-5.1-3.9-9-9-9h-92zm37 64v199h18V281h-18zM210 395c-5.1 0-9 3.9-9 9v28c0 5.1 3.9 9 9 9h92c5.1 0 9-3.9 9-9v-28c0-5.1-3.9-9-9-9h-92zm37 64v21h18v-21h-18z"/>
     </symbol>
 </svg>
 
+{% from "carnet/_icone.html" import icone_carnet %}
 <header class="topbar">
     {# Ancre (icone-ancre-nautibook.svg), inlined like the other artwork. The link
        carries the label, so the icon itself is hidden from screen readers. #}
@@ -374,7 +454,7 @@
     <nav class="main-nav" role="navigation" aria-label="Main">
         <ul>
             <li class="{{ 'active' if active_section == 'ship' else '' }}">
-                <a href="/ship/info">Navire</a>
+                <a href="/ship/info"><svg class="nav-ic" aria-hidden="true"><use href="#nav-navire"></use></svg><span class="nav-lib">Navire</span></a>
                 <div class="dropdown-menu">
                     <a href="/ship/info">Infos</a>
                     <a href="/ship/todo">To Do</a>
@@ -395,10 +475,10 @@
                menu Croisières : ils ne dépendent ni du navire courant ni d'une
                croisière (crew_members n'a pas de ship_id). #}
             <li class="{{ 'active' if active_section == 'crew' else '' }}">
-                <a href="/crew">Équipiers</a>
+                <a href="/crew"><svg class="nav-ic" aria-hidden="true"><use href="#nav-equipiers"></use></svg><span class="nav-lib">Équipiers</span></a>
             </li>
             <li class="{{ 'active' if active_section == 'cruises' else '' }}">
-                <a href="/cruises/current">Croisières</a>
+                <a href="/cruises/current"><svg class="nav-ic" aria-hidden="true"><use href="#nav-croisieres"></use></svg><span class="nav-lib">Croisières</span></a>
                 <div class="dropdown-menu">
                     <a href="/cruises/current">Croisière en cours</a>
                     <a href="/cruises/list">Liste des croisières</a>
@@ -408,17 +488,17 @@
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'routes' else '' }}">
-                <a href="/routes/current">Routes</a>
+                <a href="/routes/current"><svg class="nav-ic" aria-hidden="true"><use href="#nav-routes"></use></svg><span class="nav-lib">Routes</span></a>
             </li>
             <li class="{{ 'active' if active_section == 'tools' else '' }}">
-                <a href="/tools/weather">Outils</a>
+                <a href="/tools/weather"><svg class="nav-ic" aria-hidden="true"><use href="#nav-outils"></use></svg><span class="nav-lib">Outils</span></a>
                 <div class="dropdown-menu">
                     <a href="/tools/weather">Météo</a>
                     <a href="/tools/chart">Carte</a>
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'gallery' else '' }}">
-                <a href="/carnet">Carnet de voyage</a>
+                <a href="/carnet" title="Carnet de voyage">{{ icone_carnet(24, 'nav-carnet-decoupe') }}<span class="nav-lib">Voyage</span></a>
             </li>
         </ul>
     </nav>
@@ -432,6 +512,7 @@
             <circle cx="10" cy="10" r="6.5"/>
             <path d="M15 15l6 6"/>
         </svg>
+        <span class="nav-lib">Chercher</span>
     </a>
 
     {# Compte : « Connexion » pour un visiteur (Mousse), « Mon compte » une fois
@@ -441,12 +522,18 @@
        class="topbar-settings{{ ' topbar-connecte' if moi else '' }}"
        title="{{ (moi.first_name or moi.username) ~ ' · ' ~ rank_labels[moi.rank] if moi else 'Connexion' }}"
        aria-label="{{ 'Mon compte' if moi else 'Connexion' }}">
+        {# Connecté avec une photo : la photo, en rond, sans contour ; sinon le
+           pictogramme. La photo de 400 px est réduite par le navigateur. #}
+        {% if moi and moi.photo_path and fichier_visible(request, moi.photo_path) %}
+        <img src="{{ moi.photo_path }}" alt="" class="topbar-avatar">
+        {% else %}
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="{{ 'currentColor' if moi else 'none' }}"
              stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
             <circle cx="12" cy="8" r="4"/>
             <path d="M4 21c1.5-4.5 4.5-6.5 8-6.5s6.5 2 8 6.5"/>
         </svg>
-        {% if moi %}<span class="topbar-prenom">{{ moi.first_name or moi.username }}</span>{% endif %}
+        {% endif %}
+        <span class="nav-lib topbar-prenom">{{ (moi.first_name or moi.username) if moi else 'Connexion' }}</span>
     </a>
 
     {# Roue crantée (Gear.svg), inlinée comme le logo et l'icône de navire : pas
@@ -455,6 +542,7 @@
     {% if voit(request, '/settings') %}
     <a href="/settings" class="topbar-settings" title="Paramètres" aria-label="Paramètres">
         <svg aria-hidden="true"><use href="#icon-settings"></use></svg>
+        <span class="nav-lib">Réglages</span>
     </a>
     {% endif %}
 </header>
@@ -543,6 +631,64 @@ document.addEventListener('DOMContentLoaded', function () {
         if (champ.form) champ.form.addEventListener('submit', function () { regler(false); });
     });
 });
+
+// Photos d'équipier : <input type="file" data-photo-carree>. La photo choisie
+// est recadrée en carré et réduite à 400 px dans le navigateur, avant tout
+// envoi — elle s'affiche en rond (tableaux, carnet) et dans une colonne de
+// 160 px (fiche), 320 px suffisent sur écran Retina. Le carré est pris au
+// centre, un peu plus haut sur une photo en hauteur, là où est le visage.
+// Le change d'origine est intercepté puis relancé une fois la photo prête,
+// pour que l'onchange du champ (envoi immédiat sur la fiche) parte avec la
+// photo réduite. Une image que le navigateur ne sait pas lire (HEIC sous
+// Chrome) part telle quelle.
+(function () {
+    const COTE = 400;
+    async function carre(fichier) {
+        const url = URL.createObjectURL(fichier);
+        try {
+            const img = new Image(); img.src = url; await img.decode();
+            const w = img.naturalWidth, h = img.naturalHeight, s = Math.min(w, h);
+            const sx = (w - s) / 2, sy = h > w ? (h - s) / 3 : (h - s) / 2;
+            const c = document.createElement('canvas');
+            c.width = c.height = Math.min(COTE, s);
+            c.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, c.width, c.height);
+            const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.88));
+            return blob ? new File([blob], fichier.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' }) : fichier;
+        } catch (e) { return fichier; } finally { URL.revokeObjectURL(url); }
+    }
+    document.addEventListener('change', async function (e) {
+        const champ = e.target;
+        if (!champ.matches || !champ.matches('input[type=file][data-photo-carree]')) return;
+        if (champ.dataset.pret) { delete champ.dataset.pret; return; }   // relance : on laisse passer
+        if (!champ.files.length) return;
+        e.stopImmediatePropagation();
+        const dt = new DataTransfer();
+        dt.items.add(await carre(champ.files[0]));
+        champ.files = dt.files;
+        champ.dataset.pret = '1';
+        champ.dispatchEvent(new Event('change', { bubbles: true }));
+    }, true);
+
+    // Glisser-déposer : une image lâchée sur un [data-depot-photo] va dans son
+    // champ photo, puis suit le même chemin (recadrage, puis onchange).
+    document.querySelectorAll('[data-depot-photo]').forEach(function (zone) {
+        const champ = zone.querySelector('input[type=file][data-photo-carree]');
+        if (!champ) return;
+        ['dragenter', 'dragover'].forEach(t => zone.addEventListener(t, function (e) {
+            e.preventDefault(); zone.classList.add('depot-survol');
+        }));
+        ['dragleave', 'drop'].forEach(t => zone.addEventListener(t, () => zone.classList.remove('depot-survol')));
+        zone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            if (champ.disabled) return;   // rang sans le droit : champ figé par le script des droits
+            const image = [...e.dataTransfer.files].find(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+            if (!image) return;
+            const dt = new DataTransfer(); dt.items.add(image);
+            champ.files = dt.files;
+            champ.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
+})();
 
 // Droits à l'écran : ce que le rang ne permet pas n'est pas proposé. Le serveur
 // refuse de toute façon (require_login_to_write, required_permission) ; ceci

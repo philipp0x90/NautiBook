@@ -6,7 +6,10 @@
    date, une case date ne se vidant pas commodément à la main.
    champ_lieu : derive, le lieu déduit d'ailleurs, proposé en gris quand
    aucun n'est saisi. #}
+{# Chaque champ est un groupe insécable (.bornes-groupe) : à l'étroit, la
+   ligne se coupe entre la date et le lieu, jamais entre « de : » et le lieu. #}
 {% macro champ_date(action, label, valeur, avec_heure=false) %}
+<span class="bornes-groupe">
 <span class="bornes-label">{{ label }} :</span>
 {% if valeur %}<span class="bornes-jour">{{ valeur | jourfr }}</span>{% endif %}
 <form method="POST" action="{{ action }}" class="bornes-form">
@@ -23,9 +26,11 @@
             onclick="if (confirm('Effacer ?')) { this.form.elements.value.value = ''; this.form.submit(); }">✕</button>
     {% endif %}
 </form>
+</span>
 {% endmacro %}
 
 {% macro champ_lieu(action, prefixe, valeur, derive=none) %}
+<span class="bornes-groupe">
 <span class="bornes-label">{{ prefixe }} :</span>
 <form method="POST" action="{{ action }}" class="bornes-form">
     {% set texte = valeur or derive or 'Lieu' %}
@@ -34,4 +39,5 @@
            placeholder="{{ derive or 'Lieu' }}" title="Modifier le lieu (Entrée pour enregistrer)"
            onchange="this.form.submit()">
 </form>
+</span>
 {% endmacro %}

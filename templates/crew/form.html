@@ -158,10 +158,12 @@
     <section>
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Photo</h3>
         <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
-            <div>
+            <div data-depot-photo>
                 <label>Fichier image</label>
-                <input type="file" name="photo_file" accept="image/*">
-                <div class="meta" style="margin-top:4px">La photo est copiée dans le dossier IMG du logiciel.</div>
+                <input type="file" name="photo_file" accept="image/*" data-photo-carree>
+                <div class="meta" style="margin-top:4px">Choisissez ou glissez ici une photo. Toute photo convient :
+                    elle est recadrée en carré (visage au centre) et réduite automatiquement.
+                    JPEG, PNG ou HEIC (le HEIC depuis l'iPhone ou Safari).</div>
             </div>
             <div>
                 <label>ou chemin / URL <span class="meta" style="font-weight:400">(si la photo est ailleurs)</span></label>

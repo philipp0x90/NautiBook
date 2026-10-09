@@ -5,6 +5,20 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
+    /* Lignes cachées du tableau défilant : fondus au-dessus (sous l'en-tête
+       collé, dont le script mesure la hauteur) et en dessous. */
+    .log-cadre { position: relative; }
+    .log-fondu { position: absolute; left: 1px; right: 1px; height: 44px; border: 0; padding: 0 0 0 12px;
+                 z-index: 2; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600;
+                 color: var(--accent); text-align: left; display: flex; }
+    .log-fondu[hidden] { display: none; }
+    .log-fondu-haut { align-items: flex-start; padding-top: 3px;
+                      background: linear-gradient(rgba(240,248,252,.97), rgba(240,248,252,.75) 45%, rgba(240,248,252,0)); }
+    .log-fondu-bas { bottom: 1px; align-items: flex-end; padding-bottom: 3px; border-radius: 0 0 6px 6px;
+                     background: linear-gradient(rgba(240,248,252,0), rgba(240,248,252,.75) 55%, rgba(240,248,252,.97)); }
+    /* Boutons de la page (navigation, sous le tableau) : plus petits que la
+       taille commune des boutons de l'app. */
+    .btn-nav { padding: 5px 12px; font-size: 12px; }
     .route-layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
     /* Journal, sous le tableau. */
     .journal { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px 16px; margin: 16px 0; }
@@ -53,7 +67,16 @@
     }
     .inline-edit:hover { background: #fff; border-color: #cfe3ef; }
     .inline-edit:focus { background: #fff; border-color: var(--accent); outline: none; }
-    .log-table .inline-edit { min-width: 120px; }
+    /* Position visuelle : la colonne ne réclame pas de largeur propre (le
+       champ en prendrait ~170 px par défaut) ; le tableau tient ainsi dans la
+       largeur du bloc départ / arrivée au lieu de déborder. Un texte long se
+       lit en entier en cliquant dessus. */
+    .log-table .inline-edit { min-width: 0; width: 100%; }
+    .log-table .col-visu { width: 12%; }
+    /* Départ / arrivée de la route : 13 px, un cran au-dessus des lignes. */
+    .bornes-route .bornes-label, .bornes-route .bornes-jour, .bornes-route .bornes-edit { font-size: 13px; }
+    .bornes-route .bornes-cote { padding: 6px 14px; }
+    .bornes-route .bornes-edit { height: 27px; }
     /* Notes are multi-line: sized to their content, roomier while editing */
     textarea.inline-edit {
         font-size: 12px; line-height: 1.5; color: #333;
@@ -100,7 +123,7 @@
 {# ── Top nav bar ── #}
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
     {% if prev_route %}
-    <a href="/routes/{{ prev_route.id }}" class="btn btn-blue">← Route Préc.</a>
+    <a href="/routes/{{ prev_route.id }}" class="btn btn-blue btn-nav">← Route Préc.</a>
     {% else %}
     <div style="width:110px"></div>
     {% endif %}
@@ -120,15 +143,15 @@
     </div>
 
     {% if next_route %}
-    <a href="/routes/{{ next_route.id }}" class="btn btn-blue">Route Suiv. →</a>
+    <a href="/routes/{{ next_route.id }}" class="btn btn-blue btn-nav">Route Suiv. →</a>
     {% else %}
-    <a href="/routes/new?cruise_id={{ route.cruise_id }}" class="btn btn-yellow">+ Nouvelle route</a>
+    <a href="/routes/new?cruise_id={{ route.cruise_id }}" class="btn btn-yellow btn-nav">+ Nouvelle route</a>
     {% endif %}
 </div>
 
 {# ── Départ / Arrivée ── modifiables sur place, comme sur la page croisière. #}
 {% from "_bornes.html" import champ_date, champ_lieu %}
-<div class="bornes" style="margin-bottom:12px">
+<div class="bornes bornes-centre bornes-route" style="margin-bottom:12px">
     <div class="bornes-cote">
         {{ champ_date('/routes/' ~ route.id ~ '/field/start_time', 'Départ', route.start_time, true) }}
         {{ champ_lieu('/routes/' ~ route.id ~ '/field/departure_location', 'de', route.departure_location) }}
@@ -143,7 +166,14 @@
 
     {# ── Log table ── #}
     <div>
-        <div style="overflow-x:auto;max-height:420px;overflow-y:auto;border:1px solid #dde5ee;border-radius:6px">
+        {# Hauteur de 5 lignes de bord (en-tête ~52 px + 5 × ~49 px) : au-delà,
+           le tableau défile, son en-tête restant collé en haut. Il s'ouvre sur
+           les dernières lignes ; un fondu, sous l'en-tête, signale les lignes
+           cachées au-dessus (« ▴ 3 lignes plus anciennes », touchable), et un
+           autre en bas celles cachées dessous quand on est remonté. Script
+           en bas de page. #}
+        <div class="log-cadre">
+        <div class="log-defile" style="overflow-x:auto;max-height:300px;overflow-y:auto;border:1px solid #dde5ee;border-radius:6px">
             <table class="log-table">
                 <thead style="position:sticky;top:0;z-index:1">
                     <tr>
@@ -152,7 +182,7 @@
                         <th>SOG</th><th>Cap</th><th>Voiles</th><th>Loch</th>
                         <th rowspan="2">Prof.</th>
                         <th rowspan="2">Latitude<br>Longitude</th>
-                        <th rowspan="2">Position<br>(visuelle)</th>
+                        <th rowspan="2" class="col-visu">Position<br>(visuelle)</th>
                     </tr>
                     <tr>
                         <th>AWA</th><th>TWA</th><th>Visibilité</th><th>P°Atmo.</th>
@@ -187,7 +217,7 @@
                         </td>
                         <td rowspan="2">
                             <form method="POST" action="/logbook/{{ ln.id }}/field/visual_pos">
-                                <input type="text" name="value" class="inline-edit"
+                                <input type="text" name="value" class="inline-edit" size="6"
                                        value="{{ ln.visual_pos or '' }}" placeholder="—"
                                        title="Modifier la position visuelle (Entrée pour enregistrer)"
                                        onchange="this.form.submit()">
@@ -217,16 +247,19 @@
                     {% endfor %}
             </table>
         </div>
+        <button type="button" class="log-fondu log-fondu-haut" hidden></button>
+        <button type="button" class="log-fondu log-fondu-bas" hidden></button>
+        </div>
 
         {# Nouvelle ligne + Arrivée ── below table #}
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
-            <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow">+ Nouvelle ligne</a>
+            <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow btn-nav">+ Nouvelle ligne</a>
             {# Arrivée sits in the middle cell, which takes the slack on both
                sides, so it stays centred even on a finished route where the
                button is gone. #}
             <div style="flex:1;text-align:center">
                 {% if not route.finished %}
-                <button type="button" class="btn btn-blue" onclick="document.getElementById('arrivee-modal').classList.add('open')">Arrivée</button>
+                <button type="button" class="btn btn-blue btn-nav" onclick="document.getElementById('arrivee-modal').classList.add('open')">Arrivée</button>
                 {% endif %}
             </div>
             {# Une route n'a qu'une escale : le bouton propose de la créer tant
@@ -235,12 +268,12 @@
                Pas de suppression de route ici : elle se fait depuis la page
                de la croisière (✕ de la liste des routes). #}
             {% if stopovers %}
-            <a href="/stopovers/{{ stopovers[0].id }}/edit" class="btn btn-blue"
+            <a href="/stopovers/{{ stopovers[0].id }}/edit" class="btn btn-blue btn-nav"
                title="Modifier l'escale de cette route">
                 Escale{% if stopovers[0].name or stopovers[0].locality %} : {{ stopovers[0].name or stopovers[0].locality }}{% endif %}
             </a>
             {% else %}
-            <a href="/routes/{{ route.id }}/stopovers/new" class="btn btn-yellow">+ Nouvelle escale</a>
+            <a href="/routes/{{ route.id }}/stopovers/new" class="btn btn-yellow btn-nav">+ Nouvelle escale</a>
             {% endif %}
         </div>
     </div>
@@ -321,6 +354,36 @@
 </section>
 
 <script>
+// Tableau des lignes : ouvert sur les dernières, fondus là où des lignes sont
+// cachées, avec leur nombre ; un toucher sur un fondu défile jusqu'au bout.
+(function () {
+    const defile = document.querySelector('.log-defile');
+    if (!defile) return;
+    const haut = document.querySelector('.log-fondu-haut'), bas = document.querySelector('.log-fondu-bas');
+    const entete = defile.querySelector('thead');
+    const lignes = [...defile.querySelectorAll('tbody.log-line')];
+    function compter() {
+        const h = entete ? entete.offsetHeight : 0;
+        const vue = defile.getBoundingClientRect();
+        let dessus = 0, dessous = 0;
+        lignes.forEach(function (l) {
+            const r = l.getBoundingClientRect();
+            if (r.bottom <= vue.top + h + 4) dessus++;
+            else if (r.top >= vue.bottom - 4) dessous++;
+        });
+        haut.style.top = (h + 1) + 'px';
+        haut.hidden = !dessus; bas.hidden = !dessous;
+        haut.textContent = '▴ ' + dessus + (dessus > 1 ? ' lignes plus anciennes' : ' ligne plus ancienne');
+        bas.textContent = '▾ ' + dessous + (dessous > 1 ? ' lignes plus récentes' : ' ligne plus récente');
+    }
+    defile.scrollTop = defile.scrollHeight;
+    compter();
+    defile.addEventListener('scroll', compter, { passive: true });
+    addEventListener('resize', compter);
+    haut.addEventListener('click', () => defile.scrollTo({ top: 0, behavior: 'smooth' }));
+    bas.addEventListener('click', () => defile.scrollTo({ top: defile.scrollHeight, behavior: 'smooth' }));
+})();
+
 // Journal : chaque texte grandit avec son contenu ; « Enregistrer / Annuler »
 // n'apparaissent qu'une fois le texte modifié. Échap ou Annuler remettent le
 // texte d'origine. Un clic ailleurs n'enregistre rien.
