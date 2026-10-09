@@ -349,10 +349,9 @@
         .bornes-compact .bornes-cote { padding: 6px 14px; }
         .bornes-compact .bornes-edit { height: 27px; }
         .bornes-groupe { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-        /* Pages route et croisière : les deux blocs se rejoignent au milieu — départ calé à
-           droite, arrivée à gauche. */
-        .bornes-centre .bornes-cote:first-child { justify-content: flex-end; }
-        .bornes-centre .bornes-arrivee { justify-content: flex-start; }
+        /* Pages route et croisière : sous chaque titre (« Départ », « Arrivée »),
+           la date et le lieu centrés sur lui. */
+        .bornes-centre .bornes-cote, .bornes-centre .bornes-arrivee { justify-content: center; }
         .bornes-label { font-size: 16px; color: #1a1a2e; }   /* comme les valeurs, sans le gras */
         .bornes-jour { font-size: 16px; font-weight: 700; }
         .bornes-form { position: relative; display: inline-flex; align-items: center; }
@@ -387,7 +386,7 @@
             .bornes { grid-template-columns: 1fr; }
             .bornes-cote + .bornes-cote { border-left: 0; border-top: 1px solid #dde5ee; }
             .bornes-arrivee { justify-content: flex-start; }
-            .bornes-centre .bornes-cote:first-child { justify-content: flex-start; }   /* empilés : tout à gauche */
+            .bornes-centre .bornes-cote, .bornes-centre .bornes-arrivee { justify-content: center; }
         }
     </style>
     {% block head %}{% endblock %}

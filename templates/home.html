@@ -13,9 +13,13 @@
         text-align: center;
         gap: 24px;
     }
+    /* Le logo cède en hauteur sur un écran bas (iPad en paysage) : l'écran
+       garde de la place pour le menu, le sous-titre, le navire et la
+       signature, environ 300 px, et tout tient sans défiler. */
     .splash-logo {
-        width: min(300px, 62vw);
-        height: auto;
+        width: auto;
+        height: min(383px, 62vw * 592 / 464, 100svh - 270px);
+        max-width: 100%;
         display: block;
         user-select: none;
     }
@@ -40,6 +44,13 @@
         border-top: none;
         margin-top: 0;
         padding-top: 0;
+    }
+    /* Écran bas : espacements et nom du navire resserrés. */
+    @media (max-height: 760px) {
+        /* Hauteur de l'écran moins le menu et la signature : le bloc est
+           centré verticalement dans ce qui reste. */
+        .splash { gap: 16px; min-height: calc(100svh - 120px); }
+        .splash-ship { font-size: 36px; }
     }
 </style>
 {% endblock %}
