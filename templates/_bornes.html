@@ -8,9 +8,11 @@
    aucun n'est saisi. #}
 {# Chaque champ est un groupe insécable (.bornes-groupe) : à l'étroit, la
    ligne se coupe entre la date et le lieu, jamais entre « de : » et le lieu. #}
-{% macro champ_date(action, label, valeur, avec_heure=false) %}
+{# titre : le libellé (« Départ ») est affiché en titre du bloc par la page —
+   la date n'est alors pas précédée de « Départ : ». #}
+{% macro champ_date(action, label, valeur, avec_heure=false, titre=false) %}
 <span class="bornes-groupe">
-<span class="bornes-label">{{ label }} :</span>
+{% if not titre %}<span class="bornes-label">{{ label }} :</span>{% endif %}
 {% if valeur %}<span class="bornes-jour">{{ valeur | jourfr }}</span>{% endif %}
 <form method="POST" action="{{ action }}" class="bornes-form">
     {% if avec_heure %}

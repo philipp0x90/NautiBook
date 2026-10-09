@@ -73,10 +73,6 @@
        lit en entier en cliquant dessus. */
     .log-table .inline-edit { min-width: 0; width: 100%; }
     .log-table .col-visu { width: 12%; }
-    /* Départ / arrivée de la route : 13 px, un cran au-dessus des lignes. */
-    .bornes-route .bornes-label, .bornes-route .bornes-jour, .bornes-route .bornes-edit { font-size: 13px; }
-    .bornes-route .bornes-cote { padding: 6px 14px; }
-    .bornes-route .bornes-edit { height: 27px; }
     /* Notes are multi-line: sized to their content, roomier while editing */
     textarea.inline-edit {
         font-size: 12px; line-height: 1.5; color: #333;
@@ -151,13 +147,15 @@
 
 {# ── Départ / Arrivée ── modifiables sur place, comme sur la page croisière. #}
 {% from "_bornes.html" import champ_date, champ_lieu %}
-<div class="bornes bornes-centre bornes-route" style="margin-bottom:12px">
+<div class="bornes bornes-centre bornes-compact" style="margin-bottom:12px">
     <div class="bornes-cote">
-        {{ champ_date('/routes/' ~ route.id ~ '/field/start_time', 'Départ', route.start_time, true) }}
+        <div class="bornes-titre">Départ</div>
+        {{ champ_date('/routes/' ~ route.id ~ '/field/start_time', 'Départ', route.start_time, true, true) }}
         {{ champ_lieu('/routes/' ~ route.id ~ '/field/departure_location', 'de', route.departure_location) }}
     </div>
     <div class="bornes-cote bornes-arrivee">
-        {{ champ_date('/routes/' ~ route.id ~ '/field/end_time', 'Arrivée', route.end_time, true) }}
+        <div class="bornes-titre">Arrivée</div>
+        {{ champ_date('/routes/' ~ route.id ~ '/field/end_time', 'Arrivée', route.end_time, true, true) }}
         {{ champ_lieu('/routes/' ~ route.id ~ '/field/destination_location', 'à', route.destination_location) }}
     </div>
 </div>

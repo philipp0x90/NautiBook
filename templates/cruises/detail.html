@@ -180,13 +180,15 @@
    proposé en gris (placeholder) — voir CRUISE_FROM / CRUISE_TO dans main.py.
    Le ✕ efface une date : une case date ne se vide pas commodément à la main. #}
 {% from "_bornes.html" import champ_date, champ_lieu %}
-<div class="bornes bornes-centre">
+<div class="bornes bornes-centre bornes-compact">
     <div class="bornes-cote">
-        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/start_time', 'Départ', cruise.start_time) }}
+        <div class="bornes-titre">Départ</div>
+        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/start_time', 'Départ', cruise.start_time, false, true) }}
         {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/departure', 'de', cruise.departure, cruise.from_location) }}
     </div>
     <div class="bornes-cote bornes-arrivee">
-        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/end_time', 'Arrivée', cruise.end_time) }}
+        <div class="bornes-titre">Arrivée</div>
+        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/end_time', 'Arrivée', cruise.end_time, false, true) }}
         {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/destination', 'à', cruise.destination, cruise.to_location) }}
     </div>
 </div>

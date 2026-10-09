@@ -340,6 +340,14 @@
         .bornes-cote { padding: 10px 16px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
         .bornes-cote + .bornes-cote { border-left: 1px solid #dde5ee; }
         .bornes-arrivee { justify-content: flex-end; }
+        /* Titre du bloc (« Départ », « Arrivée »), centré sur sa propre ligne
+           en tête : flex-basis 100 % le fait passer seul à la ligne. */
+        .bornes-titre { flex-basis: 100%; text-align: center; font-size: 12px; font-weight: 700;
+                        color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+        /* Pages route et croisière : texte à 13 px, bande plus mince. */
+        .bornes-compact .bornes-label, .bornes-compact .bornes-jour, .bornes-compact .bornes-edit { font-size: 13px; }
+        .bornes-compact .bornes-cote { padding: 6px 14px; }
+        .bornes-compact .bornes-edit { height: 27px; }
         .bornes-groupe { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
         /* Pages route et croisière : les deux blocs se rejoignent au milieu — départ calé à
            droite, arrivée à gauche. */
