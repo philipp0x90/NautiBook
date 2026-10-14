@@ -28,9 +28,13 @@
    Croisières (base.html). La croisière en cours se repère dans le tableau et
    s'ouvre d'un clic sur sa ligne. #}
 
+<div class="section-bar section-bar-collee">
+    <div class="section-bar-title">Liste des croisières</div>
+</div>
+
 {% if cruises %}
-<div style="overflow-x:auto;margin-top:16px">
-    <table class="data-table">
+<div class="tableau-colle">
+    <table class="data-table titres-legers">
         <thead>
             {# Lieu et date réunis par colonne (le lieu, la date dessous), comme
                sur la page de la croisière : deux colonnes de moins, ce qui

@@ -15,11 +15,6 @@
        (lieux, à gauche) et la ligne de la croisière, qui s'étend sur plusieurs. */
     .escales thead th:not(:first-child),
     .escales tbody tr:not(.croisiere) td:not(:first-child) { text-align: center; }
-    /* Titres de colonnes légers : petites capitales grises sur le fond de la
-       page, un filet dessous — la barre « Escales » reste la seule bande de
-       couleur. */
-    .escales thead th { background: transparent; color: #7d8fa3; font-size: 11px; text-transform: uppercase;
-                        letter-spacing: 1px; border-bottom: 1px solid #dde5ee; padding: 6px 10px; }
     /* Ligne de la croisière : son nom centré sur toute la largeur du tableau
        (posé en absolu sur la ligne), dans le gris des titres de colonnes ; le
        total de ses escales reste à sa place, à droite. */
@@ -46,13 +41,13 @@
 
 {# Barre sans badges : le titre occupe toute la largeur. Pas de liens vers la
    croisière en cours ni « toutes les escales » : le menu Croisières y mène. #}
-<div class="section-bar">
+<div class="section-bar section-bar-collee">
     <div class="section-bar-title">Escales</div>
 </div>
 
 {% if groups %}
-<div style="overflow-x:auto">
-    <table class="data-table escales">
+<div class="tableau-colle">
+    <table class="data-table titres-legers escales">
         <thead>
             <tr>
                 <th></th>

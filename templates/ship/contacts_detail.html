@@ -2,158 +2,163 @@
 {% block title %}{{ contact.company or contact.contact_name or 'Contact' }} — NautiBook{% endblock %}
 {% block head %}
 <style>
-    /* Champs éditables qui gardent l'allure des cases bleues d'une fiche en
-       lecture : bordure invisible au repos, visible au survol et à l'édition. */
-    .field-edit {
-        width: 100%; margin-top: 2px; padding: 5px 10px; font: inherit; font-weight: 600;
-        color: inherit; background: #e8f4f9; border: 1px solid transparent; border-radius: 6px;
+    /* Fiche contact, sur le modèle de la fiche navire (ship/info.html) : des
+       cartes de lignes « libellé … valeur », chaque valeur modifiable sur
+       place et lue comme du texte au repos. */
+    .contact-cartes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+    @media (max-width: 760px) { .contact-cartes { grid-template-columns: 1fr; } }
+    .contact-carte { padding: 12px 16px 8px; }
+    .contact-carte h3, .contact-titre {
+        margin: 0 0 6px; font-size: 12px; font-weight: 700; color: #7d8fa3;
+        text-transform: uppercase; letter-spacing: 1px; text-align: center;
     }
-    .field-edit:hover { border-color: #cfe3ef; }
-    .field-edit:focus { background: #fff; border-color: var(--accent); outline: none; }
-    textarea.field-edit { font-weight: 400; resize: vertical; }
-    .field-link { color: var(--accent); text-decoration: none; margin-left: 4px; }
+    .ligne { display: flex; align-items: center; gap: 12px; padding: 3px 0; border-bottom: 1px solid #eef3f7; margin: 0; }
+    .ligne:last-child { border-bottom: 0; }
+    .ligne .libelle { flex: 0 0 auto; color: #556; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    .valeur { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-end;
+              border: 1px solid transparent; border-radius: 6px; }
+    .valeur:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .valeur:focus-within { border-color: var(--accent); background: #fff; }
+    .valeur input, .valeur select {
+        width: 100%; min-width: 0; padding: 4px 6px; background: transparent; border: 0;
+        font: inherit; font-size: 14px; font-weight: 600; text-align: right; text-align-last: right;
+        text-overflow: ellipsis;
+    }
+    .valeur input:focus, .valeur select:focus { outline: none; background: transparent; }
+    .valeur input::placeholder { color: #b8c4d0; font-weight: 400; }
+    /* Raccourci à côté du libellé : appeler, écrire, ouvrir le site. Le clic
+       dans la valeur, lui, sert à la modifier. */
+    .raccourci { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+                 border-radius: 50%; background: #e8f4f9; color: var(--accent); text-decoration: none; font-size: 12px; }
+    .raccourci:hover { background: var(--accent); color: #fff; }
+    .contact-notes {
+        width: 100%; min-height: 90px; padding: 6px 8px; color: #333; font: inherit; font-size: 14px;
+        background: transparent; border: 1px solid transparent; border-radius: 6px; resize: vertical;
+    }
+    .contact-notes:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .contact-notes:focus { border-color: var(--accent); background: #fff; outline: none; }
+    .contact-notes::placeholder { color: #b8c4d0; }
+    .achats-titre { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 8px 0 6px; }
+    .achats-titre span { font-size: 12px; color: var(--muted); }
 </style>
 {% endblock %}
 
 {% from "ship/_place_select.html" import place_select %}
 {% block content %}
 
-{# Pas de badge du navire : son nom figure déjà en pied de page. À sa place,
-   un retour vers chacune des deux listes d'où l'on arrive sur une fiche
-   contact — le carnet, ou les comptes par un clic sur le fournisseur. Les
-   boutons reprennent le fond translucide des badges de la barre. #}
-<div class="section-bar">
-    <div style="display:flex;gap:8px">
-        <a href="/ship/contacts" class="btn" style="background:rgba(255,255,255,0.25);color:#fff">Contacts</a>
-        <a href="/ship/expenses" class="btn" style="background:rgba(255,255,255,0.25);color:#fff">Dépenses</a>
-    </div>
+{# Une ligne de la fiche : son propre formulaire, enregistré dès qu'on la
+   quitte (onchange) — jamais un formulaire commun, sinon deux modifications
+   proches s'écraseraient. `lien` : le raccourci affiché à côté du libellé. #}
+{% macro ligne(field, label, kind='text', lien=none, icone='') %}
+{% set val = contact[field] %}
+<form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}" class="ligne">
+    <span class="libelle">{{ label }}
+        {% if val and lien %}<a href="{{ lien }}" class="raccourci" title="{{ icone }}"
+           {% if lien.startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ '✆' if field == 'phone' else ('✉' if field == 'email' else '↗') }}</a>{% endif %}
+    </span>
+    <span class="valeur" {% if val %}title="{{ val }}"{% endif %}>
+        {% if kind == 'categorie' %}
+        <select name="value" onchange="this.form.submit()">
+            <option value="">—</option>
+            {% for cat in contact_categories %}
+            <option value="{{ cat }}" {{ 'selected' if val == cat else '' }}>{{ cat }}</option>
+            {% endfor %}
+            {# Une catégorie hors liste reste affichée, sinon le moindre
+               changement de sélection la ferait disparaître. #}
+            {% if val and val not in contact_categories %}<option value="{{ val }}" selected>{{ val }}</option>{% endif %}
+        </select>
+        {% elif kind == 'lieu' %}
+        {{ place_select('value', cities if field == 'city' else countries, val, '', true) }}
+        {% else %}
+        <input type="{{ kind }}" name="value" value="{{ val or '' }}" placeholder="—" onchange="this.form.submit()">
+        {% endif %}
+    </span>
+</form>
+{% endmacro %}
+
+{# Un seul retour, vers le carnet d'adresses ; les comptes ont leur lien en
+   bas, au-dessus de l'historique des achats. #}
+<div class="section-bar section-bar-collee">
+    <a href="/ship/contacts" class="btn" style="min-width:160px;text-align:center;background:#fff;color:#0f3a4a">← Carnet d'adresses</a>
     <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
-    <div class="section-bar-right">{{ contact.category or '' }}</div>
+    <span class="btn" style="min-width:160px;visibility:hidden" aria-hidden="true">← Carnet d'adresses</span>
 </div>
 
-<div style="display:grid;gap:20px">
+<div class="contact-cartes">
+    <section class="card contact-carte">
+        <h3>Coordonnées</h3>
+        {{ ligne('company', 'Société') }}
+        {{ ligne('contact_name', 'Contact') }}
+        {{ ligne('category', 'Catégorie', 'categorie') }}
+        {{ ligne('phone', 'Téléphone', 'tel', 'tel:' ~ (contact.phone or ''), 'Appeler') }}
+        {{ ligne('email', 'Email', 'email', 'mailto:' ~ (contact.email or ''), 'Écrire') }}
+        {% set site = contact.website or '' %}
+        {{ ligne('website', 'Site web', 'text', site if site.startswith('http') else 'https://' ~ site, 'Ouvrir le site') }}
+    </section>
 
-    <section class="card">
-        <h3 style="margin:0 0 12px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Informations</h3>
-        {# Chaque champ est son propre formulaire, qui s'enregistre dès qu'on le
-           quitte (onchange) — jamais un formulaire commun, sinon deux
-           modifications proches s'écraseraient. Même idiome que la page route.
-           Le téléphone, l'email et le site restent joignables par la petite
-           flèche : le clic dans le champ, lui, sert à éditer. #}
-        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
-            {% for field, label, kind in [
-                ('company', 'Société', 'text'),
-                ('contact_name', 'Contact', 'text'),
-                ('category', 'Catégorie', 'select'),
-                ('phone', 'Téléphone', 'tel'),
-                ('email', 'Email', 'email'),
-                ('website', 'Site web', 'text'),
-            ] %}
-            {% set val = contact[field] %}
-            <form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}">
-                <div class="meta">
-                    {{ label }}
-                    {% if val and field == 'phone' %}<a href="tel:{{ val }}" class="field-link" title="Appeler">↗</a>
-                    {% elif val and field == 'email' %}<a href="mailto:{{ val }}" class="field-link" title="Écrire">↗</a>
-                    {% elif val and field == 'website' %}<a href="{{ val if val.startswith('http') else 'https://' + val }}" target="_blank" rel="noopener" class="field-link" title="Ouvrir le site">↗</a>
-                    {% endif %}
-                </div>
-                {% if kind == 'select' %}
-                <select name="value" class="field-edit" onchange="this.form.submit()">
-                    <option value="">—</option>
-                    {% for cat in contact_categories %}
-                    <option value="{{ cat }}" {{ 'selected' if val == cat else '' }}>{{ cat }}</option>
-                    {% endfor %}
-                    {# Une catégorie hors liste reste affichée, sinon le moindre
-                       changement de sélection la ferait disparaître. #}
-                    {% if val and val not in contact_categories %}
-                    <option value="{{ val }}" selected>{{ val }}</option>
-                    {% endif %}
-                </select>
-                {% else %}
-                <input type="{{ kind }}" name="value" class="field-edit" value="{{ val or '' }}"
-                       placeholder="—" onchange="this.form.submit()">
-                {% endif %}
-            </form>
-            {% endfor %}
-        </div>
-        {# Adresse en quatre champs, dans l'ordre de la fiche équipier. #}
-        <div class="grid" style="grid-template-columns:2fr 1fr 2fr 1.5fr;margin-top:12px">
-            {% for field, label in [
-                ('street', 'Rue et numéro'),
-                ('postal_code', 'Code postal'),
-                ('city', 'Localité'),
-                ('country', 'Pays'),
-            ] %}
-            <form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}">
-                <div class="meta">{{ label }}</div>
-                {% if field in ('city', 'country') %}
-                {{ place_select('value', cities if field == 'city' else countries, contact[field], 'field-edit', true) }}
-                {% else %}
-                <input type="text" name="value" class="field-edit" value="{{ contact[field] or '' }}"
-                       placeholder="—" onchange="this.form.submit()">
-                {% endif %}
-            </form>
-            {% endfor %}
-        </div>
-        <form method="POST" action="/ship/contacts/{{ contact.id }}/field/notes" style="margin-top:12px">
-            <div class="meta">Notes</div>
-            <textarea name="value" class="field-edit" rows="3" placeholder="—"
+    <section class="card contact-carte">
+        <h3>Adresse</h3>
+        {{ ligne('street', 'Rue et numéro') }}
+        {{ ligne('postal_code', 'Code postal') }}
+        {{ ligne('city', 'Localité', 'lieu') }}
+        {{ ligne('country', 'Pays', 'lieu') }}
+        <form method="POST" action="/ship/contacts/{{ contact.id }}/field/notes" style="margin-top:10px">
+            <div class="contact-titre">Notes</div>
+            <textarea name="value" class="contact-notes" rows="3" placeholder="Horaires, services, remarques…"
                       onchange="this.form.submit()">{{ contact.notes or '' }}</textarea>
         </form>
     </section>
-
-    {# Les achats sont des dépenses : rubrique « comptes » de la grille. #}
-    {% if peut(request, 'comptes.voir') %}
-    <section>
-        <h3 style="margin:0 0 12px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">
-            Historique des achats
-            {% if purchases %}<span class="meta" style="font-weight:400;font-size:13px">({{ purchases|length }})</span>{% endif %}
-        </h3>
-
-        {% if purchases %}
-        <div style="overflow-x:auto">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Objet</th>
-                        <th>Type de frais</th>
-                        <th style="text-align:right">Payé</th>
-                        <th>Paiement</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in purchases %}
-                    {# Toute la ligne ouvre la fiche de la dépense, comme dans la
-                       liste des comptes. #}
-                    <tr style="cursor:pointer" title="Ouvrir cette dépense"
-                        onclick="rowLink(event, '/ship/expenses/{{ p.id }}')">
-                        <td style="white-space:nowrap">{{ p.date | datefr if p.date else '' }}</td>
-                        <td>{{ p.designation or '' }}</td>
-                        <td>{{ p.expense_type or '' }}</td>
-                        <td style="text-align:right">{{ p.paid | euros }}</td>
-                        <td>{{ p.payment or '' }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="3">Total</td>
-                        <td style="text-align:right">{{ ((purchases | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) | euros }}</td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-        {% else %}
-        <div class="card" style="color:var(--muted);text-align:center;padding:24px">
-            Aucun achat enregistré avec ce fournisseur.
-        </div>
-        {% endif %}
-    </section>
-    {% endif %}
-
 </div>
+
+{# Les achats sont des dépenses : rubrique « comptes » de la grille. #}
+{% if peut(request, 'comptes.voir') %}
+<section>
+    <div class="achats-titre">
+        <div class="contact-titre" style="margin:0">Historique des achats</div>
+        {% if purchases %}<span>{{ purchases | length }} achat{{ 's' if purchases | length > 1 else '' }}</span>{% endif %}
+    </div>
+
+    {% if purchases %}
+    <div class="tableau-colle">
+        <table class="data-table titres-legers">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Objet</th>
+                    <th>Type de frais</th>
+                    <th style="text-align:right">Payé</th>
+                    <th>Paiement</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in purchases %}
+                {# Toute la ligne ouvre la fiche de la dépense, comme dans la
+                   liste des comptes. #}
+                <tr style="cursor:pointer" title="Ouvrir cette dépense"
+                    onclick="rowLink(event, '/ship/expenses/{{ p.id }}')">
+                    <td style="white-space:nowrap">{{ p.date | datefr if p.date else '' }}</td>
+                    <td>{{ p.designation or '' }}</td>
+                    <td>{{ p.expense_type or '' }}</td>
+                    <td style="text-align:right;white-space:nowrap">{{ p.paid | euros }}</td>
+                    <td>{{ p.payment or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3">Total</td>
+                    <td style="text-align:right;white-space:nowrap">{{ ((purchases | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) | euros }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <div class="card" style="color:var(--muted);text-align:center;padding:20px">
+        Aucun achat enregistré avec ce fournisseur.
+    </div>
+    {% endif %}
+</section>
+{% endif %}
 
 {% endblock %}

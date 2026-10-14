@@ -140,7 +140,8 @@
     (('%g' | format(ship.loa)).replace('.', ',') ~ ' m') if ship.loa else '',
     ship.flag or '', ship.home_port or ''
 ] | select | join(' · ') %}
-<div class="section-bar">
+{# Collée sous le menu : le nom du navire reste visible en faisant défiler la fiche. #}
+<div class="section-bar section-bar-collee">
     <div class="section-bar-title">
         <div style="font-size:24px">{{ ship.name or 'Navire sans nom' }}</div>
         {% if resume %}<div class="fiche-resume">{{ resume }}</div>{% endif %}

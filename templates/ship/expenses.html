@@ -8,10 +8,15 @@
        (écran étroit) en crée un autour du tableau — accroché à la page, il ne
        tiendrait pas. 100dvh plutôt que 100vh : sur iPad, vh compte la barre
        d'adresse de Safari, et le bas du tableau passerait dessous. */
+    /* Hauteur du cadre : l'écran moins le menu et la barre « Comptes »,
+       mesurés (--topbar-h, --barre-h, base.html) plutôt qu'estimés — le menu
+       à icônes et l'agrandissement sur iPad avaient rendu l'ancienne marge
+       fixe trop courte : le cadre débordait, la page défilait, et l'en-tête
+       partait avec elle. 84 px : les marges autour de la barre et celle du bas de page. */
     .comptes-scroll {
         overflow: auto;
-        max-height: calc(100vh - 170px);
-        max-height: calc(100dvh - 170px);
+        max-height: calc(100vh - var(--topbar-h, 70px) - var(--barre-h, 66px) - 84px);
+        max-height: calc(100dvh - var(--topbar-h, 70px) - var(--barre-h, 66px) - 84px);
         border-radius: 6px;
     }
     .comptes-scroll thead th { position: sticky; top: 0; z-index: 2; }
@@ -23,11 +28,11 @@
     /* Zone de toucher agrandie par la marge intérieure : sur iPad, un
        triangle de 11 px seul serait difficile à viser. */
     .tri a {
-        color: rgba(255, 255, 255, 0.55); text-decoration: none;
+        color: #c3ceda; text-decoration: none;   /* titres légers : gris clair, le choisi en bleu */
         font-size: 11px; padding: 1px 4px;
     }
-    .tri a:hover { color: #fff; }
-    .tri a.actif { color: #fff; }
+    .tri a:hover { color: var(--accent); }
+    .tri a.actif { color: var(--accent-dark); }
     .comptes-scroll tfoot td {
         position: sticky; bottom: 0; z-index: 2; background: #fff;
         /* border-collapse ne colle pas les bordures avec la cellule : le trait
@@ -41,7 +46,7 @@
 
 {# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
    vide gardait son fond translucide et son min-width — une pastille creuse. #}
-<div class="section-bar">
+<div class="section-bar section-bar-collee">
     {# Un bouton de chaque côté, de même largeur, pour que le titre reste
        centré ; l'import à gauche, la saisie à droite comme sur les autres listes. #}
     <a href="/ship/expenses/import" class="btn" style="min-width:180px;text-align:center;background:#fff;color:#0f3a4a">⇪ Importer</a>
@@ -51,7 +56,7 @@
 
 {% if entries %}
 <div class="comptes-scroll">
-    <table class="data-table">
+    <table class="data-table titres-legers">
         <thead>
             <tr>
                 {# Deux triangles à droite du titre : ▲ croissant, ▼ décroissant.
@@ -150,3 +155,9 @@
 {% endif %}
 
 {% endblock %}
+
+{# Pas de pied de page ici : le tableau occupe déjà la hauteur de l'écran
+   (.comptes-scroll), et un pied dessous rendait la page plus haute que
+   l'écran — en la faisant défiler, le cadre et son en-tête collé passaient
+   sous le menu. #}
+{% block footer %}{% endblock %}

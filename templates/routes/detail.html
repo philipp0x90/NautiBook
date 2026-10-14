@@ -28,7 +28,9 @@
     .journal [hidden] { display: none !important; }
     .j-notes { background: #f7fafc; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
     .j-notes-titre { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
-    .j-entree { display: grid; grid-template-columns: 110px 1fr; gap: 14px; padding: 8px 0; border-top: 1px solid #edf2f7; }
+    /* Colonne de l'heure juste assez large pour elle ; la position visuelle
+       éventuelle passe à la ligne dessous, en petit. */
+    .j-entree { display: grid; grid-template-columns: 48px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid #edf2f7; }
     /* Ajout : la colonne de l'heure à la taille du menu, pas plus. */
     .j-ajout .j-entree { grid-template-columns: auto 1fr; }
     .j-quand { font-size: 13px; font-weight: 700; padding-top: 4px; }
@@ -421,12 +423,12 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
         </div>
     </div>
 
-    {# To Do List #}
+    {# To-Do List #}
     <div class="bottom-panel">
         {# Le bouton est positionné en absolu : le h4 garde toute la largeur,
            donc le titre reste centré comme dans le panneau voisin. #}
         <div style="position:relative">
-            <h4>To Do List</h4>
+            <h4>To-Do List</h4>
             <a href="/ship/todo/new?next=/routes/{{ route.id }}" class="btn btn-yellow"
                style="position:absolute;top:-2px;right:0;padding:2px 9px;font-size:11px">+ Nouvelle tâche</a>
         </div>

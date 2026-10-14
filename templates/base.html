@@ -56,7 +56,11 @@
             --nav-active: #7dd3e8;
             font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
         }
-        html, body { height: 100%; margin: 0; background: var(--bg); color: #111; }
+        /* min-height et non height sur body : une hauteur fixée à celle de
+           l'écran bornait le menu collé (position: sticky) à ce premier écran —
+           plus bas dans une longue page, il défilait avec elle. */
+        html { height: 100%; }
+        body { min-height: 100%; margin: 0; background: var(--bg); color: #111; }
 
         /* ── Topbar ── */
         .topbar {
@@ -183,6 +187,24 @@
             border-radius: 8px;
             margin: 14px 0 20px;
         }
+        /* Barre collée : reste visible sous le menu quand la page défile.
+           --topbar-h est la hauteur réelle du menu, mesurée par un script
+           (elle change avec l'écran : libellés masqués sur téléphone…). Un
+           fond plein de la couleur de page sous la barre, pour que le
+           contenu qui défile ne transparaisse pas dans la marge du haut. */
+        .section-bar-collee { position: sticky; top: var(--topbar-h, 70px); z-index: 150;
+                              box-shadow: 0 -14px 0 var(--bg); }
+        /* Titres de colonnes collés sous le menu (et sous la barre collée de
+           la page, --barre-h, s'il y en a une). Le cadre .tableau-colle
+           remplace le défilement horizontal habituel (overflow-x) à partir
+           de la largeur d'une tablette : un cadre qui défile retient les
+           titres collés chez lui au lieu de la page. Sur téléphone, le
+           défilement horizontal l'emporte. */
+        .tableau-colle { overflow-x: auto; }
+        @media (min-width: 701px) {
+            .tableau-colle { overflow: visible; }
+            .tableau-colle thead { position: sticky; top: calc(var(--topbar-h, 70px) + var(--barre-h, 0px)); z-index: 140; }
+        }
         /* Les deux badges reprennent le gabarit de .btn — même corps, mêmes
            marges internes, même arrondi — pour que la barre pèse pareil à ses
            deux extrémités, y compris là où le slot de gauche porte un vrai
@@ -295,6 +317,14 @@
         .data-table th { padding: 8px 10px; text-align: left; font-weight: 700; color: #fff; background: #5bc8e0; border-bottom: 2px solid #3aaec8; }
         .data-table td { padding: 6px 10px; border-bottom: 1px solid #edf2f7; }
         .data-table tr:hover td { background: #f0fafd; }
+        /* Titres de colonnes légers (escales, équipiers) : petites capitales
+           grises sur le fond de la page, un filet dessous, au lieu de la bande
+           bleue — la barre de titre de la page reste la seule bande de couleur.
+           Fond plein : collés en haut (.tableau-colle), ils cachent ce qui
+           défile dessous. */
+        .data-table.titres-legers th { background: var(--bg); color: #7d8fa3; font-size: 11px; font-weight: 700;
+                                       text-transform: uppercase; letter-spacing: 1px;
+                                       border-bottom: 1px solid #dde5ee; padding: 6px 10px; }
         .data-table tfoot td { font-weight: 700; border-top: 2px solid #5bc8e0; }
 
         /* ── Stub placeholder ── */
@@ -469,7 +499,7 @@
                 <a href="/ship/info"><svg class="nav-ic" aria-hidden="true"><use href="#nav-navire"></use></svg><span class="nav-lib">Navire</span></a>
                 <div class="dropdown-menu">
                     <a href="/ship/info">Infos</a>
-                    <a href="/ship/todo">To Do</a>
+                    <a href="/ship/todo">To-Do List</a>
                     <a href="/ship/fuel">Gasoil</a>
                     {# Entrées masquées selon le rang : voit() applique la même règle
                        que le serveur (required_permission, main.py). #}
@@ -700,6 +730,20 @@ document.addEventListener('DOMContentLoaded', function () {
             champ.dispatchEvent(new Event('change', { bubbles: true }));
         });
     });
+})();
+
+// Hauteurs du menu et de la barre collée de la page, pour ce qui se colle
+// dessous (.section-bar-collee, .tableau-colle).
+(function () {
+    const barre = document.querySelector('.topbar');
+    if (!barre) return;
+    const collee = document.querySelector('.section-bar-collee');
+    const regler = () => {
+        document.documentElement.style.setProperty('--topbar-h', barre.offsetHeight + 'px');
+        document.documentElement.style.setProperty('--barre-h', collee ? collee.offsetHeight + 'px' : '0px');
+    };
+    regler();
+    addEventListener('resize', regler);
 })();
 
 // Droits à l'écran : ce que le rang ne permet pas n'est pas proposé. Le serveur

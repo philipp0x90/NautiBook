@@ -4995,7 +4995,7 @@ SEARCH_SECTIONS = [
         "context": lambda r: r["cruise_name"],
     },
     {
-        "title": "To Do",
+        "title": "To-Do List",
         "section": "todo",
         "fields": ["title", "task"],
         "sql": "SELECT id, title, task, status, due_date AS date "
