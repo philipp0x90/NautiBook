@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Carnet de voyage — NautiBook{% endblock %}
+{% block title %}Carnets de voyage — NautiBook{% endblock %}
 
 {% block head %}
 <style>
@@ -160,7 +160,7 @@
 
 <div class="section-bar">
     <div class="section-bar-title" style="display:flex;align-items:center;justify-content:center;gap:10px">
-        {{ icone_carnet(28, 'icone-carnet-titre') }} Carnet de voyage
+        {{ icone_carnet(28, 'icone-carnet-titre') }} Carnets de voyage
     </div>
 </div>
 
@@ -182,7 +182,7 @@
     {% else %}
     <div class="card meta" style="text-align:center">
         <a href="/login?next={{ request.url.path | urlencode }}" style="color:var(--accent)">Connectez-vous</a>
-        pour écrire dans le carnet.
+        pour écrire dans un carnet.
     </div>
     {% endif %}
 

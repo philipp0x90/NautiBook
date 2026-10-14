@@ -126,11 +126,13 @@
 
     <div style="flex:1;text-align:center">
         <div style="font-size:18px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:8px 20px;display:inline-block">
-            {# Même forme courte que dans le tableau de la page croisière. #}
+            {# Même forme courte que dans le tableau de la page croisière. À côté,
+               le numéro de la croisière puis celui de la route (« 001·04 ») ;
+               le nom de la croisière en infobulle. #}
             {% if route.departure_location and route.destination_location %}
                 {{ route.departure_location }} - {{ route.destination_location }}
-                <span style="font-size:14px;color:var(--muted)">
-                    ({{ route.cruise_name or '' }}·{{ '%02d'|format(route.number) }})
+                <span style="font-size:14px;color:var(--muted)" title="{{ route.cruise_name or '' }}">
+                    ({% if route.cruise_number %}{{ '%03d'|format(route.cruise_number) }}·{% endif %}{{ '%02d'|format(route.number) }})
                 </span>
             {% else %}
                 Route #{{ route.number }}

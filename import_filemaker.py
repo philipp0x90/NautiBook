@@ -41,7 +41,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 VOILES = {"GV 1ris + Gén.": "GV 1 Ris + Génois", "+ Appui mot.": "+ Appui Moteur"}
-TYPES_ESCALE = {"Marina": "Port"}
+TYPES_ESCALE = {}   # FileMaker et NautiBook ont les mêmes types (Port, Marina, Bouée, Mouillage)
 VOILES_APP = {"Moteur", "GV + Génois", "GV 1 Ris + Génois", "GV 2 Ris + Génois", "GV + Moteur",
               "+ Appui Moteur", "Génois seul", "GV seule", "GV + Trinq.", "GV 1 Ris + Trinq.",
               "GV 2 Ris + Trinq.", "Trinq. seule", "À sec"}

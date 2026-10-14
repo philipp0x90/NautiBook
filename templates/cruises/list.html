@@ -3,6 +3,9 @@
 
 {% block head %}
 <style>
+    /* Colonnes Départ / Arrivée : le lieu, la date dessous en plus petit. */
+    .lieu-date { white-space: nowrap; line-height: 1.3; }
+    .lieu-date span { font-size: 12px; color: var(--muted); }
     /* Ligne de la croisière en cours. Le survol garde un effet propre : la
        règle de base .data-table tr:hover td est aussi spécifique que celle-ci,
        d'où la variante :hover ci-dessous — ce <style> passe après base.html. */
@@ -26,22 +29,27 @@
    s'ouvre d'un clic sur sa ligne. #}
 
 {% if cruises %}
-<div style="overflow-x:auto">
+<div style="overflow-x:auto;margin-top:16px">
     <table class="data-table">
         <thead>
+            {# Lieu et date réunis par colonne (le lieu, la date dessous), comme
+               sur la page de la croisière : deux colonnes de moins, ce qui
+               laisse noms et lieux sur une ligne jusque sur iPad. Les deux
+               relevés de loch sous un titre commun, pour ne pas confondre leurs
+               « départ / arrivée » avec ceux des lieux. #}
             <tr>
-                <th>Croisière</th>
-                <th style="text-align:center">#</th>
-                <th>Départ de</th>
-                <th>Arrivée à</th>
-                <th style="text-align:center">Du</th>
-                <th style="text-align:center">Au</th>
-                <th style="text-align:center">Jours</th>
-                {# Relevés de loch : titres sur deux lignes, centrés. #}
-                <th style="text-align:center">Départ<br>(NM)</th>
-                <th style="text-align:center">Arrivée<br>(NM)</th>
-                <th style="text-align:center">Milles<br>parcourus</th>
-                <th></th>
+                <th rowspan="2">Croisière</th>
+                <th rowspan="2" style="text-align:center">#</th>
+                <th rowspan="2">Départ</th>
+                <th rowspan="2">Arrivée</th>
+                <th rowspan="2" style="text-align:center">Jours</th>
+                <th colspan="2" style="text-align:center;padding-bottom:2px">Loch (NM)</th>
+                <th rowspan="2" style="text-align:center">Milles<br>parcourus</th>
+                <th rowspan="2"></th>
+            </tr>
+            <tr>
+                <th style="text-align:center;padding-top:2px;font-weight:600">départ</th>
+                <th style="text-align:center;padding-top:2px;font-weight:600">arrivée</th>
             </tr>
         </thead>
         <tbody>
@@ -52,7 +60,7 @@
                 onclick="rowLink(event, '/cruises/{{ c.id }}')">
                 {# Capitales par CSS et non par un filtre upper : la casse
                    saisie reste intacte en base et dans les autres écrans. #}
-                <td style="font-weight:700;text-transform:uppercase">
+                <td style="font-weight:700;text-transform:uppercase;white-space:nowrap">
                     {{ c.name or '—' }}
                     {% if current %}<span class="chip-current">en cours</span>{% endif %}
                 </td>
@@ -60,10 +68,8 @@
                 {# from_location / to_location : où la croisière part et où elle
                    en est arrivée, d'après ses routes. Voir CRUISE_FROM /
                    CRUISE_TO dans main.py pour les règles de repli. #}
-                <td>{{ c.from_location or '—' }}</td>
-                <td>{{ c.to_location or '—' }}</td>
-                <td style="white-space:nowrap;text-align:center">{{ c.start_time | datefr }}</td>
-                <td style="white-space:nowrap;text-align:center">{{ c.end_time | datefr }}</td>
+                <td class="lieu-date"><div>{{ c.from_location or '—' }}</div><span>{{ c.start_time | datefr }}</span></td>
+                <td class="lieu-date"><div>{{ c.to_location or '—' }}</div><span>{{ c.end_time | datefr }}</span></td>
                 {# `is not none` et non `or` : une croisière aller-retour dans la
                    journée dure 0 jour, ce qu'un `or` afficherait comme absent. #}
                 <td style="text-align:center">{{ c.duration_days if c.duration_days is not none else '—' }}</td>
@@ -89,7 +95,7 @@
                dans le total plutôt que d'y entrer pour zéro. #}
             {% set total = cruises | map(attribute='distance') | select('number') | sum %}
             <tr>
-                <td colspan="9" style="text-align:right">Total</td>
+                <td colspan="7" style="text-align:right">Total</td>
                 <td style="text-align:center">{{ total | round | int }}</td>
                 <td></td>
             </tr>

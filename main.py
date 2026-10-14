@@ -59,6 +59,22 @@ def _jourfr(value):
         return "—"
 
 
+JOURS_COURTS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
+
+
+def _jourmois(value):
+    """ISO date → « sam. 06/09 » : jour abrégé, jour et mois, sans l'année, pour
+    les listes où celle-ci est déjà dite (les escales, sous leur croisière).
+    En dur, pour la même raison que _jourfr."""
+    if not value:
+        return "—"
+    try:
+        d = date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return "—"
+    return f"{JOURS_COURTS[d.weekday()]} {d.day:02d}/{d.month:02d}"
+
+
 def _age(value):
     """Birth date → age in whole years, as of today.
 
@@ -193,6 +209,7 @@ def _euros(value):
 templates.env.filters["datefr"] = _datefr
 templates.env.filters["euros"] = _euros
 templates.env.filters["jourfr"] = _jourfr
+templates.env.filters["jourmois"] = _jourmois
 templates.env.filters["age"] = _age
 templates.env.filters["deg"] = _deg
 templates.env.filters["hpa"] = _hpa
@@ -3571,24 +3588,37 @@ async def all_stopovers(request: Request):
                       ) AS nights,
                       r.departure_location, r.destination_location,
                       {ROUTE_NUMBER} AS route_number,
-                      c.name AS cruise_name, c.id AS cruise_id
+                      c.name AS cruise_name, c.id AS cruise_id,
+                      c.start_time AS cruise_start, c.end_time AS cruise_end,
+                      {CRUISE_NUMBER} AS cruise_number
                FROM stopovers s
                JOIN routes r ON s.route_id = r.id
                JOIN cruises c ON r.cruise_id = c.id
                WHERE c.ship_id = ?
-               -- Chronologique. COALESCE plutôt que arrival_date seul : une
-               -- date NULL trie avant tout en SQLite, donc les escales sans
-               -- date d'arrivée ouvriraient la liste ; elles la ferment.
-               ORDER BY COALESCE(s.arrival_date, '9999') ASC, s.id ASC""",
+               -- Par croisière, dans l'ordre de leurs départs (comme la liste
+               -- des croisières), puis chronologique dans chacune. COALESCE
+               -- plutôt que arrival_date seul : une date NULL trie avant tout
+               -- en SQLite ; les escales sans date ferment leur croisière.
+               ORDER BY {CRUISE_ORDER}, COALESCE(s.arrival_date, '9999') ASC, s.id ASC""",
             (ship_id,),
         )
-        stopovers = await cursor.fetchall()
+        stopovers = [dict(s) for s in await cursor.fetchall()]
+    # Regroupées par croisière, pour ne la nommer qu'une fois, avec le total
+    # de ses escales.
+    groups = []
+    for s in stopovers:
+        if not groups or groups[-1]["cruise_id"] != s["cruise_id"]:
+            groups.append({"cruise_id": s["cruise_id"], "name": s["cruise_name"],
+                           "start": s["cruise_start"], "end": s["cruise_end"], "stopovers": [], "total": 0})
+        groups[-1]["stopovers"].append(s)
+        groups[-1]["total"] += s["cost"] or 0
     return templates.TemplateResponse(
         "cruises/stopovers.html",
         {
             "request": request,
             "active_section": "cruises",
-            "stopovers": [dict(s) for s in stopovers],
+            "groups": groups,
+            "total": sum(g["total"] for g in groups),
         },
     )
 
@@ -3734,10 +3764,13 @@ async def create_cruise(
 
 @app.get("/routes/{route_id}/stopovers/new", response_class=HTMLResponse)
 async def new_stopover_form(request: Request, route_id: int):
+    """Même formulaire que la modification (stopover_form.html), prérempli
+    d'après la route : une escale est là où elle arrive."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name
+            f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name, c.id AS cruise_id_c,
+                      {CRUISE_NUMBER} AS cruise_number
                FROM routes r LEFT JOIN cruises c ON r.cruise_id = c.id
                WHERE r.id = ?""",
             (route_id,),
@@ -3745,9 +3778,20 @@ async def new_stopover_form(request: Request, route_id: int):
         route = await cursor.fetchone()
     if route is None:
         raise HTTPException(status_code=404, detail="Route not found")
+    # Toutes les clés du formulaire, vides : le gabarit les teste avec
+    # « is not none », qu'une clé absente (Undefined) passerait.
+    stopover = {
+        "id": None, "name": None, "type": None, "departure_date": None,
+        "cost_per_night": None, "cost": None, "notes": None,
+        "route_id": route["id"], "cruise_id": route["cruise_id_c"], "cruise_name": route["cruise_name"],
+        "route_number": route["number"], "cruise_number": route["cruise_number"],
+        "departure_location": route["departure_location"], "destination_location": route["destination_location"],
+        "locality": route["destination_location"],
+        "arrival_date": (route["end_time"] or route["start_time"] or "")[:10] or None,
+    }
     return templates.TemplateResponse(
-        "routes/stopover_new.html",
-        {"request": request, "active_section": "routes", "route": dict(route)},
+        "routes/stopover_form.html",
+        {"request": request, "active_section": "routes", "stopover": stopover, "nouveau": True},
     )
 
 
@@ -3789,7 +3833,8 @@ async def edit_stopover_form(request: Request, stopover_id: int):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT s.*, r.departure_location, r.destination_location, c.name AS cruise_name
+            f"""SELECT s.*, r.departure_location, r.destination_location, c.name AS cruise_name,
+                      c.id AS cruise_id, {ROUTE_NUMBER} AS route_number, {CRUISE_NUMBER} AS cruise_number
                FROM stopovers s
                LEFT JOIN routes r ON s.route_id = r.id
                LEFT JOIN cruises c ON r.cruise_id = c.id
@@ -3800,8 +3845,8 @@ async def edit_stopover_form(request: Request, stopover_id: int):
     if stopover is None:
         raise HTTPException(status_code=404, detail="Stopover not found")
     return templates.TemplateResponse(
-        "routes/stopover_edit.html",
-        {"request": request, "active_section": "routes", "stopover": dict(stopover)},
+        "routes/stopover_form.html",
+        {"request": request, "active_section": "cruises", "stopover": dict(stopover), "nouveau": False},
     )
 
 
@@ -3837,8 +3882,7 @@ async def update_stopover(
              cost_per_night, cost if cost is not None else 0, notes or None, stopover_id),
         )
         await db.commit()
-    if route_id:
-        return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+    # Retour à la liste des escales, d'où que l'on vienne.
     return RedirectResponse(url="/cruises/stopovers", status_code=303)
 
 
@@ -4018,7 +4062,8 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name
+            f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name,
+                      {CRUISE_NUMBER} AS cruise_number
                FROM routes r LEFT JOIN cruises c ON r.cruise_id = c.id
                WHERE r.id = ?""",
             (route_id,),
@@ -4937,7 +4982,7 @@ SEARCH_SECTIONS = [
         "label": lambda r: r["title"] or "Document",
     },
     {
-        "title": "Carnet de voyage",
+        "title": "Carnets de voyage",
         "section": "carnet",
         "alias": "e",
         "fields": ["text"],

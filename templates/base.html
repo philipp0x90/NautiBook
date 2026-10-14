@@ -319,10 +319,6 @@
         }
         #maj-bandeau.open { display: block; }
 
-        /* 1200 et non 780 : six onglets pleine taille, dont « Carnet de voyage »,
-           plus la loupe, le compte et la roue crantée, ne tiennent plus sous
-           1190 px environ (mesuré) ; sinon le dernier onglet touche les icônes,
-           puis sort de l'écran, au lieu de passer en version compacte. */
         /* Écran étroit (téléphone) : les icônes seules, les libellés restant
            dans l'infobulle et pour les lecteurs d'écran. */
         @media (max-width: 1000px) { .topbar { padding: 6px 10px; } }
@@ -332,6 +328,14 @@
             .topbar-logo { width: 34px; }
             .topbar-logo svg { width: 28px; height: 28px; }
         }
+        /* Type d'escale, en pastille de couleur (liste des escales, page de la
+           croisière). Les valeurs stockées sont celles-ci : Port, Marina,
+           Bouée, Mouillage — à ajouter ici si un type s'ajoute au formulaire. */
+        .type { border-radius: 10px; padding: 2px 10px; font-size: 12px; font-weight: 600; background: #eef2f6; color: #445; }
+        .type-Port { background: #dbeafe; color: #1e40af; }
+        .type-Marina { background: #ede9fe; color: #5b21b6; }
+        .type-Bouée { background: #fef9c3; color: #854d0e; }
+        .type-Mouillage { background: #dcfce7; color: #166534; }
         /* ── Départ / arrivée d'une croisière ou d'une route (_bornes.html) ──
            Dates et lieux modifiables sur place, qui se lisent comme du texte en
            gras et se signalent au survol. */
@@ -496,7 +500,7 @@
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'routes' else '' }}">
-                <a href="/routes/current"><svg class="nav-ic" aria-hidden="true"><use href="#nav-routes"></use></svg><span class="nav-lib">Routes</span></a>
+                <a href="/routes/current"><svg class="nav-ic" aria-hidden="true"><use href="#nav-routes"></use></svg><span class="nav-lib">Route</span></a>
             </li>
             <li class="{{ 'active' if active_section == 'tools' else '' }}">
                 <a href="/tools/weather"><svg class="nav-ic" aria-hidden="true"><use href="#nav-outils"></use></svg><span class="nav-lib">Outils</span></a>
@@ -506,7 +510,7 @@
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'gallery' else '' }}">
-                <a href="/carnet" title="Carnet de voyage">{{ icone_carnet(24, 'nav-carnet-decoupe') }}<span class="nav-lib">Voyage</span></a>
+                <a href="/carnet" title="Carnets de voyage">{{ icone_carnet(24, 'nav-carnet-decoupe') }}<span class="nav-lib">Carnets</span></a>
             </li>
         </ul>
     </nav>

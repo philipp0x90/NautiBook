@@ -1,72 +1,104 @@
 {% extends "base.html" %}
 {% block title %}Escales — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    /* Une croisière = un en-tête (nom, dates, total de ses escales) puis ses
+       escales. Colonnes resserrées, textes sur une ligne : le lieu et la
+       marina l'un sous l'autre, les dates et les nuits ensemble, la route
+       réduite à son numéro, croisière·route comme sur la page de la route
+       (« 001·02 ») — l'escale est là où elle arrive. */
+    .escales td, .escales th { white-space: nowrap; }
+    /* Colonne Escale élargie : les colonnes suivantes glissent vers la droite. */
+    .escales thead th:first-child { width: 28%; }
+    /* Titres et contenus centrés l'un sur l'autre, sauf la colonne Escale
+       (lieux, à gauche) et la ligne de la croisière, qui s'étend sur plusieurs. */
+    .escales thead th:not(:first-child),
+    .escales tbody tr:not(.croisiere) td:not(:first-child) { text-align: center; }
+    /* Titres de colonnes légers : petites capitales grises sur le fond de la
+       page, un filet dessous — la barre « Escales » reste la seule bande de
+       couleur. */
+    .escales thead th { background: transparent; color: #7d8fa3; font-size: 11px; text-transform: uppercase;
+                        letter-spacing: 1px; border-bottom: 1px solid #dde5ee; padding: 6px 10px; }
+    /* Ligne de la croisière : son nom centré sur toute la largeur du tableau
+       (posé en absolu sur la ligne), dans le gris des titres de colonnes ; le
+       total de ses escales reste à sa place, à droite. */
+    .escales .croisiere { position: relative; }
+    .escales .croisiere td { background: #eaf6fb; border-top: 2px solid #5bc8e0; padding: 8px 10px; }
+    .escales .croisiere-titre { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+                                text-align: center; pointer-events: none; }
+    .escales .croisiere-titre a { pointer-events: auto; color: #7d8fa3; font-weight: 700; text-transform: uppercase;
+                                  letter-spacing: 1px; text-decoration: none; }
+    .escales .croisiere-titre a:hover { color: var(--accent); }
+    .escales .croisiere .dates { color: #7d8fa3; font-size: 12px; margin-left: 10px; pointer-events: auto; }
+    /* Nom et dates à gauche, l'étiquette du sous-total à droite, contre lui. */
+    .escales .croisiere-ligne { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+    .escales .croisiere-total { font-size: 13px; font-weight: 600; color: #0f3a4a; }
+    .escales .lieu { font-weight: 600; }
+    .escales .marina { font-size: 12px; color: var(--muted); }
+    .escales .nuits { font-size: 12px; color: var(--muted); margin-left: 6px; }
+    .escales .route-lien { color: var(--accent); text-decoration: none; font-size: 12px; }
+    .escales .num { text-align: center; }
+</style>
+{% endblock %}
+
 {% block content %}
 
-{# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
-   vide n'était pas invisible pour autant — il gardait son fond translucide et
-   son min-width, donc une pastille creuse à droite. #}
+{# Barre sans badges : le titre occupe toute la largeur. Pas de liens vers la
+   croisière en cours ni « toutes les escales » : le menu Croisières y mène. #}
 <div class="section-bar">
     <div class="section-bar-title">Escales</div>
 </div>
 
-<div style="display:flex;gap:10px;margin-bottom:20px">
-    <a href="/cruises/current" class="btn btn-blue" style="font-size:13px">← Croisière en cours</a>
-    <span style="padding:8px 18px;background:#dde5ee;border-radius:20px;font-size:13px;font-weight:600">Toutes les escales</span>
-</div>
-
-{% if stopovers %}
+{% if groups %}
 <div style="overflow-x:auto">
-    <table class="data-table">
+    <table class="data-table escales">
         <thead>
             <tr>
-                <th>Croisière</th>
-                <th>Route</th>
-                <th>Arrivée</th>
-                <th>Départ</th>
-                <th style="text-align:center">Nuits</th>
-                <th>Localité</th>
-                <th>Nom</th>
+                <th></th>
                 <th>Type</th>
-                <th style="text-align:right">€/nuit</th>
-                <th style="text-align:right">Total</th>
+                <th>Dates</th>
+                <th>Route</th>
+                <th class="num">€/nuit</th>
+                <th class="num">Total</th>
                 <th></th>
             </tr>
         </thead>
+        {% for g in groups %}
         <tbody>
-            {% for s in stopovers %}
-            {# the cruise and route links inside the row still win — see rowLink #}
+            <tr class="croisiere">
+                <td colspan="5">
+                    <div class="croisiere-titre">
+                        <a href="/cruises/{{ g.cruise_id }}" title="Ouvrir la croisière">{{ g.name or 'Croisière sans nom' }}</a>
+                        {% if g.start %}<span class="dates">{{ g.start | datefr }}{% if g.end %} → {{ g.end | datefr }}{% endif %}</span>{% endif %}
+                    </div>
+                    <div class="croisiere-ligne"><span></span><span class="croisiere-total">Total</span></div>
+                </td>
+                <td class="num" style="font-weight:700">{{ g.total | euros if g.total else '—' }}</td>
+                <td></td>
+            </tr>
+            {% for s in g.stopovers %}
+            {# Les liens de la ligne (route) passent avant le clic sur la ligne — voir rowLink. #}
             <tr style="cursor:pointer" title="Modifier cette escale"
                 onclick="rowLink(event, '/stopovers/{{ s.id }}/edit')">
                 <td>
-                    {% if s.cruise_name %}
-                    <a href="/cruises/{{ s.cruise_id }}" style="color:var(--accent);text-decoration:none">{{ s.cruise_name }}</a>
-                    {% else %}—{% endif %}
+                    <div class="lieu">{{ s.locality or '—' }}</div>
+                    {% if s.name %}<div class="marina">{{ s.name }}</div>{% endif %}
+                </td>
+                <td>{% if s.type %}<span class="type type-{{ s.type }}">{{ s.type }}</span>{% endif %}</td>
+                <td>
+                    {{ s.arrival_date | jourmois }}{% if s.departure_date %} – {{ s.departure_date | jourmois }}{% endif %}
+                    {% if s.nights %}<span class="nuits">{{ s.nights }} nuit{{ 's' if s.nights > 1 else '' }}</span>{% endif %}
                 </td>
                 <td>
                     {% if s.route_id %}
-                    <a href="/routes/{{ s.route_id }}" style="color:var(--accent);text-decoration:none;font-size:12px">
-                        {{ s.departure_location or '' }}{% if s.departure_location and s.destination_location %} → {% endif %}{{ s.destination_location or '' }}
-                        {% if not s.departure_location and not s.destination_location %}Route #{{ s.route_number }}{% endif %}
-                    </a>
-                    {% else %}—{% endif %}
-                </td>
-                <td style="white-space:nowrap">{{ s.arrival_date | datefr }}</td>
-                <td style="white-space:nowrap">{{ s.departure_date | datefr }}</td>
-                <td style="text-align:center">{{ s.nights or '—' }}</td>
-                <td>{{ s.locality or '' }}</td>
-                <td>{{ s.name or '' }}</td>
-                <td>
-                    {% if s.type %}
-                    <span style="background:{{ '#dbeafe' if s.type == 'Port' else ('#dcfce7' if s.type == 'Mouillage' else '#fef9c3') }};
-                                 color:{{ '#1e40af' if s.type == 'Port' else ('#166534' if s.type == 'Mouillage' else '#854d0e') }};
-                                 border-radius:10px;padding:2px 10px;font-size:12px;font-weight:600">
-                        {{ s.type }}
-                    </span>
+                    <a href="/routes/{{ s.route_id }}" class="route-lien"
+                       title="{{ s.departure_location or '' }} → {{ s.destination_location or '' }}">{{ '%03d' | format(s.cruise_number) }}·{{ '%02d' | format(s.route_number) }}</a>
                     {% endif %}
                 </td>
-                <td style="text-align:right">{{ s.cost_per_night | euros if s.cost_per_night else '—' }}</td>
-                <td style="text-align:right">{{ s.cost | euros if s.cost else '—' }}</td>
-                <td style="white-space:nowrap">
+                <td class="num">{{ s.cost_per_night | euros if s.cost_per_night else '—' }}</td>
+                <td class="num">{{ s.cost | euros if s.cost else '—' }}</td>
+                <td>
                     <form method="POST" action="/stopovers/{{ s.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette escale ?')">
                         <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px">✕</button>
@@ -75,10 +107,11 @@
             </tr>
             {% endfor %}
         </tbody>
+        {% endfor %}
         <tfoot>
             <tr>
-                <td colspan="9" style="text-align:right">Total</td>
-                <td style="text-align:right">{{ ((stopovers | selectattr('cost', 'ne', none) | sum(attribute='cost')) or 0) | euros }}</td>
+                <td colspan="5" style="text-align:right">Total général</td>
+                <td class="num">{{ total | euros }}</td>
                 <td></td>
             </tr>
         </tfoot>
@@ -88,7 +121,7 @@
 <div class="stub">
     <div style="font-size:36px;margin-bottom:12px">⚓</div>
     <div>Aucune escale enregistrée.</div>
-    <div class="meta" style="margin-top:8px">Ajoutez des escales depuis le détail d'une route.</div>
+    <div class="meta" style="margin-top:8px">Ajoutez des escales depuis la page d'une route.</div>
 </div>
 {% endif %}
 
