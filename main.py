@@ -576,6 +576,12 @@ async def init_db():
         await db.commit()
 
 
+# « Terminée » se lit sur la date d'arrivée : sans date et heure d'arrivée, une
+# route est ouverte. `finished` n'en est que le reflet, recalculé à chaque
+# écriture de end_time (route_arrivee, route_set_field) — le traceur GPS le lit.
+ROUTE_FINISHED_SQL = "(COALESCE(end_time, '') != '')"
+
+
 async def _migrate(db):
     """Bring an existing logbook.db up to the schema above.
 
@@ -669,6 +675,15 @@ async def _migrate(db):
     if "place" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE carnet_photos ADD COLUMN place TEXT")
         print("Migration: carnet_photos.place added")
+
+    # Une route est terminée si et seulement si elle a une arrivée : le
+    # drapeau suit end_time (voir ROUTE_OPEN_SQL), y compris pour les routes
+    # enregistrées avant cette règle.
+    cursor = await db.execute(
+        f"UPDATE routes SET finished = {ROUTE_FINISHED_SQL} WHERE finished IS NOT {ROUTE_FINISHED_SQL}"
+    )
+    if cursor.rowcount:
+        print(f"Migration: routes.finished realigned on end_time ({cursor.rowcount})")
 
 
 TRACK_INTERVAL = 30  # seconds between automatic GPS recordings
@@ -3698,6 +3713,13 @@ async def cruise_arrival(cruise_id: int):
             "UPDATE cruises SET end_time = ? WHERE id = ?",
             (now, cruise_id),
         )
+        # L'arrivée débarque aussi, à sa date, ceux qui n'ont pas encore de
+        # date de débarquement : une croisière terminée n'a plus personne à bord.
+        await db.execute(
+            "UPDATE cruise_crew SET disembark_date = ? "
+            "WHERE cruise_id = ? AND COALESCE(disembark_date, '') = ''",
+            (now[:10], cruise_id),
+        )
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
 
@@ -3968,11 +3990,13 @@ async def route_arrivee(
         if route and route["destination_location"]:
             dest = route["destination_location"]
         await db.execute(
-            "UPDATE routes SET end_time=?, finished=1, destination_location=COALESCE(?, destination_location), motor_hours_end=? WHERE id=?",
+            # Champ vide : l'horamètre déjà saisi (route rouverte) est gardé.
+            "UPDATE routes SET end_time=?, finished=1, destination_location=COALESCE(?, destination_location), "
+            "motor_hours_end=COALESCE(?, motor_hours_end) WHERE id=?",
             (now, dest, motor_hours_end, route_id),
         )
         await db.commit()
-    return RedirectResponse(url="/cruises/current", status_code=303)
+    return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
 
 
 # Départ / arrivée d'une route, modifiables sur place depuis sa page, avec leur
@@ -3993,6 +4017,9 @@ async def route_set_field(route_id: int, field: str, value: Optional[str] = Form
         raise HTTPException(status_code=400, detail="Date invalide")
     async with connect() as db:
         await db.execute(f"UPDATE routes SET {field} = ? WHERE id = ?", (value, route_id))
+        if field == "end_time":
+            # Effacer l'arrivée rouvre la route, la saisir la termine.
+            await db.execute(f"UPDATE routes SET finished = {ROUTE_FINISHED_SQL} WHERE id = ?", (route_id,))
         await db.commit()
     return RedirectResponse(url=f"/routes/{route_id}" + ("#journal" if field == "notes" else ""), status_code=303)
 
@@ -4108,7 +4135,7 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
 
         cursor = await db.execute(
             f"""SELECT r.*, {ROUTE_NUMBER} AS number, c.name AS cruise_name,
-                      {CRUISE_NUMBER} AS cruise_number
+                      {CRUISE_NUMBER} AS cruise_number, c.ship_id AS cruise_ship_id
                FROM routes r LEFT JOIN cruises c ON r.cruise_id = c.id
                WHERE r.id = ?""",
             (route_id,),
@@ -4143,6 +4170,12 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             )
             next_route = await cursor.fetchone()
 
+        # « Croisière en cours » comme sur /cruises/current, le navire pris sur
+        # la croisière et non le cookie, comme cruise_detail.
+        is_current = bool(route["cruise_id"]) and (
+            await _current_cruise_id(db, route["cruise_ship_id"]) == route["cruise_id"]
+        )
+
         ship_id = get_current_ship_id(request)
         cursor = await db.execute(
             "SELECT * FROM todo_items WHERE ship_id = ? AND status != 'Terminé' ORDER BY urgent DESC, id ASC",
@@ -4158,6 +4191,7 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "route": dict(route),
             "lines": [dict(ln) for ln in lines],
             "stopovers": [dict(s) for s in stopovers],
+            "is_current": is_current,
             "prev_route": dict(prev_route) if prev_route else None,
             "next_route": dict(next_route) if next_route else None,
             "todos": [dict(t) for t in todos],

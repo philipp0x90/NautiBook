@@ -299,12 +299,22 @@
         input.date-vide::-webkit-datetime-edit-hour-field,
         input.date-vide::-webkit-datetime-edit-minute-field,
         input.date-vide::-webkit-datetime-edit-ampm-field { color: #a9a9a9; }
-        .btn { display: inline-block; padding: 8px 18px; border-radius: 20px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600; text-decoration: none; }
+        /* Une seule taille de bouton oblong dans toute l'appli (l'ancienne petite,
+           celle de la page route). */
+        .btn { display: inline-block; padding: 5px 12px; border-radius: 20px; border: 0; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none; }
         .btn-blue { background: #3bbfe0; color: #fff; }
         .btn-orange { background: #f47c3c; color: #fff; }
         .btn-yellow { background: #f5c842; color: #333; }
         .btn-primary { background: var(--accent); color: #fff; }
         .btn:hover { opacity: 0.88; }
+        /* « Arrivée » : une action qui clôt, pas un déplacement — encadrée sur
+           fond blanc, l'ancre du logo devant, pour ne pas se confondre avec
+           les boutons pleins Préc. / Suiv. Le bord est pris sur le padding,
+           le bouton garde la hauteur des autres. */
+        .btn-arrivee { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: var(--accent);
+                       border: 1.5px solid var(--accent); padding: 3.5px 10.5px; }
+        .btn-arrivee svg { width: 1.15em; height: 1.15em; flex: none; }
+        .btn-arrivee:hover { opacity: 1; background: var(--accent); color: #fff; }
         button.primary { background: var(--accent); color: #fff; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600; }
         .meta { color: var(--muted); font-size: 13px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
@@ -517,6 +527,13 @@
             <circle cx="118" cy="140" r="34"/><path d="M152 140h50"/>
             <circle cx="78" cy="238" r="28"/><path d="M106 238h36"/>
             <circle cx="262" cy="420" r="26"/>
+        </g>
+    </symbol>
+    {# L'ancre du logo, pour les boutons « Arrivée ». #}
+    <symbol id="icone-ancre" viewBox="0 0 64 64">
+        <g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="32" cy="10" r="6"/><path d="M32 16v41"/><path d="M19 25h26"/>
+            <path d="M11 38c2 12 10 19 21 19s19-7 21-19"/>
         </g>
     </symbol>
     <symbol id="icon-settings" viewBox="0 0 512 512">

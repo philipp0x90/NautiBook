@@ -54,11 +54,11 @@
            doivent donc rester en dehors de la zone cliquable. #}
         <div class="todo-actions">
             <form method="POST" action="/ship/todo/{{ item.id }}/done">
-                <button type="submit" class="btn" style="background:#dcfce7;color:#166534;padding:4px 10px;font-size:15px" title="Marquer comme terminé">✓ Fait</button>
+                <button type="submit" class="btn" style="background:#dcfce7;color:#166534" title="Marquer comme terminé">✓ Fait</button>
             </form>
             <form method="POST" action="/ship/todo/{{ item.id }}/delete"
                   onsubmit="return confirm('Supprimer cette tâche ?')">
-                <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:4px 10px;font-size:15px">Supprimer</button>
+                <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b">Supprimer</button>
             </form>
         </div>
     </div>
@@ -87,11 +87,11 @@
         </div>
             <div class="todo-actions">
                 <form method="POST" action="/ship/todo/{{ item.id }}/undo">
-                    <button type="submit" class="btn" style="background:#fef9c3;color:#854d0e;padding:3px 9px;font-size:14px" title="Remettre en cours">↩ Annuler</button>
+                    <button type="submit" class="btn" style="background:#fef9c3;color:#854d0e" title="Remettre en cours">↩ Annuler</button>
                 </form>
                 <form method="POST" action="/ship/todo/{{ item.id }}/delete"
                       onsubmit="return confirm('Supprimer cette tâche ?')">
-                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:3px 9px;font-size:14px">Supprimer</button>
+                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b">Supprimer</button>
                 </form>
             </div>
         </div>

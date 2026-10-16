@@ -134,8 +134,11 @@
        qu'en-têtes, étiquettes et dates commencent tous au même aplomb. */
     .equipage-ajout label { font-size: 12px; padding-left: 11px; }
     .equipage-ajout input { background: #fff; }
-    /* « + Embarquer » à la hauteur du menu, juste à côté de lui. */
-    .equipage-ajout .embarquer { height: 34px; padding: 0 16px; font-size: 13px; white-space: nowrap; }
+    /* « + Embarquer » à la taille commune des boutons, juste à côté du menu. */
+    .equipage-ajout .embarquer { white-space: nowrap; }
+    /* Sa cellule a la hauteur du menu (34 px) et le centre : bouton et menu
+       partagent ainsi le même axe, la rangée étant alignée par le bas. */
+    .equipage-ajout .actions { height: 34px; align-items: center; }
     /* Le menu des équipiers à la hauteur des cases date (34 px). Safari ne
        règle pas la hauteur d'un menu natif : son apparence est retirée, et la
        flèche redessinée en fond. Sans cela, plus bas que les cases date, il
@@ -178,10 +181,7 @@
    place, comme les colonnes du journal de bord : un formulaire à un seul champ
    qui s'envoie au changement. #}
 {# Ni suppression ni création de croisière sur cette page : elles se font
-   depuis la liste des croisières. /cruises/current, la page du bord consultée
-   en navigation, n'a pas non plus « + Nouvelle route », que garde la même
-   croisière ouverte depuis la liste (/cruises/{id}). #}
-{% set page_en_cours = request.url.path == '/cruises/current' %}
+   depuis la liste des croisières. #}
 <div class="cruise-header">
     <form style="grid-area:nom;min-width:0;text-align:center" method="POST" action="/cruises/{{ cruise.id }}/set-name">
         <input type="text" name="name" class="cruise-name" value="{{ cruise.name or '' }}"
@@ -265,24 +265,36 @@
    des routes : c'est de là qu'on enchaîne, plutôt qu'après les panneaux
    Équipage et Escales. Le bloc reste entier — « Arrivée » et « Croisière
    Suiv. » partagent la rangée. #}
-<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 24px">
-    {% if prev_cruise_id %}
-    <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
-    {% endif %}
-    <div style="flex:1;text-align:center;display:flex;gap:8px;justify-content:center">
-        {% if not page_en_cours %}
-        <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
-        {% endif %}
-        {% if not cruise.end_time %}
-        <form method="POST" action="/cruises/{{ cruise.id }}/arrival" style="display:inline"
-              onsubmit="return confirm('Marquer l\'arrivée de cette croisière ?')">
-            <button type="submit" class="btn btn-blue">Arrivée</button>
-        </form>
+{# Grille 1fr auto 1fr : « + Nouvelle route » occupe seul la colonne du
+   milieu, donc reste centré sur la page qu'il y ait ou non une croisière
+   précédente ou suivante. #}
+<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin:14px 0 24px">
+    <div>
+        {% if prev_cruise_id %}
+        <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
         {% endif %}
     </div>
-    {% if next_cruise_id %}
-    <a href="/cruises/{{ next_cruise_id }}" class="btn btn-blue">Croisière Suiv. →</a>
-    {% endif %}
+    {% macro bouton_arrivee() %}
+        <form method="POST" action="/cruises/{{ cruise.id }}/arrival" style="display:inline"
+              onsubmit="return confirm('Marquer la fin de cette croisière ?')">
+            <button type="submit" class="btn btn-arrivee"><svg aria-hidden="true"><use href="#icone-ancre"></use></svg>Fin de la croisière</button>
+        </form>
+    {% endmacro %}
+    {# « Arrivée » calé à droite, à la place de « Croisière Suiv. » que la
+       dernière croisière n'a pas ; s'il y a une suivante, juste à sa gauche. #}
+    <div>
+        {# « + Nouvelle route » seulement sur la croisière en cours, qu'on y
+           arrive par /cruises/current ou par /cruises/{id}. #}
+        {% if is_current %}
+        <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px">
+        {% if not cruise.end_time %}{{ bouton_arrivee() }}{% endif %}
+        {% if next_cruise_id %}
+        <a href="/cruises/{{ next_cruise_id }}" class="btn btn-blue">Croisière Suiv. →</a>
+        {% endif %}
+    </div>
 </div>
 
 {# Équipage — cruise_crew. Le rôle est stocké en anglais ('skipper' / 'crew'),

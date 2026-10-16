@@ -18,7 +18,6 @@
                      background: linear-gradient(rgba(240,248,252,0), rgba(240,248,252,.75) 55%, rgba(240,248,252,.97)); }
     /* Boutons de la page (navigation, sous le tableau) : plus petits que la
        taille commune des boutons de l'app. */
-    .btn-nav { padding: 5px 12px; font-size: 12px; }
     .route-layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
     /* Journal, sous le tableau. */
     .journal { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px 16px; margin: 16px 0; }
@@ -118,15 +117,20 @@
 
 {% block content %}
 
-{# ── Top nav bar ── #}
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-    {% if prev_route %}
-    <a href="/routes/{{ prev_route.id }}" class="btn btn-blue btn-nav">← Route Préc.</a>
-    {% else %}
-    <div style="width:110px"></div>
-    {% endif %}
+{# ── Top nav bar ── en grille 1fr auto 1fr, comme l'en-tête de la page
+   croisière : le titre reste centré sur la page quelle que soit la largeur de
+   la colonne de gauche, qui porte le bouton précédent et « Croisière en cours ». #}
+<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+        {% if prev_route %}
+        <a href="/routes/{{ prev_route.id }}" class="btn btn-blue btn-nav">← Route Préc.</a>
+        {% endif %}
+        {% if is_current %}
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
+        {% endif %}
+    </div>
 
-    <div style="flex:1;text-align:center">
+    <div style="text-align:center">
         <div style="font-size:18px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:8px 20px;display:inline-block">
             {# Même forme courte que dans le tableau de la page croisière. À côté,
                le numéro de la croisière puis celui de la route (« 001·04 ») ;
@@ -142,11 +146,13 @@
         </div>
     </div>
 
+    <div style="justify-self:end">
+    {# « + Nouvelle route » n'est plus ici : il prend la place de « Arrivée
+       de la route », sous le tableau, une fois la route terminée. #}
     {% if next_route %}
     <a href="/routes/{{ next_route.id }}" class="btn btn-blue btn-nav">Route Suiv. →</a>
-    {% else %}
-    <a href="/routes/new?cruise_id={{ route.cruise_id }}" class="btn btn-yellow btn-nav">+ Nouvelle route</a>
     {% endif %}
+    </div>
 </div>
 
 {# ── Départ / Arrivée ── modifiables sur place, comme sur la page croisière. #}
@@ -254,12 +260,16 @@
         {# Nouvelle ligne + Arrivée ── below table #}
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
             <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow btn-nav">+ Nouvelle ligne</a>
-            {# Arrivée sits in the middle cell, which takes the slack on both
-               sides, so it stays centred even on a finished route where the
-               button is gone. #}
+            {# Cellule du milieu, centrée : « Arrivée de la route » tant que la
+               route est ouverte ; une fois arrivée, « + Nouvelle route », même
+               aspect — seulement sur la dernière route de la croisière en
+               cours (les autres croisières sont terminées ; compléter une
+               croisière passée reste possible depuis sa page). #}
             <div style="flex:1;text-align:center">
                 {% if not route.finished %}
-                <button type="button" class="btn btn-blue btn-nav" onclick="document.getElementById('arrivee-modal').classList.add('open')">Arrivée</button>
+                <button type="button" class="btn btn-nav btn-arrivee" onclick="document.getElementById('arrivee-modal').classList.add('open')"><svg aria-hidden="true"><use href="#icone-ancre"></use></svg>Arrivée de la route</button>
+                {% elif is_current and not next_route %}
+                <a href="/routes/new?cruise_id={{ route.cruise_id }}" class="btn btn-nav btn-arrivee">+ Nouvelle route</a>
                 {% endif %}
             </div>
             {# Une route n'a qu'une escale : le bouton propose de la créer tant
