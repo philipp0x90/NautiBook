@@ -10,18 +10,22 @@
    ligne se coupe entre la date et le lieu, jamais entre « de : » et le lieu. #}
 {# titre : le libellé (« Départ ») est affiché en titre du bloc par la page —
    la date n'est alors pas précédée de « Départ : ». #}
-{% macro champ_date(action, label, valeur, avec_heure=false, titre=false) %}
+{# phrase : le libellé se lit avec la valeur, sans deux-points (« Départ le
+   samedi 17/10/2026 de Testy »). #}
+{% macro champ_date(action, label, valeur, avec_heure=false, titre=false, phrase=false) %}
 <span class="bornes-groupe">
-{% if not titre %}<span class="bornes-label">{{ label }} :</span>{% endif %}
+{% if not titre %}<span class="bornes-label">{{ label }}{{ '' if phrase else ' :' }}</span>{% endif %}
 {% if valeur %}<span class="bornes-jour">{{ valeur | jourfr }}</span>{% endif %}
 <form method="POST" action="{{ action }}" class="bornes-form">
     {% if avec_heure %}
     <input type="datetime-local" name="value" class="bornes-edit bornes-date avec-heure"
            value="{{ (valeur[:16] | replace(' ', 'T')) if valeur else '' }}"
-           title="{{ label }} — date et heure" onchange="this.form.submit()">
+           title="{{ label }} — date et heure" onchange="this.form.submit()"
+           onclick="if (this.showPicker) try { this.showPicker(); } catch (e) {}">
     {% else %}
     <input type="date" name="value" class="bornes-edit bornes-date" value="{{ valeur[:10] if valeur else '' }}"
-           title="{{ label }} — date" onchange="this.form.submit()">
+           title="{{ label }} — date" onchange="this.form.submit()"
+           onclick="if (this.showPicker) try { this.showPicker(); } catch (e) {}">
     {% endif %}
     {% if valeur %}
     <button type="button" class="bornes-effacer" title="Effacer"
@@ -31,9 +35,9 @@
 </span>
 {% endmacro %}
 
-{% macro champ_lieu(action, prefixe, valeur, derive=none) %}
+{% macro champ_lieu(action, prefixe, valeur, derive=none, phrase=false) %}
 <span class="bornes-groupe">
-<span class="bornes-label">{{ prefixe }} :</span>
+<span class="bornes-label">{{ prefixe }}{{ '' if phrase else ' :' }}</span>
 <form method="POST" action="{{ action }}" class="bornes-form">
     {% set texte = valeur or derive or 'Lieu' %}
     <input type="text" name="value" class="bornes-edit bornes-lieu" value="{{ valeur or '' }}"

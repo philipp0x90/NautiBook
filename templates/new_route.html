@@ -2,48 +2,71 @@
 
 {% block title %}Nouvelle route — NautiBook{% endblock %}
 
-{% block content %}
-<div class="meta" style="margin-bottom:4px;font-size:18px;font-weight:600">{{ cruise.name }}</div>
-<h1 style="margin-top:2px">Nouvelle route</h1>
+{% block head %}
+<style>
+    /* Deux colonnes égales, pour les ports comme pour la date et l'horamètre :
+       chaque case s'aligne sur celle du dessus. min-width: 0 et apparence
+       retirée sur la case date et heure : Safari (iPad) la dessinait plus large
+       et plus haute que sa colonne, débordant sur l'horamètre, le texte
+       centré. Hauteur commune à toutes les cases. */
+    .route-deux { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+    .route-deux > div { min-width: 0; }
+    .route-deux input { width: 100%; min-width: 0; height: 36px; box-sizing: border-box; }
+    .route-deux input[type=datetime-local] { -webkit-appearance: none; appearance: none; text-align: left; }
+    .route-deux input[type=datetime-local]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+    @media (max-width: 560px) { .route-deux { grid-template-columns: 1fr; } }
+    form textarea { font: inherit; font-size: 14px; }   /* et non la police à chasse fixe par défaut */
+</style>
+{% endblock %}
 
-<form method="POST" action="/routes/new" class="card" style="margin-top:12px;display:grid;gap:14px;max-width:520px">
+{% block content %}
+{# La croisière en titre, « Nouvelle route » dessous en plus petit ; le tout
+   centré, comme le formulaire. #}
+<h1 style="margin:24px 0 2px;text-align:center">{{ cruise.name or 'Croisière sans nom' }}</h1>
+<div class="meta" style="font-size:18px;font-weight:600;text-align:center">Nouvelle route</div>
+
+<form method="POST" action="/routes/new" class="card" style="margin:12px auto 0;display:grid;gap:14px;max-width:520px">
     <input type="hidden" name="cruise_id" value="{{ cruise.id }}">
-    <div class="grid">
+    <div class="route-deux">
         {# Préremplis depuis l'arrivée de la route précédente : une étape part
            d'où la précédente s'est arrêtée, avec le même horamètre au compteur.
-           Les champs restent modifiables, et vides si cette route n'a pas
-           encore d'arrivée enregistrée. #}
+           Pour la première route d'une croisière : le port de départ et la date
+           de départ de la croisière, et l'horamètre de la dernière arrivée du
+           navire. Tout reste modifiable. #}
         <div>
             <label>Départ de</label>
-            <input type="text" name="departure_location" placeholder="Marseille"
-                   value="{{ previous.destination_location if previous and previous.destination_location else '' }}">
+            <input type="text" name="departure_location"
+                   value="{{ (previous.destination_location or '') if previous else (cruise.departure or '') }}">
         </div>
         <div>
-            <label>Arrivée à</label>
-            <input type="text" name="destination_location" placeholder="Ajaccio">
+            <label>Destination</label>
+            <input type="text" name="destination_location">
         </div>
     </div>
-    <div>
-        <label>Nom <span class="meta" style="font-weight:400">(facultatif — laisser vide pour utiliser départ/arrivée)</span></label>
-        <input type="text" name="name" placeholder="Étape 1">
-    </div>
+    {# Pas de nom de route : une route se nomme par ses ports (« Vieste -
+       Rodi Garganico »). Date de départ et horamètre sur une même ligne. #}
+    <div class="route-deux">
     <div>
         <label>Date et heure de départ</label>
-        <input type="datetime-local" name="start_time">
+        <input type="datetime-local" name="start_time"
+               value="{{ (cruise.start_time[:10] ~ 'T' ~ now_hm) if not previous and cruise.start_time else '' }}">
     </div>
     <div>
         <label>Horamètre au départ (h)</label>
         <input type="number" name="motor_hours_start" step="0.1" placeholder="ex : 1234.5"
-               value="{{ previous.motor_hours_end if previous and previous.motor_hours_end is not none else '' }}">
+               value="{{ previous.motor_hours_end if previous and previous.motor_hours_end is not none else (last_hours if last_hours is not none else '') }}">
         {% if previous and (previous.destination_location or previous.motor_hours_end is not none) %}
         <div class="meta" style="margin-top:4px">Repris de l'arrivée de la route précédente.</div>
+        {% elif not previous %}
+        <div class="meta" style="margin-top:4px">Première route de la croisière : départ et date repris de la croisière{% if last_hours is not none %}, horamètre de la dernière arrivée du navire{% endif %}.</div>
         {% endif %}
+    </div>
     </div>
     <div>
         <label>Notes</label>
         <textarea name="notes" placeholder="Météo prévue, points de passage…"></textarea>
     </div>
-    <div style="display:flex;gap:10px;align-items:center">
+    <div style="display:flex;gap:10px;align-items:center;justify-content:center">
         <button type="submit" class="primary">Créer la route</button>
         {# Retour à la croisière d'où l'on vient : rien n'est créé tant que le
            formulaire n'est pas envoyé, un simple lien suffit. #}

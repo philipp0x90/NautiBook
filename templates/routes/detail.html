@@ -153,14 +153,12 @@
 {% from "_bornes.html" import champ_date, champ_lieu %}
 <div class="bornes bornes-centre bornes-compact" style="margin-bottom:12px">
     <div class="bornes-cote">
-        <div class="bornes-titre">Départ</div>
-        {{ champ_date('/routes/' ~ route.id ~ '/field/start_time', 'Départ', route.start_time, true, true) }}
-        {{ champ_lieu('/routes/' ~ route.id ~ '/field/departure_location', 'de', route.departure_location) }}
+        {{ champ_date('/routes/' ~ route.id ~ '/field/start_time', 'Départ le', route.start_time, true, false, true) }}
+        {{ champ_lieu('/routes/' ~ route.id ~ '/field/departure_location', 'de', route.departure_location, phrase=true) }}
     </div>
     <div class="bornes-cote bornes-arrivee">
-        <div class="bornes-titre">Arrivée</div>
-        {{ champ_date('/routes/' ~ route.id ~ '/field/end_time', 'Arrivée', route.end_time, true, true) }}
-        {{ champ_lieu('/routes/' ~ route.id ~ '/field/destination_location', 'à', route.destination_location) }}
+        {{ champ_date('/routes/' ~ route.id ~ '/field/end_time', 'Arrivée le', route.end_time, true, false, true) }}
+        {{ champ_lieu('/routes/' ~ route.id ~ '/field/destination_location', 'à', route.destination_location, phrase=true) }}
     </div>
 </div>
 
@@ -530,7 +528,7 @@ function buildMap() {
 
 {# ── Arrivée modal ── #}
 <div id="arrivee-modal" class="modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:310px">
         <h3 style="margin:0;font-size:17px">Arrivée</h3>
         <form method="POST" action="/routes/{{ route.id }}/arrivee" style="display:grid;gap:12px">
             {% if not route.destination_location %}
@@ -540,8 +538,13 @@ function buildMap() {
             </div>
             {% endif %}
             <div>
-                <label>Horamètre à l'arrivée (h)</label>
-                <input type="number" name="motor_hours_end" step="0.1" placeholder="{{ route.motor_hours_start or '0.0' }}">
+                <label style="font-size:17px;text-align:center">Horamètre à l'arrivée (h){% if route.motor_hours_start is not none %}
+                    <span style="display:block;font-weight:400;font-size:13px">(Horamètre au départ : {{ '%.1f' | format(route.motor_hours_start) }})</span>{% endif %}</label>
+                {# Un horamètre ne recule pas : le navigateur refuse une valeur
+                   inférieure au départ, et route_arrivee le revérifie. #}
+                <input type="number" name="motor_hours_end" step="0.1"
+                       {% if route.motor_hours_start is not none %}min="{{ route.motor_hours_start }}"
+                       oninput="this.setCustomValidity(this.validity.rangeUnderflow ? 'L\'horamètre à l\'arrivée ne peut pas être inférieur à celui du départ ({{ '%.1f' | format(route.motor_hours_start) }}).' : '')"{% endif %}>
             </div>
             <div style="display:flex;gap:10px">
                 <button type="submit" class="btn btn-blue">Confirmer l'arrivée</button>

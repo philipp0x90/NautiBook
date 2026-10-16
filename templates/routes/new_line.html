@@ -25,8 +25,52 @@
        ligne ; les champs restent étroits sans casser la colonne. */
     .dmm-row { display: flex; gap: 4px; align-items: center; }
     .dmm-row input { min-width: 0; }
+    /* Cases étroites (cinq colonnes sur iPad) : marges intérieures réduites,
+       sans les flèches des champs numériques, et la case de l'hémisphère juste
+       assez large pour N / S / E / W — sinon degrés et minutes étaient coupés. */
+    .dmm-row input, .dmm-row select { padding-left: 4px; padding-right: 4px; font-size: 13px; }
+    .dmm-row { gap: 2px; }
+    .dmm-row input { -moz-appearance: textfield; }
+    .dmm-row input::-webkit-inner-spin-button, .dmm-row input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    .dmm-row select { flex: 0 0 40px !important; width: 40px !important; }
+    .dmm-row input[name$=_deg] { flex: 0 0 34px !important; }
+    .dmm-row input[name$=_min] { flex: 1 1 auto !important; }
+    form textarea { font: inherit; font-size: 14px; }
+    /* En-tête : Enregistrer à gauche, le titre au centre, Annuler à droite —
+       les boutons toujours visibles, sans faire défiler jusqu'en bas. Le
+       bouton appartient au formulaire par l'attribut form=. */
+    .ligne-entete { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin: 12px 0 10px; }
+    .ligne-entete h2 { margin: 0; font-size: 18px; text-align: center; }
+    .ligne-entete .annuler { justify-self: end; color: var(--muted); text-decoration: none; font-size: 14px; padding: 6px 4px; }
+    .ligne-entete button { justify-self: start; }
+    /* Plus serré, pour que tout tienne sur un écran d'iPad. */
+    .field-groups { gap: 6px 16px !important; }
+    .field-group { gap: 6px !important; }
+    .field-groups label, .date-notes label { margin-bottom: 3px; }
+    @media (max-width: 760px) {
+        .ligne-entete { grid-template-columns: 1fr; justify-items: center; }
+        .ligne-entete .annuler, .ligne-entete button { justify-self: center; }
+    }
+    /* Cases et menus un peu moins hauts (32 px), et la même hauteur partout :
+       Safari (iPad) dessine sinon les menus et les cases date plus hauts, et
+       ignore la hauteur d'un menu natif — d'où l'apparence retirée et la
+       flèche redessinée. La case date et heure tient dans sa colonne
+       (min-width: 0), texte à gauche : Safari la débordait, centrée. */
+    form .field-groups input, form .field-groups select,
+    form input[type=datetime-local] { height: 32px; box-sizing: border-box; padding-top: 4px; padding-bottom: 4px; }
+    form .field-groups select {
+        -webkit-appearance: none; appearance: none; padding-right: 24px;
+        background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23556' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center / 10px 7px;
+    }
+    form .field-groups select:focus { background-color: #fff; }
+    form .dmm-row select { padding-right: 16px; background-position: right 4px center; }
+    form input[type=datetime-local] { width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; text-align: left; }
+    form input[type=datetime-local]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+    .date-notes > div, .field-group > div { min-width: 0; }
     /* Narrower screens rewrap the groups, so the shared rows have to be undone. */
-    @media (max-width: 900px) {
+    /* 760 et non 900 : l'iPad met la page en page à 880 points (base.html) et
+       doit garder les cinq colonnes, pour que le formulaire tienne sur un écran. */
+    @media (max-width: 760px) {
         .field-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; gap: 20px; }
         .field-group { grid-row: auto; grid-template-rows: none; }
     }
@@ -38,9 +82,13 @@
 
 {% block content %}
 
-<h2 style="margin:24px 0 18px;font-size:18px;text-align:center">Ajouter une ligne au journal de bord</h2>
+<div class="ligne-entete">
+    <button type="submit" form="ligne-form" class="primary">Enregistrer la ligne</button>
+    <h2>Ajouter une ligne au journal de bord</h2>
+    <a href="/routes/{{ route.id }}" class="annuler">Annuler</a>
+</div>
 
-<form method="POST" action="/routes/{{ route.id }}/new-line" class="card" style="display:grid;gap:16px"
+<form method="POST" action="/routes/{{ route.id }}/new-line" class="card" id="ligne-form" style="display:grid;gap:12px"
       onsubmit="return confirmerConditions(this)">
 
     <div class="field-groups">
@@ -208,12 +256,7 @@
 
     <div>
         <label>Notes / Journal</label>
-        <textarea name="notes" rows="3" placeholder="Observations, événements..."></textarea>
-    </div>
-
-    <div style="display:flex;gap:10px">
-        <button type="submit" class="primary">Enregistrer la ligne</button>
-        <a href="/routes/{{ route.id }}" style="padding:9px 16px;color:var(--muted);text-decoration:none;font-size:14px">Annuler</a>
+        <textarea name="notes" rows="2" placeholder="Observations, événements..."></textarea>
     </div>
 </form>
 

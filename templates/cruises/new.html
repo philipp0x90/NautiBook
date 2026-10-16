@@ -1,28 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Nouvelle croisière — NautiBook{% endblock %}
+{% block title %}Créer une nouvelle croisière — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* Case date avec une icône de calendrier (Safari n'en montre pas). Le fond
+       est redonné en entier pendant la saisie : le style commun d'une case
+       active (« background: #fff », base.html) effaçait l'icône, ou la
+       répétait sur toute la largeur. */
+    .date-calendrier { padding-right: 38px; cursor: pointer;
+        background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b79c6' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E") no-repeat right 10px center / 20px 20px; }
+    .date-calendrier:focus { background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232b79c6' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='18' rx='2'/%3E%3Cpath d='M16 2v4M8 2v4M3 10h18'/%3E%3C/svg%3E") no-repeat right 10px center / 20px 20px; }
+    .date-calendrier::-webkit-calendar-picker-indicator { opacity: 0; }
+    /* La date en toutes lettres, à côté du libellé : la case, elle, reste
+       telle que le navigateur la dessine. */
+    .date-lettres-texte { font-weight: 700; color: #0f3a4a; }
+</style>
+{% endblock %}
 {% block content %}
 
 <div style="max-width:560px;margin:40px auto">
-    <h2 style="margin:0 0 20px;font-size:20px">Nouvelle croisière</h2>
+    <h2 style="margin:0 0 20px;font-size:20px">Créer une nouvelle croisière</h2>
 
     <form method="POST" action="/cruises/new" class="card" style="display:grid;gap:14px">
         <div>
-            <label>Nom de la croisière</label>
-            <input type="text" name="name" placeholder="Ex : Croatie 2026" required>
+            <label>Donner un nom à cette croisière</label>
+            <input type="text" name="name" placeholder="…" required>
         </div>
         <div class="grid" style="grid-template-columns:1fr 1fr">
             <div>
-                <label>Départ de</label>
-                <input type="text" name="departure" placeholder="Port de départ">
+                <label>Port de départ</label>
+                <input type="text" name="departure">
             </div>
             <div>
-                <label>Arrivée à</label>
-                <input type="text" name="destination" placeholder="Port d'arrivée">
+                <label>Port d'arrivée</label>
+                <input type="text" name="destination">
             </div>
         </div>
         <div style="max-width:260px">
-            <label>Date de départ</label>
-            <input type="date" name="start_time">
+            <label>Date de départ <span class="date-lettres-texte" id="start_time_texte"></span></label>
+            {# Un clic n'importe où dans la case ouvre le calendrier (showPicker),
+               comme le ferait l'icône de Chrome, masquée pour ne pas en avoir
+               deux. La date en toutes lettres s'écrit à côté du libellé. #}
+            <input type="date" name="start_time" class="date-calendrier" id="start_time"
+                   onclick="if (this.showPicker) try { this.showPicker(); } catch (e) {}">
         </div>
         <div style="display:flex;gap:10px">
             <button type="submit" class="primary">Créer la croisière</button>
@@ -30,5 +49,25 @@
         </div>
     </form>
 </div>
+
+<script>
+(function () {
+    const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+    const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août',
+                  'septembre', 'octobre', 'novembre', 'décembre'];
+    const champ = document.getElementById('start_time'), texte = document.getElementById('start_time_texte');
+    function maj() {
+        const v = champ.value;
+        // Date construite en heure locale : new Date('2026-10-15') serait minuit UTC.
+        const d = v ? new Date(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10)) : null;
+        const ok = d && !isNaN(d);
+        texte.textContent = ok ? '· ' + JOURS[d.getDay()] + ' ' + String(d.getDate()).padStart(2, '0') + ' '
+                                 + MOIS[d.getMonth()] + ' ' + d.getFullYear() : '';
+    }
+    champ.addEventListener('input', maj);
+    champ.addEventListener('change', maj);
+    maj();
+})();
+</script>
 
 {% endblock %}

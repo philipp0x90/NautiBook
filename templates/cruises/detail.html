@@ -15,16 +15,16 @@
     .cruise-header {
         display: grid;
         /* Deux colonnes égales de part et d'autre : le nom est centré sur la
-           page, le numéro calé à droite dans la sienne. */
+           page, « Croisière en cours » calé à gauche dans la colonne de gauche,
+           le numéro à droite dans celle de droite. */
         grid-template-columns: 1fr minmax(0, 420px) 1fr;
-        grid-template-areas:
-            ".   nom     num"
-            ".   mention .";
+        grid-template-areas: "mention nom num";
         align-items: center;
         gap: 6px 10px;
         margin-bottom: 16px;
     }
     .cruise-num { justify-self: end; }
+    .cruise-mention { justify-self: start; }
     /* Écran étroit : la grille s'empile, le nom en tête. */
     @media (max-width: 820px) {
         .cruise-header {
@@ -33,6 +33,7 @@
             justify-items: center;
         }
         .cruise-header .cruise-num { justify-self: center; }
+        .cruise-header .cruise-mention { justify-self: center; }
     }
     /* Le nom de la croisière : même cadre qu'avant, mais saisissable. Il se lit
        comme un titre au repos et ne se signale qu'au survol, comme les champs
@@ -57,6 +58,8 @@
        que les dates s'alignent d'une ligne à l'autre et sur les cases du
        formulaire. La colonne des noms est bornée : sur grand écran, les dates
        restent près des noms, et l'espace libre va aux boutons, à droite. */
+    .equipage-rappel { background: #e0f2fe; color: #075985; border-radius: 8px; padding: 8px 12px;
+                       font-size: 14px; margin-bottom: 10px; }
     .equipage-titre { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
     .equipage-titre span { font-weight: 400; letter-spacing: 0; }
     .equipage-grille { display: grid; grid-template-columns: minmax(0, 400px) 130px 130px 80px 1fr;
@@ -88,6 +91,16 @@
         -webkit-appearance: none; appearance: none; line-height: normal;
     }
     .equipage-grille input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+    /* Case de date vide : rien d'écrit tant qu'on n'y touche pas. Safari y
+       montre sinon la date du jour en gris, qui passe pour une date saisie
+       (une date de débarquement, notamment). La classe date-vide est posée
+       par marquerDatesVides (base.html). */
+    .equipage-grille input[type=date].date-vide:not(:focus)::-webkit-datetime-edit,
+    .equipage-grille input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-text,
+    .equipage-grille input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-day-field,
+    .equipage-grille input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-month-field,
+    .equipage-grille input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-year-field { color: transparent; }
+    .equipage-grille input[type=date].date-vide:not(:focus) { color: transparent; }
     /* Dates des lignes : du texte ordinaire, l'icône calendrier n'apparaissant qu'au survol. */
     .equipage-grille .date-edit { height: 30px; padding: 3px 10px; font: inherit; font-size: 14px; color: #333; }
     .equipage-grille .date-edit::-webkit-calendar-picker-indicator { opacity: 0; }
@@ -120,7 +133,18 @@
     /* Étiquettes décalées comme le texte des cases (trait 1 px + 10 px), pour
        qu'en-têtes, étiquettes et dates commencent tous au même aplomb. */
     .equipage-ajout label { font-size: 12px; padding-left: 11px; }
-    .equipage-ajout input, .equipage-ajout select { background: #fff; }
+    .equipage-ajout input { background: #fff; }
+    /* « + Embarquer » à la hauteur du menu, juste à côté de lui. */
+    .equipage-ajout .embarquer { height: 34px; padding: 0 16px; font-size: 13px; white-space: nowrap; }
+    /* Le menu des équipiers à la hauteur des cases date (34 px). Safari ne
+       règle pas la hauteur d'un menu natif : son apparence est retirée, et la
+       flèche redessinée en fond. Sans cela, plus bas que les cases date, il
+       faisait aussi descendre son libellé (la grille aligne par le bas). */
+    .equipage-ajout select {
+        height: 34px; box-sizing: border-box; padding: 0 32px 0 10px;
+        -webkit-appearance: none; appearance: none;
+        background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23556' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center / 12px 8px;
+    }
     /* Petit écran : le nom et les boutons sur une ligne, les deux dates dessous. */
     @media (max-width: 760px) {
         .equipage-grille { grid-template-columns: 1fr 1fr 130px; row-gap: 4px; }  /* 130 px fixes : les dates restent alignées, bouton ou pas */
@@ -170,7 +194,7 @@
     <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
     {% endif %}
     {% if is_current is defined and is_current %}
-    <div style="grid-area:mention;text-align:center;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
+    <div class="cruise-mention" style="grid-area:mention;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
     {% endif %}
 </div>
 
@@ -182,14 +206,12 @@
 {% from "_bornes.html" import champ_date, champ_lieu %}
 <div class="bornes bornes-centre bornes-compact">
     <div class="bornes-cote">
-        <div class="bornes-titre">Départ</div>
-        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/start_time', 'Départ', cruise.start_time, false, true) }}
-        {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/departure', 'de', cruise.departure, cruise.from_location) }}
+        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/start_time', 'Départ le', cruise.start_time, false, false, true) }}
+        {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/departure', 'de', cruise.departure, cruise.from_location, phrase=true) }}
     </div>
     <div class="bornes-cote bornes-arrivee">
-        <div class="bornes-titre">Arrivée</div>
-        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/end_time', 'Arrivée', cruise.end_time, false, true) }}
-        {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/destination', 'à', cruise.destination, cruise.to_location) }}
+        {{ champ_date('/cruises/' ~ cruise.id ~ '/field/end_time', 'Arrivée le', cruise.end_time, false, false, true) }}
+        {{ champ_lieu('/cruises/' ~ cruise.id ~ '/field/destination', 'à', cruise.destination, cruise.to_location, phrase=true) }}
     </div>
 </div>
 
@@ -243,7 +265,7 @@
    des routes : c'est de là qu'on enchaîne, plutôt qu'après les panneaux
    Équipage et Escales. Le bloc reste entier — « Arrivée » et « Croisière
    Suiv. » partagent la rangée. #}
-<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">
+<div style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 24px">
     {% if prev_cruise_id %}
     <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
     {% endif %}
@@ -265,8 +287,16 @@
 
 {# Équipage — cruise_crew. Le rôle est stocké en anglais ('skipper' / 'crew'),
    comme le DEFAULT de la colonne, et traduit seulement à l'affichage. #}
-<div class="card equipage" style="margin-bottom:16px;padding:14px">
+<div class="card equipage" id="equipage" style="margin-bottom:16px;padding:14px">
     <h4 class="equipage-titre">Équipage</h4>
+    {# Juste après la création (?nouvelle=1) : un rappel, et le choix d'un
+       équipier prêt à servir. #}
+    {% if nouvelle %}
+    <div class="equipage-rappel">
+        Croisière créée{% if aboard %} — vous êtes à bord, comme skipper{% endif %}.
+        Ajoutez maintenant les autres équipiers.
+    </div>
+    {% endif %}
 
     {% if aboard %}
     <div class="equipage-grille equipage-tete">
@@ -326,32 +356,23 @@
     {% endif %}
 
     {% if available_crew %}
-    {# Dates préremplies depuis la croisière : un équipier embarque en général
-       au départ et débarque à l'arrivée. #}
     <form method="POST" action="/cruises/{{ cruise.id }}/crew" class="equipage-ajout">
         <div class="equipage-grille" style="align-items:end">
             <div>
-                {# Le titre de l'encadré sert d'étiquette au menu, sur la même ligne
-                   que « Embarquement » et « Débarquement ». #}
+                {# Le titre de l'encadré sert d'étiquette au menu. #}
                 <label class="equipage-ajout-titre">Embarquer un équipier :</label>
-                <select name="crew_member_id" required aria-label="Personne à embarquer">
+                <select name="crew_member_id" required aria-label="Personne à embarquer" {{ 'autofocus' if nouvelle else '' }}>
                     {% for m in available_crew %}
                     <option value="{{ m.id }}">{{ m.first_name or '' }} {{ (m.last_name or '') | upper }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div>
-                <label>Embarquement</label>
-                <input type="date" name="embark_date"
-                       value="{{ cruise.start_time[:10] if cruise.start_time else '' }}">
+            {# Ni date d'embarquement ni de débarquement ici : l'équipier embarque
+               à la date du jour (add_cruise_crew), modifiable ensuite sur sa
+               ligne, et on ne fixe pas à l'avance quand il débarquera. #}
+            <div class="actions" style="grid-column: 2 / -1; justify-content: flex-start">
+                <button type="submit" class="btn btn-yellow embarquer">+ Embarquer</button>
             </div>
-            <div>
-                <label>Débarquement</label>
-                <input type="date" name="disembark_date"
-                       value="{{ cruise.end_time[:10] if cruise.end_time else '' }}">
-            </div>
-            <div></div>
-            <div class="actions"><button type="submit" class="btn btn-yellow">+ Embarquer</button></div>
         </div>
     </form>
     {% elif not aboard %}

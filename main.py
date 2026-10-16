@@ -3274,7 +3274,9 @@ async def add_cruise_crew(
         await db.execute(
             """INSERT INTO cruise_crew (cruise_id, crew_member_id, role, embark_date, disembark_date)
                VALUES (?, ?, ?, ?, ?)""",
-            (cruise_id, crew_member_id, role, embark_date or None, disembark_date or None),
+            # Sans date saisie, l'équipier embarque aujourd'hui (le formulaire de
+            # la page croisière n'en demande plus) ; modifiable sur sa ligne.
+            (cruise_id, crew_member_id, role, embark_date or date.today().isoformat(), disembark_date or None),
         )
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}", status_code=303)
@@ -3632,7 +3634,7 @@ async def new_cruise_form(request: Request):
 
 
 @app.get("/cruises/{cruise_id}", response_class=HTMLResponse)
-async def cruise_detail(request: Request, cruise_id: int):
+async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -3676,6 +3678,7 @@ async def cruise_detail(request: Request, cruise_id: int):
             "request": request,
             "active_section": "cruises",
             "is_current": is_current,
+            "nouvelle": bool(nouvelle),
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
             "stopovers": [dict(s) for s in stopovers],
@@ -3749,15 +3752,26 @@ async def create_cruise(
     start_time: Optional[str] = Form(None),
     end_time: Optional[str] = Form(None),
 ):
+    """Crée la croisière et y embarque la personne qui la crée, comme skipper,
+    à la date de départ : une croisière n'est « en cours » qu'avec quelqu'un à
+    bord, et celui qui la crée l'est presque toujours (un ✕ le débarque sinon).
+    Puis ouvre la croisière sur son équipage, pour y ajouter les autres."""
+    user = _template_user(request)
     async with connect() as db:
-        await db.execute(
+        cursor = await db.execute(
             "INSERT INTO cruises (ship_id, name, departure, destination, start_time, end_time)"
             " VALUES (?, ?, ?, ?, ?, ?)",
             (get_current_ship_id(request), name, departure or None, destination or None,
              start_time or None, end_time or None),
         )
+        cruise_id = cursor.lastrowid
+        if user and user.get("crew_member_id"):
+            await db.execute(
+                "INSERT INTO cruise_crew (cruise_id, crew_member_id, role, embark_date) VALUES (?, ?, 'skipper', ?)",
+                (cruise_id, user["crew_member_id"], (start_time or "")[:10] or None),
+            )
         await db.commit()
-    return RedirectResponse(url="/cruises/list", status_code=303)
+    return RedirectResponse(url=f"/cruises/{cruise_id}?nouvelle=1#equipage", status_code=303)
 
 
 # ── Stopovers ────────────────────────────────────────────────────────────────
@@ -3906,9 +3920,21 @@ async def current_route(request: Request):
     ship_id = get_current_ship_id(request)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        # Le menu Routes mène à la dernière route du navire en date (départ,
-        # sinon création), qu'une croisière soit en cours ou non : sans
-        # croisière en cours, il ne menait plus nulle part.
+        # Le menu Route :
+        # - croisière en cours avec des routes → sa dernière route ;
+        # - croisière en cours sans route → création de sa première route,
+        #   pour qui a le droit d'en créer (sinon la règle suivante) ;
+        # - sinon → la dernière route du navire en date (départ, sinon
+        #   création) : sans croisière en cours, il ne menait plus nulle part.
+        current = await _current_cruise_id(db, ship_id)
+        if current is not None:
+            cursor = await db.execute(
+                "SELECT id FROM routes WHERE cruise_id = ? ORDER BY id DESC LIMIT 1", (current,))
+            row = await cursor.fetchone()
+            if row:
+                return RedirectResponse(url=f"/routes/{row['id']}", status_code=302)
+            if can(_template_user(request), "croisieres.modifier"):
+                return RedirectResponse(url=f"/routes/new?cruise_id={current}", status_code=302)
         cursor = await db.execute(
             "SELECT r.id FROM routes r JOIN cruises c ON r.cruise_id = c.id WHERE c.ship_id = ? "
             "ORDER BY COALESCE(r.start_time, r.created_at) DESC, r.id DESC LIMIT 1",
@@ -3930,9 +3956,14 @@ async def route_arrivee(
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            "SELECT cruise_id, destination_location FROM routes WHERE id = ?", (route_id,)
+            "SELECT cruise_id, destination_location, motor_hours_start FROM routes WHERE id = ?", (route_id,)
         )
         route = await cursor.fetchone()
+        # Un horamètre ne recule pas : une arrivée sous le départ est refusée
+        # (le formulaire l'empêche déjà, ceci couvre un envoi direct).
+        if (route and motor_hours_end is not None and route["motor_hours_start"] is not None
+                and motor_hours_end < route["motor_hours_start"]):
+            return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
         dest = destination_location or None
         if route and route["destination_location"]:
             dest = route["destination_location"]
@@ -4017,6 +4048,18 @@ async def new_route_form(request: Request, cruise_id: int = Query(...)):
             (cruise_id,),
         )
         previous = await cursor.fetchone()
+        # Première route de la croisière : l'horamètre reprend là où l'a laissé
+        # la dernière arrivée enregistrée sur ce navire, toutes croisières
+        # confondues — le compteur du moteur, lui, ne repart pas de zéro.
+        last_hours = None
+        if previous is None and cruise is not None:
+            cursor = await db.execute(
+                "SELECT r.motor_hours_end FROM routes r JOIN cruises c ON r.cruise_id = c.id "
+                "WHERE c.ship_id = ? AND r.motor_hours_end IS NOT NULL "
+                "ORDER BY COALESCE(r.end_time, r.start_time, r.created_at) DESC, r.id DESC LIMIT 1",
+                (cruise["ship_id"],))
+            row = await cursor.fetchone()
+            last_hours = row[0] if row else None
     if cruise is None:
         raise HTTPException(status_code=404, detail="Cruise not found")
     return templates.TemplateResponse(
@@ -4025,6 +4068,8 @@ async def new_route_form(request: Request, cruise_id: int = Query(...)):
             "request": request,
             "cruise": dict(cruise),
             "previous": dict(previous) if previous else None,
+            "last_hours": last_hours,
+            "now_hm": datetime.now().strftime("%H:%M"),
             "active_section": "routes",
         },
     )

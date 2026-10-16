@@ -15,8 +15,19 @@
     (function () {
         if (!matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 700) return;
         var meta = document.querySelector('meta[name=viewport]');
+        // L'échelle est fixée, et le dézoom bloqué en dessous : sans cela,
+        // Safari peut afficher la page moins agrandie, donc plus large que
+        // l'écran — et les éléments collés (menu, barres bleues) s'accrochent
+        // alors au bord de cette page plus large, pas à celui de l'écran : le
+        // contenu passe au-dessus d'eux, et ils disparaissent en bas de page.
+        // Le zoom avant (pincer) reste possible.
         function regler() {
-            meta.setAttribute('content', 'width=' + (matchMedia('(orientation: landscape)').matches ? 880 : 620));
+            var paysage = matchMedia('(orientation: landscape)').matches;
+            var largeur = paysage ? 880 : 620;
+            var ecran = paysage ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+            var echelle = (ecran / largeur).toFixed(3);
+            meta.setAttribute('content', 'width=' + largeur + ',initial-scale=' + echelle +
+                              ',minimum-scale=' + echelle + ',maximum-scale=5');
         }
         regler();
         matchMedia('(orientation: landscape)').addEventListener('change', regler);
@@ -56,11 +67,18 @@
             --nav-active: #7dd3e8;
             font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
         }
-        /* min-height et non height sur body : une hauteur fixée à celle de
-           l'écran bornait le menu collé (position: sticky) à ce premier écran —
-           plus bas dans une longue page, il défilait avec elle. */
-        html { height: 100%; }
-        body { min-height: 100%; margin: 0; background: var(--bg); color: #111; }
+        /* Page en coque : le corps a la hauteur de l'écran et ne défile pas ;
+           le menu en occupe le haut, et tout le reste défile dans .defile.
+           Rien n'est donc collé à la fenêtre : sur iPad, Safari plaçait mal le
+           menu collé (sticky) comme fixé (fixed) une fois la page agrandie
+           (réglage du viewport, plus bas), et il disparaissait en bas des
+           longues pages. Les barres et titres collés le sont dans .defile, en
+           haut de la zone qui défile, ce que Safari fait sans faute. */
+        html, body { height: 100%; }
+        body { margin: 0; background: var(--bg); color: #111; overflow: hidden;
+               display: flex; flex-direction: column; }
+        .defile { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden;
+                  -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 
         /* ── Topbar ── */
         .topbar {
@@ -74,8 +92,10 @@
             background: var(--topbar-bg);
             border-bottom: 1px solid #dde5ee;
             box-sizing: border-box;
-            position: sticky;
-            top: 0;
+            /* Ni fixed ni sticky : le menu est simplement en haut de la page en
+               coque, au-dessus de la zone qui défile (.defile). */
+            position: relative;
+            flex: 0 0 auto;
             z-index: 200;
         }
         .topbar-logo {
@@ -187,13 +207,22 @@
             border-radius: 8px;
             margin: 14px 0 20px;
         }
-        /* Barre collée : reste visible sous le menu quand la page défile.
-           --topbar-h est la hauteur réelle du menu, mesurée par un script
-           (elle change avec l'écran : libellés masqués sur téléphone…). Un
-           fond plein de la couleur de page sous la barre, pour que le
-           contenu qui défile ne transparaisse pas dans la marge du haut. */
-        .section-bar-collee { position: sticky; top: var(--topbar-h, 70px); z-index: 150;
-                              box-shadow: 0 -14px 0 var(--bg); }
+        /* Barre collée : reste en haut de la zone qui défile (.defile), à sa
+           marge habituelle de 14 px. --barre-h, sa hauteur mesurée par un
+           script, place les titres de colonnes collés juste dessous. */
+        /* Barre collée : trois couches dans son propre empilement — un fond
+           de la couleur de la page qui remplit l'écart avec le menu et les
+           coins arrondis (par où le contenu qui défile se voyait sinon), puis
+           le bleu de la barre, puis son texte. Le bleu passe donc de la barre
+           elle-même (transparente) à ::after. */
+        .section-bar-collee { position: sticky; top: 14px; z-index: 150; background: transparent; }
+        .section-bar-collee::before {
+            content: ""; position: absolute; z-index: -2;
+            left: -18px; right: -18px; top: -15px; bottom: -6px; background: var(--bg);
+        }
+        .section-bar-collee::after {
+            content: ""; position: absolute; z-index: -1; inset: 0; border-radius: 8px; background: #5bc8e0;
+        }
         /* Titres de colonnes collés sous le menu (et sous la barre collée de
            la page, --barre-h, s'il y en a une). Le cadre .tableau-colle
            remplace le défilement horizontal habituel (overflow-x) à partir
@@ -203,7 +232,7 @@
         .tableau-colle { overflow-x: auto; }
         @media (min-width: 701px) {
             .tableau-colle { overflow: visible; }
-            .tableau-colle thead { position: sticky; top: calc(var(--topbar-h, 70px) + var(--barre-h, 0px)); z-index: 140; }
+            .tableau-colle thead { position: sticky; top: calc(14px + var(--barre-h, 0px)); z-index: 140; }
         }
         /* Les deux badges reprennent le gabarit de .btn — même corps, mêmes
            marges internes, même arrondi — pour que la barre pèse pareil à ses
@@ -371,7 +400,9 @@
            gras et se signalent au survol. */
         .bornes { display: grid; grid-template-columns: 1fr 1fr; border: 2px solid #dde5ee; border-radius: 8px;
                   overflow: hidden; margin-bottom: 16px; }
-        .bornes-cote { padding: 10px 16px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        /* Écart vertical nul : quand le bloc passe sur deux lignes (iPad), elles
+           restent serrées ; l'écart horizontal, lui, sépare date et lieu. */
+        .bornes-cote { padding: 10px 16px; display: flex; align-items: center; gap: 0 6px; flex-wrap: wrap; }
         .bornes-cote + .bornes-cote { border-left: 1px solid #dde5ee; }
         .bornes-arrivee { justify-content: flex-end; }
         /* Titre du bloc (« Départ », « Arrivée »), centré sur sa propre ligne
@@ -381,7 +412,7 @@
         /* Pages route et croisière : texte à 13 px, bande plus mince. */
         .bornes-compact .bornes-label, .bornes-compact .bornes-jour, .bornes-compact .bornes-edit { font-size: 13px; }
         .bornes-compact .bornes-cote { padding: 6px 14px; }
-        .bornes-compact .bornes-edit { height: 27px; }
+        .bornes-compact .bornes-edit { height: 24px; }
         .bornes-groupe { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
         /* Pages route et croisière : sous chaque titre (« Départ », « Arrivée »),
            la date et le lieu centrés sur lui. */
@@ -399,11 +430,27 @@
         /* Largeurs en em, à l'échelle du texte, avec la marge qu'il faut à
            Safari, qui écrit « 02/09/2025, 10:15 » plus large que Chrome. */
         .bornes-date { width: 8.4em; padding-left: 3px; text-align: left; -webkit-appearance: none; appearance: none; }
-        .bornes-date.avec-heure { width: 12em; }   /* datetime-local : la date et l'heure */
+        /* Date et heure : 11,4 em, juste assez pour Safari, qui espace l'heure
+           (« 15 : 00 ») et coupait les minutes à 10,6 em. Pas de marge à droite :
+           le ✕ suit la date de près. */
+        .bornes-date.avec-heure { width: 11.4em; padding-right: 0; }
         .bornes-date::-webkit-date-and-time-value { text-align: left; margin: 0; }
         .bornes-jour + .bornes-form { margin-left: -4px; }
-        .bornes-date::-webkit-calendar-picker-indicator { opacity: 0; }
-        .bornes-date:hover::-webkit-calendar-picker-indicator { opacity: .6; }
+        /* Pas d'icône calendrier dans la case (Chrome lui réserve sa place même
+           invisible, et coupait l'heure) : un clic sur la date ouvre le
+           calendrier (showPicker, _bornes.html). */
+        .bornes-date::-webkit-calendar-picker-indicator { display: none; }
+        /* Date vide : rien d'écrit tant qu'on n'y touche pas (Safari y montre
+           sinon la date du jour en gris, qui passe pour une date saisie). */
+        .bornes-date.date-vide:not(:focus),
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit,
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit-text,
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit-day-field,
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit-month-field,
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit-year-field,
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit-hour-field,
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit-minute-field,
+        .bornes-date.date-vide:not(:focus)::-webkit-datetime-edit-ampm-field { color: transparent; }
         /* Case du lieu à la taille du texte : sans quoi l'espace vide restait à
            droite du lieu, et le bloc Arrivée, calé à droite, paraissait centré.
            field-sizing suit la saisie (Chrome) ; size, posé par le gabarit
@@ -412,7 +459,7 @@
         .bornes-label + .bornes-form { margin-left: -2px; }
         /* Le ✕ suit la case au lieu d'y être posé : il ne recouvre jamais la
            date, quelle que soit la largeur que lui donne le navigateur. */
-        .bornes-effacer { flex: 0 0 auto; width: 20px; height: 20px; border: 0; border-radius: 50%;
+        .bornes-effacer { flex: 0 0 auto; width: 18px; height: 18px; margin-left: -2px; border: 0; border-radius: 50%;
                           padding: 0; cursor: pointer; background: transparent; color: #b8c4d0; font-size: 11px; }
         .bornes-cote:hover .bornes-effacer { color: #991b1b; }
         .bornes-effacer:hover { background: #fee2e2; }
@@ -589,6 +636,9 @@
     {% endif %}
 </header>
 
+{# Zone de défilement : tout ce qui est sous le menu. Le menu, lui, ne défile
+   pas — voir « Page en coque » dans les styles. #}
+<div class="defile" id="defile">
 <div class="wrap">
     <main>
         {% block content %}{% endblock %}
@@ -603,6 +653,7 @@
         — Nautibook —
     </footer>
     {% endblock %}
+</div>
 </div>
 
 {# Agrandissement de photo, disponible sur toutes les pages : une seule boîte
