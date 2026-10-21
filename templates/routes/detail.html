@@ -151,6 +151,12 @@
        de la route », sous le tableau, une fois la route terminée. #}
     {% if next_route %}
     <a href="/routes/{{ next_route.id }}" class="btn btn-blue btn-nav">Route Suiv. →</a>
+    {# Sans suivante, la mention prend sa place, dans la typographie de
+       « Croisière en cours » : « à ce jour » tant que la croisière continue. #}
+    {% elif route.cruise_id %}
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);text-align:center">
+        Dernière route de<br>{% if is_current %}la croisière à ce jour{% else %}cette croisière{% endif %}
+    </div>
     {% endif %}
     </div>
 </div>
