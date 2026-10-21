@@ -21,10 +21,15 @@
         grid-template-areas: "mention nom num";
         align-items: center;
         gap: 6px 10px;
-        margin-bottom: 16px;
+        /* Bandeau bleu, comme .section-bar : nom, numéro et mention en blanc. */
+        background: #5bc8e0; color: #fff; border-radius: 8px;
+        padding: 8px 12px; margin: 14px 0 20px;
     }
     .cruise-num { justify-self: end; }
     .cruise-mention { justify-self: start; }
+    /* « Croisière en cours » et « Croisière : », même typographie. */
+    .cruise-etiquette { font-size: 12px; font-weight: 700; text-transform: uppercase;
+                        letter-spacing: 1px; white-space: nowrap; }
     /* Écran étroit : la grille s'empile, le nom en tête. */
     @media (max-width: 820px) {
         .cruise-header {
@@ -39,12 +44,16 @@
        comme un titre au repos et ne se signale qu'au survol, comme les champs
        modifiables du tableau de bord. */
     .cruise-name {
-        font-size: 20px; font-weight: 700; text-align: center;
-        padding: 10px 20px; border: 2px solid #dde5ee; border-radius: 8px;
+        /* Corps et marges de .section-bar-title : bandeau de la même hauteur
+           que ceux des pages Escales et Liste des croisières. */
+        font: inherit; font-size: 17px; font-weight: 700; line-height: normal;
+        text-align: center; color: #fff;
+        padding: 0 20px; border: 0; border-radius: 4px;
         background: transparent; width: 100%; max-width: 420px;
     }
-    .cruise-name:hover { background: #f7fbfd; }
-    .cruise-name:focus { background: #fff; border-color: var(--accent); outline: none; }
+    .cruise-name::placeholder { color: rgba(255,255,255,.7); }
+    .cruise-name:hover { background: rgba(255,255,255,.2); }
+    .cruise-name:focus { background: #fff; color: #333; outline: none; }
     /* Dates d'embarquement : se lisent comme du texte, se signalent au survol —
        même parti que .inline-edit sur la page route. */
     .date-edit {
@@ -191,11 +200,13 @@
     </form>
     {# Position among this ship's cruises, not the id — same %03d as the list. #}
     {% if cruise.number %}
-    <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700;color:var(--muted)">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
+    <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
     {% endif %}
-    {% if is_current is defined and is_current %}
-    <div class="cruise-mention" style="grid-area:mention;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
-    {% endif %}
+    {# À gauche du bandeau, « Croisière en cours » ou, pour une autre
+       croisière, « Croisière : » à la même place et dans la même typographie. #}
+    <div class="cruise-mention cruise-etiquette" style="grid-area:mention">
+        {%- if is_current is defined and is_current %}Croisière en cours{% else %}Croisière :{% endif -%}
+    </div>
 </div>
 
 {# Départ et arrivée : dates et lieux modifiables sur place, un formulaire
@@ -215,9 +226,10 @@
     </div>
 </div>
 
+{# Titres de colonnes légers, comme la page Escales. #}
 {% if routes %}
 <div style="overflow-x:auto;margin-bottom:16px">
-    <table class="data-table">
+    <table class="data-table titres-legers">
         <thead>
             <tr>
                 <th>Route</th>
