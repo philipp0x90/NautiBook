@@ -106,6 +106,8 @@
        les identifiants restent, ce sont eux que les onclick manipulent. */
     .modal { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:200; align-items:center; justify-content:center; }
     .modal.open { display:flex; }
+    /* hidden doit l'emporter sur les display en ligne de la fenêtre « Nouvelle ligne ». */
+    #ligne-modal [hidden] { display:none !important; }
     .modal-box { background:#fff; border-radius:10px; padding:24px; max-width:380px; width:90%; display:grid; gap:14px; }
 
     @media (max-width: 900px) {
@@ -265,7 +267,10 @@
 
         {# Nouvelle ligne + Arrivée ── below table #}
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
-            <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow btn-nav">+ Nouvelle ligne</a>
+            {# Ouvre la fenêtre « Nouvelle ligne » ; le lien reste celui du
+               formulaire complet, pour le droit (script des droits) et sans JS. #}
+            <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow btn-nav"
+               onclick="event.preventDefault();ouvrirNouvelleLigne()">+ Nouvelle ligne</a>
             {# Cellule du milieu, centrée : « Arrivée de la route » tant que la
                route est ouverte ; une fois arrivée, « + Nouvelle route », même
                aspect — seulement sur la dernière route de la croisière en
@@ -571,6 +576,98 @@ function buildMap() {
     </div>
 </div>
 
+{# ── Nouvelle ligne ── On n'y saisit que ce qu'aucun capteur ne mesure :
+   mer, visibilité et voiles, hérités de la ligne précédente (la fenêtre est
+   leur confirmation), et l'allure, proposée d'après l'angle du vent apparent
+   lu à l'ouverture (/api/routes/{id}/wind). Tout le reste est lu sur SignalK
+   à l'enregistrement par create_quick_line. SignalK injoignable : rien
+   d'automatique à enregistrer, la fenêtre renvoie au formulaire complet. #}
+<div id="ligne-modal" class="modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="max-width:420px">
+        <h3 style="margin:0;font-size:17px;text-align:center">Nouvelle ligne
+            <span style="display:block;font-size:13px;font-weight:400;color:var(--muted)">(Saisies manuelles)</span></h3>
+        <div id="ligne-etat" style="font-size:13px;color:var(--muted)">Lecture des capteurs…</div>
+        <form id="ligne-rapide" method="POST" action="/routes/{{ route.id }}/quick-line" style="display:grid;gap:12px" hidden>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                {% for champ, titre in [('sea_state', 'État de la mer'), ('visibility', 'Visibilité'), ('sails', 'Voiles')] %}
+                <div>
+                    <label>{{ titre }}</label>
+                    <select name="{{ champ }}"{% if champ == 'sails' %} onchange="proposerAllure()"{% endif %}>
+                        <option value="">—</option>
+                        {% for opt in line_choices[champ] %}
+                        <option value="{{ opt }}" {{ 'selected' if previous and previous[champ] == opt else '' }}>{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+                <div>
+                    <label>Allure <span id="ligne-awa" style="font-weight:400"></span></label>
+                    <select name="points_of_sail">
+                        <option value="">—</option>
+                        {% for opt in line_choices.points_of_sail %}
+                        <option value="{{ opt }}">{{ opt }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label>Position (visuelle)</label>
+                <input type="text" name="visual_pos" placeholder="Bouée xyz, devant le cap...">
+            </div>
+            <div>
+                <label>Notes / Journal</label>
+                <textarea name="notes" rows="2" placeholder="Observations, événements..."></textarea>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center">
+                <button type="submit" class="btn btn-blue">Enregistrer</button>
+                <button type="button" class="btn" style="background:#eee;color:#333"
+                        onclick="document.getElementById('ligne-modal').classList.remove('open')">Annuler</button>
+                {# Le formulaire complet, toutes les mesures modifiables. #}
+                <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow" style="margin-left:auto">Détails</a>
+            </div>
+        </form>
+        <div id="ligne-injoignable" hidden style="display:grid;gap:12px">
+            <div>Les capteurs ne répondent pas (SignalK injoignable) : il n'y a rien à
+                relever automatiquement. La ligne peut être saisie à la main.</div>
+            <div style="display:flex;gap:10px">
+                <a href="/routes/{{ route.id }}/new-line" class="btn btn-blue">Saisie manuelle</a>
+                <button type="button" class="btn" style="background:#eee;color:#333"
+                        onclick="document.getElementById('ligne-modal').classList.remove('open')">Annuler</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% include "_allure.html" %}
+<script>
+let ligneAwa = null;
+function proposerAllure() {
+    const form = document.getElementById('ligne-rapide');
+    form.points_of_sail.value = allureCalculee(form.sails.value, ligneAwa);
+}
+function ouvrirNouvelleLigne() {
+    const modal = document.getElementById('ligne-modal');
+    const etat = document.getElementById('ligne-etat');
+    const form = document.getElementById('ligne-rapide');
+    const injoignable = document.getElementById('ligne-injoignable');
+    etat.hidden = false; form.hidden = true; injoignable.hidden = true;
+    modal.classList.add('open');
+    fetch('/api/routes/{{ route.id }}/wind')
+        .then(r => r.json())
+        .catch(() => ({ signalk: false }))
+        .then(vent => {
+            etat.hidden = true;
+            if (!vent.signalk) { injoignable.hidden = false; return; }
+            ligneAwa = vent.awa;
+            document.getElementById('ligne-awa').textContent = ligneAwa === null
+                ? '(vent apparent non lu)'
+                : '(AWA ' + Math.abs(ligneAwa) + '° ' + (ligneAwa < 0 ? 'bâbord' : 'tribord') + ')';
+            proposerAllure();
+            form.hidden = false;
+        });
+}
+</script>
+
 {# ── Première ligne, proposée juste après la création de la route ──
    Ouverte d'emblée (classe open) puisque create_route vient de rediriger ici
    avec ?nouvelle=1. « Plus tard » ne fait que la refermer : la route existe
@@ -581,7 +678,8 @@ function buildMap() {
         <h3 style="margin:0;font-size:17px">Route créée</h3>
         <div>Ajouter tout de suite une première ligne au journal de bord ?</div>
         <div style="display:flex;gap:10px">
-            <a href="/routes/{{ route.id }}/new-line" class="btn btn-blue">+ Nouvelle ligne</a>
+            <a href="/routes/{{ route.id }}/new-line" class="btn btn-blue"
+               onclick="event.preventDefault();document.getElementById('premiere-ligne-modal').classList.remove('open');ouvrirNouvelleLigne()">+ Nouvelle ligne</a>
             <button type="button" class="btn" style="background:#eee;color:#333"
                     onclick="document.getElementById('premiere-ligne-modal').classList.remove('open')">Plus tard</button>
         </div>

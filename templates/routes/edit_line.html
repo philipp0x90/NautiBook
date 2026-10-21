@@ -122,45 +122,11 @@
             </div>
             <div>
                 <label>AWA (°)</label>
-                <input type="number" step="1" name="awa" value="{{ '%.0f'|format(line.awa) if line.awa is not none else '' }}">
+                <input type="number" step="1" name="awa" value="{{ '%.0f'|format(line.awa) if line.awa is not none else '' }}" oninput="proposerAllure()">
             </div>
             <div>
                 <label>TWA (°)</label>
                 <input type="number" step="1" name="twa" value="{{ '%.0f'|format(line.twa) if line.twa is not none else '' }}">
-            </div>
-        </div>
-
-        <div class="field-group">
-            <div class="field-group-title">Environnement</div>
-            <div>
-                <label>État de la mer</label>
-                <select name="sea_state">
-                    <option value="">—</option>
-                    {% for opt in ['Calme','Belle','Peu Agitée','Agitée','Forte','Très forte','Grosse','Très grosse','Énorme'] %}
-                    <option value="{{ opt }}" {{ 'selected' if line.sea_state == opt else '' }}>{{ opt }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label>P° Atmo. (hPa)</label>
-                {# Formaté comme depth plus bas : la colonne est REAL, donc un hPa
-                   entier en revient en 1030.0 et s'afficherait tel quel dans la
-                   case. Le step reste « any » — le contraindre à 1 ferait refuser
-                   une valeur collée avec décimales, que le handler sait arrondir. #}
-                <input type="number" step="any" name="pressure" value="{{ '%.0f'|format(line.pressure) if line.pressure is not none else '' }}">
-            </div>
-            <div>
-                <label>T° eau (°C)</label>
-                <input type="number" step="any" name="water_temp" value="{{ line.water_temp if line.water_temp is not none else '' }}">
-            </div>
-            <div>
-                <label>Visibilité</label>
-                <select name="visibility">
-                    <option value="">—</option>
-                    {% for opt in ['Bonne','Moyenne','Mauvaise','Très Mauvaise'] %}
-                    <option value="{{ opt }}" {{ 'selected' if line.visibility == opt else '' }}>{{ opt }}</option>
-                    {% endfor %}
-                </select>
             </div>
         </div>
 
@@ -185,20 +151,46 @@
         </div>
 
         <div class="field-group">
+            <div class="field-group-title">Environnement</div>
+            <div>
+                <label>État de la mer</label>
+                <select name="sea_state">
+                    <option value="">—</option>
+                    {% for opt in line_choices.sea_state %}
+                    <option value="{{ opt }}" {{ 'selected' if line.sea_state == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Visibilité</label>
+                <select name="visibility">
+                    <option value="">—</option>
+                    {% for opt in line_choices.visibility %}
+                    <option value="{{ opt }}" {{ 'selected' if line.visibility == opt else '' }}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>T° eau (°C)</label>
+                <input type="number" step="any" name="water_temp" value="{{ line.water_temp if line.water_temp is not none else '' }}">
+            </div>
+            <div>
+                <label>P° Atmo. (hPa)</label>
+                {# Formaté comme depth plus bas : la colonne est REAL, donc un hPa
+                   entier en revient en 1030.0 et s'afficherait tel quel dans la
+                   case. Le step reste « any » — le contraindre à 1 ferait refuser
+                   une valeur collée avec décimales, que le handler sait arrondir. #}
+                <input type="number" step="any" name="pressure" value="{{ '%.0f'|format(line.pressure) if line.pressure is not none else '' }}">
+            </div>
+        </div>
+
+        <div class="field-group">
             <div class="field-group-title">Navire</div>
             <div>
-                <label>STW (kn)</label>
-                <input type="number" step="any" name="stw" value="{{ line.stw if line.stw is not none else '' }}">
-            </div>
-            <div>
-                <label>SOG (kn)</label>
-                <input type="number" step="any" name="sog" value="{{ line.sog if line.sog is not none else '' }}">
-            </div>
-            <div>
                 <label>Voiles</label>
-                <select name="sails">
+                <select name="sails" onchange="proposerAllure()">
                     <option value="">—</option>
-                    {% for opt in ['Moteur','GV + Génois','GV 1 Ris + Génois','GV 2 Ris + Génois','GV + Moteur','+ Appui Moteur','Génois seul','GV seule','GV + Trinq.','GV 1 Ris + Trinq.','GV 2 Ris + Trinq.','Trinq. seule','À sec'] %}
+                    {% for opt in line_choices.sails %}
                     <option value="{{ opt }}" {{ 'selected' if line.sails == opt else '' }}>{{ opt }}</option>
                     {% endfor %}
                 </select>
@@ -207,10 +199,18 @@
                 <label>Allure</label>
                 <select name="points_of_sail">
                     <option value="">—</option>
-                    {% for opt in ['Près','Bon plein','Travers','Largue','Grand largue','Vent arrière','Cape','N/A','Vent debout'] %}
+                    {% for opt in line_choices.points_of_sail %}
                     <option value="{{ opt }}" {{ 'selected' if line.points_of_sail == opt else '' }}>{{ opt }}</option>
                     {% endfor %}
                 </select>
+            </div>
+            <div>
+                <label>STW (kn)</label>
+                <input type="number" step="any" name="stw" value="{{ line.stw if line.stw is not none else '' }}">
+            </div>
+            <div>
+                <label>SOG (kn)</label>
+                <input type="number" step="any" name="sog" value="{{ line.sog if line.sog is not none else '' }}">
             </div>
         </div>
 
@@ -287,5 +287,15 @@
 
 <form id="delete-line" method="POST" action="/logbook/{{ line.id }}/delete"
       onsubmit="return confirm('Supprimer cette ligne du journal ?')"></form>
+
+{# Allure recalculée quand les voiles ou l'AWA changent — pas à l'ouverture :
+   celle déjà enregistrée, peut-être corrigée à la main, reste telle quelle. #}
+{% include "_allure.html" %}
+<script>
+function proposerAllure() {
+    const form = document.getElementById('ligne-form');
+    form.points_of_sail.value = allureCalculee(form.sails.value, form.awa.value);
+}
+</script>
 
 {% endblock %}

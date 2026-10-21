@@ -1,0 +1,20 @@
+{# Calcul de l'allure, partagé par la fenêtre « Nouvelle ligne » (routes/detail.html)
+   et le formulaire « Détails » (routes/new_line.html) : d'après les voiles et
+   l'angle du vent apparent (AWA), bâbord ou tribord indifféremment. N/A sous
+   voiles qui n'en font pas une (moteur seul, à sec) ; '' sans AWA. Recalculée
+   à chaque changement de voiles (et d'AWA dans « Détails ») ; on peut ensuite
+   la corriger à la main. #}
+<script>
+function allureCalculee(voiles, awa) {
+    if (voiles === 'Moteur' || voiles === 'À sec') return 'N/A';
+    if (awa === null || awa === undefined || awa === '' || isNaN(awa)) return '';
+    const a = Math.abs(Number(awa));
+    if (a < 35) return 'Vent debout';
+    if (a < 55) return 'Près';
+    if (a < 75) return 'Bon plein';
+    if (a < 105) return 'Travers';
+    if (a < 135) return 'Largue';
+    if (a < 165) return 'Grand largue';
+    return 'Vent arrière';
+}
+</script>

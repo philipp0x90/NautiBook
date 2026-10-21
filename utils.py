@@ -142,6 +142,20 @@ def get_position() -> tuple[float, float] | None:
     return coord["latitude"], coord["longitude"]
 
 
+def get_awa() -> tuple[bool, float | None]:
+    """Apparent wind angle alone, for the new-line window's allure proposal.
+    Returns (server reached, AWA) — the first tells « SignalK injoignable »
+    apart from « pas d'anémomètre ». Far cheaper than get_sensor_data."""
+    signalk_url = _get_signalk_http_url()
+    if not signalk_url:
+        return False, None
+    try:
+        return True, _read(signalk_url, "AWA", _signed_deg)
+    except Exception as e:
+        print(f"SignalK AWA read error: {e}")
+        return True, None
+
+
 def get_sensor_data() -> dict:
     signalk_url = _get_signalk_http_url()
     if not signalk_url:

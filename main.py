@@ -21,7 +21,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
-from utils import get_sensor_data, get_position
+from utils import get_sensor_data, get_position, get_awa
 import import_filemaker
 import passwords
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
@@ -1130,7 +1130,7 @@ SECTION_RULES = [
     # Le formulaire complet contient l'identité : il en suit la rubrique.
     (r"^/crew/(new|\d+/edit)$", "identite"),
     (r"^/crew(/|$)", "equipiers"),
-    (r"^/routes/\d+/new-line$", "journal"),
+    (r"^/routes/\d+/(new-line|quick-line)$", "journal"),
     (r"^/logbook(/|$)", "journal"),
     (r"^/(cruises|routes|stopovers)(/|$)", "croisieres"),
     (r"^/api/(routes|cruises|all-cruises)/", "croisieres"),
@@ -4148,6 +4148,8 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "SELECT * FROM logbook_lines WHERE route_id = ? ORDER BY timestamp ASC",
             (route_id,),
         )
+        # Ce dont hérite la fenêtre « Nouvelle ligne ».
+        previous = await _previous_conditions(db, route_id)
         lines = await cursor.fetchall()
 
         cursor = await db.execute(
@@ -4196,8 +4198,37 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "next_route": dict(next_route) if next_route else None,
             "todos": [dict(t) for t in todos],
             "ask_new_line": bool(nouvelle),
+            "previous": previous,
         },
     )
+
+
+# Listes des menus d'une ligne de journal, partagées par le formulaire complet
+# (new_line.html) et la fenêtre « Nouvelle ligne » de la page route. Valeurs
+# stockées telles quelles, en français.
+LINE_CHOICES = {
+    "sea_state": ['Calme', 'Belle', 'Peu Agitée', 'Agitée', 'Forte', 'Très forte',
+                  'Grosse', 'Très grosse', 'Énorme'],
+    "visibility": ['Bonne', 'Moyenne', 'Mauvaise', 'Très Mauvaise'],
+    "sails": ['Moteur', 'GV + Génois', 'GV 1 Ris + Génois', 'GV 2 Ris + Génois',
+              'GV + Moteur', '+ Appui Moteur', 'Génois seul', 'GV seule', 'GV + Trinq.',
+              'GV 1 Ris + Trinq.', 'GV 2 Ris + Trinq.', 'Trinq. seule', 'À sec'],
+    "points_of_sail": ['Près', 'Bon plein', 'Travers', 'Largue', 'Grand largue',
+                       'Vent arrière', 'Cape', 'N/A', 'Vent debout'],
+}
+templates.env.globals["line_choices"] = LINE_CHOICES
+
+
+async def _previous_conditions(db, route_id: int):
+    """Sea state, visibility and sail plan of the route's latest line: eyeballed,
+    not measured, so a new line inherits them — see new_line_form."""
+    cursor = await db.execute(
+        """SELECT sea_state, visibility, sails FROM logbook_lines
+           WHERE route_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1""",
+        (route_id,),
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
 
 
 @app.get("/routes/{route_id}/new-line", response_class=HTMLResponse)
@@ -4215,15 +4246,12 @@ async def new_line_form(request: Request, route_id: int):
         # SignalK has nothing to say about them, so the form inherits them from
         # the route's latest line. They change slowly, hence the confirmation
         # on save.
-        cursor = await db.execute(
-            """SELECT sea_state, visibility, sails FROM logbook_lines
-               WHERE route_id = ? ORDER BY timestamp DESC, id DESC LIMIT 1""",
-            (route_id,),
-        )
-        previous = await cursor.fetchone()
+        previous = await _previous_conditions(db, route_id)
     if route is None:
         raise HTTPException(status_code=404, detail="Route not found")
-    data = get_sensor_data()
+    # requests est bloquant : hors de la boucle, sinon l'app entière attend
+    # SignalK (jusqu'à 5 s par mesure quand il ne répond pas).
+    data = await asyncio.to_thread(get_sensor_data)
     return templates.TemplateResponse(
         "routes/new_line.html",
         {
@@ -4231,7 +4259,7 @@ async def new_line_form(request: Request, route_id: int):
             "active_section": "routes",
             "data": data,
             "route": dict(route),
-            "previous": dict(previous) if previous else None,
+            "previous": previous,
         },
     )
 
@@ -4268,32 +4296,80 @@ async def create_line(
     visual_pos: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
 ):
-    if depth is not None:
-        depth = round(depth, 1)
+    await _insert_line(
+        route_id,
+        aws=aws, awa=awa, water_temp=water_temp, heading=heading, cog=cog, log=log,
+        trip=trip, depth=depth,
+        position_lat=_dmm_to_dd(lat_deg, lat_min, lat_hem),
+        position_lon=_dmm_to_dd(lon_deg, lon_min, lon_hem),
+        stw=stw, sog=sog, tws=tws, twa=twa, pressure=pressure,
+        sea_state=sea_state or None, visibility=visibility or None, sails=sails or None,
+        points_of_sail=points_of_sail or None, visual_pos=visual_pos or None,
+        notes=notes or None,
+    )
+    return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+
+
+async def _insert_line(route_id: int, **v):
+    """One logbook line, stamped now. Shared by the full form (create_line) and
+    the new-line window (create_quick_line); the rounding lives here, so both
+    store the same shapes. update_line keeps its own copy of it."""
+    if v.get("depth") is not None:
+        v["depth"] = round(v["depth"], 1)
     # Angles are logged as whole degrees (position lat/lon keep full precision).
-    awa = round(awa) if awa is not None else None
-    twa = round(twa) if twa is not None else None
-    heading = round(heading) if heading is not None else None
-    cog = round(cog) if cog is not None else None
     # Pressure too: whole hPa, like a barometer. The field is step="any", so a
     # value pasted with decimals is normalised here rather than refused.
-    pressure = round(pressure) if pressure is not None else None
-    position_lat = _dmm_to_dd(lat_deg, lat_min, lat_hem)
-    position_lon = _dmm_to_dd(lon_deg, lon_min, lon_hem)
+    for key in ("awa", "twa", "heading", "cog", "pressure"):
+        if v.get(key) is not None:
+            v[key] = round(v[key])
+    columns = ("aws", "awa", "water_temp", "heading", "cog", "log", "trip", "depth",
+               "position_lat", "position_lon", "stw", "sog", "tws", "twa", "pressure",
+               "sea_state", "visibility", "sails", "points_of_sail", "visual_pos", "notes")
     async with connect() as db:
         await db.execute(
-            """INSERT INTO logbook_lines
-               (timestamp, route_id, aws, awa, water_temp, heading, cog, log, trip, depth,
-                position_lat, position_lon, stw, sog, tws, twa, pressure,
-                sea_state, visibility, sails, points_of_sail, visual_pos, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                datetime.now(), route_id, aws, awa, water_temp, heading, cog, log, trip, depth,
-                position_lat, position_lon, stw, sog, tws, twa, pressure,
-                sea_state, visibility, sails, points_of_sail, visual_pos, notes,
-            ),
+            f"INSERT INTO logbook_lines (timestamp, route_id, {', '.join(columns)})"
+            f" VALUES (?, ?, {', '.join('?' * len(columns))})",
+            (datetime.now(), route_id, *(v.get(c) for c in columns)),
         )
         await db.commit()
+
+
+@app.get("/api/routes/{route_id}/wind")
+async def route_wind(route_id: int):
+    """Vent apparent pour la fenêtre « Nouvelle ligne », lu à son ouverture :
+    l'allure proposée en découle. signalk = False quand le serveur ne répond
+    pas — la fenêtre renvoie alors au formulaire complet."""
+    from fastapi.responses import JSONResponse
+    reached, awa = await asyncio.to_thread(get_awa)
+    return JSONResponse({"signalk": reached, "awa": awa})
+
+
+@app.post("/routes/{route_id}/quick-line")
+async def create_quick_line(
+    route_id: int,
+    sea_state: Optional[str] = Form(None),
+    visibility: Optional[str] = Form(None),
+    sails: Optional[str] = Form(None),
+    points_of_sail: Optional[str] = Form(None),
+    visual_pos: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+):
+    """La fenêtre « Nouvelle ligne » : on n'y saisit que ce qu'aucun capteur ne
+    mesure, le reste est lu sur SignalK *à l'enregistrement*, pour que l'heure,
+    la position et le vent soient ceux du même instant. Si rien ne revient
+    (SignalK coupé entre l'ouverture et l'envoi), aucune ligne vide n'est
+    créée : on renvoie au formulaire complet."""
+    data = await asyncio.to_thread(get_sensor_data)
+    if not data:
+        return RedirectResponse(url=f"/routes/{route_id}/new-line", status_code=303)
+    await _insert_line(
+        route_id,
+        **{k: data.get(k) for k in SIGNALK_LABELS},
+        position_lat=data.get("lat"), position_lon=data.get("long"),
+        sea_state=sea_state or None, visibility=visibility or None, sails=sails or None,
+        points_of_sail=points_of_sail or None, visual_pos=visual_pos or None,
+        notes=notes or None,
+    )
     return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
 
 
