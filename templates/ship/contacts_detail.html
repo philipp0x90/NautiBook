@@ -77,11 +77,12 @@
 {% endmacro %}
 
 {# Un seul retour, vers le carnet d'adresses ; les comptes ont leur lien en
-   bas, au-dessus de l'historique des achats. #}
+   bas, au-dessus de l'historique des achats. Marges verticales négatives :
+   les boutons ne grandissent pas la barre. #}
 <div class="section-bar section-bar-collee">
-    <a href="/ship/contacts" class="btn" style="min-width:160px;text-align:center;background:#fff;color:#0f3a4a">← Carnet d'adresses</a>
+    <a href="/ship/contacts" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">← Carnet d'adresses</a>
     <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
-    <span class="btn" style="min-width:160px;visibility:hidden" aria-hidden="true">← Carnet d'adresses</span>
+    <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Carnet d'adresses</span>
 </div>
 
 <div class="contact-cartes">

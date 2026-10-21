@@ -48,10 +48,11 @@
    vide gardait son fond translucide et son min-width — une pastille creuse. #}
 <div class="section-bar section-bar-collee">
     {# Un bouton de chaque côté, de même largeur, pour que le titre reste
-       centré ; l'import à gauche, la saisie à droite comme sur les autres listes. #}
-    <a href="/ship/expenses/import" class="btn" style="min-width:180px;text-align:center;background:#fff;color:#0f3a4a">⇪ Importer</a>
+       centré ; l'import à gauche, la saisie à droite comme sur les autres listes.
+       Marges verticales négatives : les boutons ne grandissent pas la barre. #}
+    <a href="/ship/expenses/import" class="btn" style="min-width:180px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">⇪ Importer</a>
     <div class="section-bar-title">Comptes</div>
-    <a href="/ship/expenses/new" class="btn btn-yellow" style="min-width:180px;text-align:center">+ Nouvelle dépense</a>
+    <a href="/ship/expenses/new" class="btn btn-yellow" style="min-width:180px;text-align:center;margin:-10px 0">+ Nouvelle dépense</a>
 </div>
 
 {% if entries %}

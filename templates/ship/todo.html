@@ -4,10 +4,12 @@
 
 <div class="section-bar section-bar-collee">
     {# Le bouton dans la barre, comme sur le carnet d'adresses : son double
-       invisible à gauche garde le titre centré. #}
-    <span class="btn btn-yellow" style="visibility:hidden" aria-hidden="true">+ Nouvelle tâche</span>
+       invisible à gauche garde le titre centré. Marges verticales négatives :
+       le bouton déborde sans grandir la barre, qui garde la hauteur de celles
+       des pages Escales et Liste des croisières. #}
+    <span class="btn btn-yellow" style="visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvelle tâche</span>
     <div class="section-bar-title">To-Do List</div>
-    <a href="/ship/todo/new" class="btn btn-yellow">+ Nouvelle tâche</a>
+    <a href="/ship/todo/new" class="btn btn-yellow" style="margin:-10px 0">+ Nouvelle tâche</a>
 </div>
 
 {% if items %}

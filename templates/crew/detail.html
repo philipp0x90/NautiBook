@@ -56,35 +56,32 @@
 
 {% block content %}
 
+{# Retour à la liste à gauche, « + Nouvel équipier » à droite, de même largeur
+   pour que le nom reste centré. Marges verticales négatives : les boutons ne
+   grandissent pas la barre, qui garde la hauteur des autres. Plus de bouton
+   « Supprimer la fiche » : la croix de la liste des équipiers s'en charge. #}
 <div class="section-bar">
-    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Liste des équipiers</a></div>
+    <a href="/crew" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">← Liste des équipiers</a>
     <div class="section-bar-title">
         {{ member.first_name or '' }} <span style="text-transform:uppercase">{{ member.last_name or '' }}</span>
     </div>
+    <a href="/crew/new" class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ Nouvel équipier</a>
 </div>
 
-<div style="margin-bottom:14px;display:flex;gap:10px;align-items:center">
-    {# Plus de bouton « Modifier » : chaque champ se modifie sur place. La page
-       /crew/{id}/edit existe toujours. #}
-    {# Aux extrémités de la liste, le bouton reste en place, grisé : masqué, il
-       décalerait « + Nouvel équipier » d'une fiche à l'autre. #}
-    <div style="flex:1;display:flex;gap:8px;justify-content:center">
-        {% if prev_id %}
-        <a href="/crew/{{ prev_id }}" class="btn btn-blue">← Précédent</a>
-        {% else %}
-        <span class="btn btn-blue" style="opacity:.4;pointer-events:none">← Précédent</span>
-        {% endif %}
-        <a href="/crew/new" class="btn btn-yellow">+ Nouvel équipier</a>
-        {% if next_id %}
-        <a href="/crew/{{ next_id }}" class="btn btn-blue">Suivant →</a>
-        {% else %}
-        <span class="btn btn-blue" style="opacity:.4;pointer-events:none">Suivant →</span>
-        {% endif %}
-    </div>
-    <form method="POST" action="/crew/{{ member.id }}/delete"
-          onsubmit="return confirm('Supprimer cette fiche d\'{{ member.gender | equipier }} ?')">
-        <button type="submit" class="btn btn-orange">— Supprimer la fiche</button>
-    </form>
+{# Plus de bouton « Modifier » : chaque champ se modifie sur place. La page
+   /crew/{id}/edit existe toujours. Précédent tout à gauche, Suivant tout à
+   droite ; aux extrémités de la liste, le bouton reste en place, grisé. #}
+<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+    {% if prev_id %}
+    <a href="/crew/{{ prev_id }}" class="btn btn-blue">← Précédent</a>
+    {% else %}
+    <span class="btn btn-blue" style="opacity:.4;pointer-events:none">← Précédent</span>
+    {% endif %}
+    {% if next_id %}
+    <a href="/crew/{{ next_id }}" class="btn btn-blue">Suivant →</a>
+    {% else %}
+    <span class="btn btn-blue" style="opacity:.4;pointer-events:none">Suivant →</span>
+    {% endif %}
 </div>
 
 <div class="card" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start">

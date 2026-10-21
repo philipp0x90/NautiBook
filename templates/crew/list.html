@@ -23,10 +23,12 @@
    un navire, c'est la seule liste de l'application qui ignore le cookie. #}
 <div class="section-bar section-bar-collee">
     {# Le bouton dans la barre, comme sur le carnet d'adresses : son double
-       invisible à gauche garde le titre centré. #}
-    <span class="btn btn-yellow" style="visibility:hidden" aria-hidden="true">+ Nouvel équipier</span>
+       invisible à gauche garde le titre centré. Marges verticales négatives :
+       le bouton déborde sans grandir la barre, qui garde la hauteur de celles
+       des pages Escales et Liste des croisières. #}
+    <span class="btn btn-yellow" style="visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvel équipier</span>
     <div class="section-bar-title">Liste des équipiers</div>
-    <a href="/crew/new" class="btn btn-yellow">+ Nouvel équipier</a>
+    <a href="/crew/new" class="btn btn-yellow" style="margin:-10px 0">+ Nouvel équipier</a>
 </div>
 
 {% if crew %}
@@ -38,14 +40,14 @@
                 <th>Prénom</th>
                 <th>Nom</th>
                 <th style="text-align:center">Âge</th>
-                {# Nationalité et localité relèvent de l'identité : rubrique
-                   « identite », cachée au Mousse. #}
+                {# La nationalité relève de l'identité : rubrique « identite »,
+                   cachée au Mousse. #}
                 {% if peut(request, 'identite.voir') %}
                 <th>Nationalité</th>
-                <th>Localité</th>
                 {% endif %}
                 <th>Téléphone</th>
                 <th>Email</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -66,10 +68,17 @@
                 <td style="text-align:center">{{ m.birth_date | age }}</td>
                 {% if peut(request, 'identite.voir') %}
                 <td>{{ m.nationality or '' }}</td>
-                <td>{{ m.city or '' }}</td>
                 {% endif %}
                 <td style="white-space:nowrap">{{ m.phone or '' }}</td>
                 <td>{% if m.email %}<a href="mailto:{{ m.email }}" style="color:var(--accent)">{{ m.email }}</a>{% endif %}</td>
+                {# La fiche de l'Amiral est refusée par delete_crew, qui renvoie
+                   sur la fiche avec l'explication. #}
+                <td style="width:1%;white-space:nowrap">
+                    <form method="POST" action="/crew/{{ m.id }}/delete" style="display:inline"
+                          onsubmit="return confirm('Supprimer cette fiche d\'{{ m.gender | equipier }} ?')">
+                        <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
