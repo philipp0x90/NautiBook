@@ -1,17 +1,161 @@
 {% extends "base.html" %}
 {% block title %}Gasoil — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* Un plein par ligne, comme l'écran FileMaker d'origine. Date, horamètre,
+       litres et prix se corrigent sur place (une case = un formulaire, envoyé
+       au changement) — le montant tel que sur le ticket ; prix au litre,
+       heures et conso se calculent (_fuel_fills). */
+    .pleins td, .pleins th { white-space: nowrap; }
+    .pleins thead th:not(:first-child) { text-align: right; }
+    .pleins td { text-align: right; font-variant-numeric: tabular-nums; }
+    .pleins td:first-child { text-align: left; }
+    .pleins td.calc { color: #0f3a4a; }
+    .pleins td.conso { font-weight: 700; }
+    .pleins .incoherent { color: #b91c1c; font-size: 12px; font-weight: 600; }
+    /* Cases modifiables : du texte au repos, un cadre au survol. */
+    .pleins .champ { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin: 0; }
+    .pleins td:first-child .champ { justify-content: flex-start; }
+    .pleins input {
+        width: 90px; padding: 3px 6px; font: inherit; text-align: right;
+        background: transparent; border: 1px solid transparent; border-radius: 5px;
+    }
+    .pleins input[type=date] { width: auto; text-align: left; }
+    .pleins input:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .pleins input:focus { border-color: var(--accent); background: #fff; outline: none; }
+    .pleins .unite { color: var(--muted); font-size: 12px; min-width: 12px; text-align: left; }
+    /* Ligne de saisie d'un nouveau plein : cases visibles d'emblée. */
+    .pleins tr.nouveau td { background: #f7fafc; border-bottom: 2px solid #dde5ee; }
+    .pleins tr.nouveau input { border-color: #d5e0ea; background: #fff; }
+    /* Bilan : trois pavés sous le tableau, comme le pied de l'écran d'origine. */
+    .bilan { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
+    .bilan > div { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
+                   padding: 10px 18px; text-align: center; min-width: 170px; }
+    .bilan .titre { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase; letter-spacing: 1px; }
+    .bilan .chiffre { font-size: 20px; font-weight: 700; color: #0f3a4a; margin-top: 4px; }
+    .bilan .detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+</style>
+{% endblock %}
 {% block content %}
 
-{# Barre sans badges, comme les autres pages Navire : le titre occupe toute la
-   largeur. Le badge de droite affichait « Navire #<id> », donc un identifiant
-   brut — ce que l'interface ne doit jamais montrer. #}
-<div class="section-bar">
+{# « + Nouveau plein » dans la barre, comme sur les autres listes : son double
+   invisible à gauche garde le titre centré, les marges négatives la hauteur
+   de la barre. Il fait apparaître la ligne de saisie, en tête du tableau. #}
+<div class="section-bar section-bar-collee">
+    {% if current_ship and peut(request, 'gasoil.modifier') %}
+    <span class="btn btn-yellow" style="visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouveau plein</span>
     <div class="section-bar-title">Gasoil</div>
+    <button type="button" class="btn btn-yellow" style="margin:-10px 0" onclick="nouveauPlein()">+ Nouveau plein</button>
+    {% else %}
+    <div class="section-bar-title">Gasoil</div>
+    {% endif %}
 </div>
 
-<div class="stub">
-    <div style="font-size:36px;margin-bottom:12px">⛽</div>
-    <div>Suivi de carburant — à venir</div>
-</div>
+{% if not current_ship %}
+<div class="stub">Aucun navire configuré.</div>
+{% else %}
 
+{% macro case(f, field, unit='', decimals=1, maximum=none) %}
+<form method="POST" action="/ship/fuel/{{ f.id }}/field/{{ field }}" class="champ">
+    {% if field == 'date' %}
+    <input type="date" name="value" value="{{ (f.date or '')[:10] }}" onchange="this.form.submit()">
+    {% else %}
+    <input type="text" inputmode="decimal" name="value" placeholder="—"
+           value="{{ f[field] | dec(decimals, maximum) }}" onchange="this.form.submit()">
+    <span class="unite">{{ unit }}</span>
+    {% endif %}
+</form>
+{% endmacro %}
+
+<div class="tableau-colle">
+    <table class="data-table titres-legers pleins">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Horamètre</th>
+                <th>Quantité</th>
+                <th>Montant</th>
+                <th title="Montant ÷ litres">Prix/L</th>
+                <th title="Horamètre − horamètre du plein précédent">Heures</th>
+                <th title="Litres ÷ heures">Conso</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {# Saisie d'un plein : la première ligne du tableau, au-dessus du plus récent, ses cases rattachées au
+               formulaire caché par l'attribut form= (un <form> ne peut pas
+               envelopper une ligne). Seulement pour qui peut ajouter : le
+               script des droits masque le formulaire, pas les cases. #}
+            {% if peut(request, 'gasoil.modifier') %}
+            <tr class="nouveau" id="ligne-nouveau-plein"{% if fills %} hidden{% endif %}>
+                <td><input type="date" name="date" value="{{ today }}" form="nouveau-plein" required></td>
+                <td><div class="champ"><input type="text" inputmode="decimal" name="engine_hours" id="nouveau-horametre" placeholder="Horamètre" form="nouveau-plein" required><span class="unite">h</span></div></td>
+                <td><div class="champ"><input type="text" inputmode="decimal" name="liters" placeholder="Litres" form="nouveau-plein" required><span class="unite">L</span></div></td>
+                <td><div class="champ"><input type="text" inputmode="decimal" name="amount" placeholder="Montant" form="nouveau-plein"><span class="unite">€</span></div></td>
+                <td colspan="4" style="text-align:left">
+                    <button type="submit" form="nouveau-plein" class="btn btn-blue">Enregistrer</button>
+                    {% if fills %}
+                    <button type="button" class="btn" style="background:#eee;color:#333"
+                            onclick="document.getElementById('ligne-nouveau-plein').hidden = true">Annuler</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endif %}
+            {% for f in fills %}
+            <tr>
+                <td>{{ case(f, 'date') }}</td>
+                <td>{{ case(f, 'engine_hours', 'h', 1) }}</td>
+                <td>{{ case(f, 'liters', 'L', 1, 2) }}</td>
+                <td>{{ case(f, 'amount', '€', 2) }}</td>
+                <td class="calc">{{ (f.price | dec(3)) ~ ' €' if f.price is not none else '—' }}</td>
+                <td class="calc">
+                    {%- if f.incoherent %}<span class="incoherent" title="L'horamètre est inférieur ou égal à celui du plein précédent">horamètre ?</span>
+                    {%- elif f.hours is not none %}{{ f.hours | dec(1) }} h
+                    {%- else %}—{% endif -%}
+                </td>
+                <td class="calc conso">{{ (f.conso | dec(2)) ~ ' L/h' if f.conso is not none else '—' }}</td>
+                <td style="width:1%">
+                    <form method="POST" action="/ship/fuel/{{ f.id }}/delete" style="display:inline"
+                          onsubmit="return confirm('Supprimer ce plein ?')">
+                        <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<form id="nouveau-plein" method="POST" action="/ship/fuel/new"></form>
+<script>
+function nouveauPlein() {
+    const ligne = document.getElementById('ligne-nouveau-plein');
+    ligne.hidden = false;
+    ligne.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    document.getElementById('nouveau-horametre').focus();
+}
+</script>
+
+{% if fills %}
+<div class="bilan">
+    <div>
+        <div class="titre">Total en litres</div>
+        <div class="chiffre">{{ stats.total_liters | dec(1, 2) }} L</div>
+    </div>
+    <div>
+        <div class="titre">Total en €</div>
+        <div class="chiffre">{{ stats.total_amount | euros }}</div>
+    </div>
+    <div>
+        <div class="titre">Consommation moyenne</div>
+        <div class="chiffre">{{ (stats.average | dec(2)) ~ ' L/h' if stats.average is not none else '—' }}</div>
+        {# Pondérée : total des litres ÷ total des heures, sur les pleins qui
+           ont des heures (pas le premier). C'est elle qui remplace la
+           consommation réputée sur la fiche navire et dans le Récapitulatif
+           des routes. #}
+        <div class="detail">{% if stats.count %}litres ÷ heures, sur {{ stats.count }} plein{{ 's' if stats.count > 1 }}{% else %}il faut au moins deux pleins{% endif %}</div>
+    </div>
+</div>
+{% endif %}
+
+{% endif %}
 {% endblock %}

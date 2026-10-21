@@ -208,6 +208,25 @@ def _euros(value):
 
 templates.env.filters["datefr"] = _datefr
 templates.env.filters["euros"] = _euros
+
+
+def _dec(value, decimals=1, maximum=None):
+    """Nombre à virgule décimale, sans séparateur de milliers (horamètres,
+    litres, L/h) : 205 → « 205,0 » ; vide → ''. Les montants passent par euros.
+    Avec maximum, jusqu'à autant de décimales si la valeur en a, pour qu'une
+    case modifiable n'arrondisse pas ce qu'elle réenregistrerait :
+    dec(108.07, 1, 2) → « 108,07 », dec(205, 1, 2) → « 205,0 »."""
+    if value is None or value == "":
+        return ""
+    text = f"{float(value):.{maximum or decimals}f}"
+    if maximum:
+        text = text.rstrip("0")
+        whole, _, frac = text.partition(".")
+        text = f"{whole}.{frac.ljust(decimals, '0')}" if decimals else text.rstrip(".")
+    return text.replace(".", ",")
+
+
+templates.env.filters["dec"] = _dec
 templates.env.filters["jourfr"] = _jourfr
 templates.env.filters["jourmois"] = _jourmois
 templates.env.filters["age"] = _age
@@ -473,6 +492,22 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS app_secrets (
                 name TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            )
+        """)
+
+        # Pleins de gasoil (page Gasoil). Le montant est celui du ticket ; ni
+        # prix au litre, ni heures, ni conso : tous trois se calculent
+        # (_fuel_fills), les heures d'après l'horamètre du plein précédent,
+        # pour suivre toute correction après coup.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS fuel_fills (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ship_id INTEGER NOT NULL REFERENCES ship_info(id) ON DELETE CASCADE,
+                date TEXT,
+                engine_hours REAL,
+                liters REAL,
+                amount REAL,
+                created_at DATETIME
             )
         """)
 
@@ -1491,10 +1526,12 @@ async def ship_info(request: Request):
                 (ship["id"],),
             )
             documents = [dict(d) for d in await cursor.fetchall()]
+        consumption = await _consumption(db, ship["id"]) if ship else None
     return templates.TemplateResponse(
         "ship/info.html",
         {"request": request, "active_section": "ship", "ship": ship, "current_ship": ship,
          "documents": documents, "doc_max_bytes": SHIP_DOC_MAX_BYTES, "ship_fields": SHIP_FIELDS,
+         "consumption": consumption,
          # Repères de la couleur de validité : expiré avant aujourd'hui,
          # « bientôt » dans les DOC_EXPIRY_WARNING_DAYS qui suivent. Des
          # dates ISO, que la template compare comme des chaînes.
@@ -2432,15 +2469,154 @@ async def delete_todo_item(item_id: int):
     return RedirectResponse(url="/ship/todo", status_code=303)
 
 
+# ── Gasoil ──
+# Un plein par ligne : date, horamètre, litres, montant payé — saisis, le
+# montant tel qu'il figure sur le ticket (comme sous FileMaker). Le prix au
+# litre, les heures (horamètre − celui du plein précédent) et la conso
+# (litres ÷ heures, méthode du plein complet) se calculent à chaque affichage :
+# corriger un horamètre recalcule ses heures et celles du plein suivant. La
+# moyenne est pondérée — total des litres ÷ total des heures — et non la
+# moyenne des conso, qui donnerait autant de poids à un plein de 5 h qu'à un
+# plein de 100 h. Elle remplace la consommation réputée (fiche navire) partout
+# où une consommation sert : fiche navire, Récapitulatif des routes.
+
+FUEL_FIELDS = {"date": "date", "engine_hours": "number", "liters": "number", "amount": "number"}
+
+
+async def _fuel_fills(db, ship_id: int):
+    """Les pleins du navire dans l'ordre (date, puis horamètre), chacun complété
+    de price (au litre), hours et conso, et le bilan : totaux et moyenne pondérée sur les
+    pleins qui ont des heures. Un horamètre qui recule (faute de frappe) laisse
+    hours vide et marque la ligne `incoherent` au lieu d'une conso négative ;
+    le plein suivant se calcule alors sur le dernier horamètre plausible."""
+    db.row_factory = aiosqlite.Row
+    cursor = await db.execute(
+        "SELECT * FROM fuel_fills WHERE ship_id = ?"
+        " ORDER BY date IS NULL, date, engine_hours IS NULL, engine_hours, id",
+        (ship_id,),
+    )
+    fills = [dict(r) for r in await cursor.fetchall()]
+    previous_hours = None
+    measured_liters = measured_hours = 0.0
+    for f in fills:
+        f["price"] = f["amount"] / f["liters"] if f["amount"] is not None and f["liters"] else None
+        f["hours"] = f["conso"] = None
+        f["incoherent"] = False
+        if f["engine_hours"] is not None:
+            if previous_hours is not None:
+                hours = f["engine_hours"] - previous_hours
+                if hours > 0:
+                    f["hours"] = hours
+                    if f["liters"] is not None:
+                        f["conso"] = f["liters"] / hours
+                        measured_liters += f["liters"]
+                        measured_hours += hours
+                else:
+                    # Ni heures, ni repère pour le plein suivant, qui se compare
+                    # au dernier horamètre plausible.
+                    f["incoherent"] = True
+                    continue
+            previous_hours = f["engine_hours"]
+    stats = {
+        "total_liters": sum(f["liters"] or 0 for f in fills),
+        "total_amount": sum(f["amount"] or 0 for f in fills),
+        "average": measured_liters / measured_hours if measured_hours else None,
+        "count": sum(1 for f in fills if f["conso"] is not None),
+    }
+    return fills, stats
+
+
+async def _consumption(db, ship_id: int) -> dict:
+    """La consommation qui sert (L/h) : mesurée sur les pleins s'il y en a,
+    sinon la réputée de la fiche navire. `source` dit laquelle, `count` sur
+    combien de pleins, `reputed` garde la réputée pour l'afficher à côté."""
+    _, stats = await _fuel_fills(db, ship_id)
+    cursor = await db.execute("SELECT engine_consumption FROM ship_info WHERE id = ?", (ship_id,))
+    row = await cursor.fetchone()
+    reputed = row[0] if row else None
+    if stats["average"] is not None:
+        return {"value": stats["average"], "source": "mesuree", "count": stats["count"], "reputed": reputed}
+    return {"value": reputed, "source": "reputee" if reputed else None, "count": 0, "reputed": reputed}
+
+
 @app.get("/ship/fuel", response_class=HTMLResponse)
 async def ship_fuel(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
+        fills, stats = await _fuel_fills(db, ship["id"]) if ship else ([], None)
     return templates.TemplateResponse(
         "ship/fuel.html",
-        {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None},
+        {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None,
+         # Du plus récent au plus ancien ; le calcul, lui, se fait dans l'ordre
+         # chronologique (_fuel_fills), chaque plein dépendant du précédent.
+         "fills": fills[::-1], "stats": stats, "today": date.today().isoformat()},
     )
+
+
+def _fuel_value(kind: str, value: Optional[str]):
+    """Une saisie de la page Gasoil, normalisée ; ValueError si ce n'est pas
+    un nombre (« 368,80 » comme « 368.80 »)."""
+    value = (value or "").strip() or None
+    if kind == "number" and value is not None:
+        return _import_amount(value)
+    return value
+
+
+@app.post("/ship/fuel/new")
+async def create_fuel_fill(
+    request: Request,
+    date: Optional[str] = Form(None),
+    engine_hours: Optional[str] = Form(None),
+    liters: Optional[str] = Form(None),
+    amount: Optional[str] = Form(None),
+):
+    try:
+        values = [_fuel_value(FUEL_FIELDS[k], v) for k, v in
+                  (("date", date), ("engine_hours", engine_hours), ("liters", liters), ("amount", amount))]
+    except ValueError:
+        return RedirectResponse(url="/ship/fuel", status_code=303)
+    async with connect() as db:
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+        if ship is None:
+            raise HTTPException(status_code=404, detail="Aucun navire")
+        await db.execute(
+            "INSERT INTO fuel_fills (ship_id, date, engine_hours, liters, amount, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (ship[0], *values, datetime.now()),
+        )
+        await db.commit()
+    return RedirectResponse(url="/ship/fuel", status_code=303)
+
+
+@app.post("/ship/fuel/{fill_id}/field/{field}")
+async def update_fuel_field(request: Request, fill_id: int, field: str, value: Optional[str] = Form(None)):
+    """Modification sur place d'une case d'un plein ; FUEL_FIELDS tient le nom
+    de colonne hors de l'URL. Une saisie qui n'est pas un nombre ne remplace
+    pas la valeur enregistrée."""
+    kind = FUEL_FIELDS.get(field)
+    if kind is None:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    try:
+        value = _fuel_value(kind, value)
+    except ValueError:
+        return RedirectResponse(url="/ship/fuel", status_code=303)
+    async with connect() as db:
+        await db.execute(
+            f"UPDATE fuel_fills SET {field} = ? WHERE id = ? AND ship_id = ?",
+            (value, fill_id, get_current_ship_id(request)),
+        )
+        await db.commit()
+    return RedirectResponse(url="/ship/fuel", status_code=303)
+
+
+@app.post("/ship/fuel/{fill_id}/delete")
+async def delete_fuel_fill(request: Request, fill_id: int):
+    async with connect() as db:
+        await db.execute("DELETE FROM fuel_fills WHERE id = ? AND ship_id = ?",
+                         (fill_id, get_current_ship_id(request)))
+        await db.commit()
+    return RedirectResponse(url="/ship/fuel", status_code=303)
 
 
 @app.get("/ship/contacts", response_class=HTMLResponse)
@@ -4164,11 +4340,10 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
         lines = await cursor.fetchall()
         # Ce dont hérite la fenêtre « Nouvelle ligne ».
         previous = await _previous_conditions(db, route_id)
-        # Consommation du moteur (L/h, fiche navire) : le Récapitulatif en
-        # estime le gasoil, faute de jauge relevée.
-        cursor = await db.execute(
-            "SELECT engine_consumption FROM ship_info WHERE id = ?", (route["cruise_ship_id"],))
-        ship_row = await cursor.fetchone()
+        # Consommation du moteur (L/h) : le Récapitulatif en estime le gasoil,
+        # faute de jauge relevée — mesurée sur les pleins, sinon la réputée.
+        consumption = await _consumption(db, route["cruise_ship_id"]) if route["cruise_ship_id"] else None
+        db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
             "SELECT * FROM stopovers WHERE route_id = ? ORDER BY arrival_date ASC",
@@ -4217,7 +4392,7 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "todos": [dict(t) for t in todos],
             "ask_new_line": bool(nouvelle),
             "previous": previous,
-            "consumption": ship_row["engine_consumption"] if ship_row else None,
+            "consumption": consumption,
             "duration_min": _minutes_between(route["start_time"], route["end_time"]),
         },
     )

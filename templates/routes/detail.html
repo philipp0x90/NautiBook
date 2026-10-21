@@ -447,8 +447,10 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
        premier et dernier relevé des lignes (MIN / MAX, un loch ne recule pas,
        comme LOCH_FIRST / LOCH_LAST) ; la différence est la distance parcourue.
        Moteur : horamètres saisis au départ et à l'arrivée. Le gasoil n'est
-       relevé nulle part : estimé, heures moteur × consommation de la fiche
-       navire. Vitesse moyenne : distance ÷ durée. #}
+       relevé nulle part : estimé, heures moteur × consommation — mesurée sur
+       les pleins (page Gasoil), sinon la réputée de la fiche navire (_consumption).
+       Vitesse moyenne : distance ÷ durée. #}
+    {% set conso = consumption.value if consumption else none %}
     {% set lochs = lines | map(attribute='log') | select('number') | list %}
     {% set loch_dep = lochs | min if lochs else none %}
     {% set loch_arr = lochs | max if lochs|length > 1 else none %}
@@ -488,7 +490,7 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
                     <th>Gasoil <span>(L)</span></th>
                     <td>—</td>
                     <td>—</td>
-                    <td class="diff">{{ '≈ %.0f'|format(h_diff * consumption) if h_diff is not none and consumption else '—' }}</td>
+                    <td class="diff">{{ '≈ %.0f'|format(h_diff * conso) if h_diff is not none and conso else '—' }}</td>
                 </tr>
             </tbody>
             <tfoot>
@@ -498,8 +500,9 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
                 </tr>
             </tfoot>
         </table>
-        {% if consumption %}
-        <div class="recap-note">Gasoil estimé : heures moteur × {{ '%g'|format(consumption) }} L/h (fiche navire)</div>
+        {% if conso %}
+        <div class="recap-note">Gasoil estimé : heures moteur × {{ conso | dec(2) }} L/h
+            {%- if consumption.source == 'mesuree' %} (mesurée sur {{ consumption.count }} plein{{ 's' if consumption.count > 1 }}){% else %} (réputée){% endif %}</div>
         {% endif %}
     </div>
 
