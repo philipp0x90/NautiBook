@@ -89,6 +89,21 @@
     .log-table .add-row td { background: #e8f7fb; }
     .log-table .add-row td a { color: var(--accent-dark); font-weight: 700; text-decoration: none; font-size: 14px; }
 
+    /* Récapitulatif : trois mesures × départ, arrivée, différence. Titres
+       de colonnes comme .titres-legers, chiffres centrés, la différence en gras. */
+    .recap { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .recap thead th { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase;
+                      letter-spacing: 1px; padding: 4px 6px; border-bottom: 1px solid #dde5ee; text-align: center; }
+    .recap tbody th { text-align: left; font-weight: 600; padding: 6px 6px 6px 0; white-space: nowrap; }
+    .recap tbody th span { font-weight: 400; color: var(--muted); font-size: 12px; }
+    .recap td { text-align: center; padding: 6px; font-variant-numeric: tabular-nums; }
+    .recap tbody tr + tr > * { border-top: 1px solid #edf2f7; }
+    .recap .diff { font-weight: 700; color: #0f3a4a; background: #f2f9fc; }
+    .recap td small { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+    .recap tfoot > tr > * { border-top: 2px solid #dde5ee; padding-top: 8px; }
+    .recap tfoot th { text-align: right; font-weight: 600; padding-right: 10px; }
+    .recap tfoot td span { font-weight: 400; color: var(--muted); font-size: 12px; }
+    .recap-note { margin-top: 8px; font-size: 11px; color: var(--muted); text-align: center; }
     .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #edf2f7; }
     .stat-row:last-child { border-bottom: none; }
 
@@ -427,19 +442,65 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
 {# ── Bottom panels ── #}
 <div class="bottom-grid">
 
-    {# Informations #}
+    {# Récapitulatif — départ, arrivée et différence. Durée : heures de départ
+       et d'arrivée de la route (duration_min, calculée par route_detail). Loch :
+       premier et dernier relevé des lignes (MIN / MAX, un loch ne recule pas,
+       comme LOCH_FIRST / LOCH_LAST) ; la différence est la distance parcourue.
+       Moteur : horamètres saisis au départ et à l'arrivée. Le gasoil n'est
+       relevé nulle part : estimé, heures moteur × consommation de la fiche
+       navire. Vitesse moyenne : distance ÷ durée. #}
+    {% set lochs = lines | map(attribute='log') | select('number') | list %}
+    {% set loch_dep = lochs | min if lochs else none %}
+    {% set loch_arr = lochs | max if lochs|length > 1 else none %}
+    {% set distance = (loch_arr - loch_dep) if loch_arr is not none else none %}
+    {% set h_dep = route.motor_hours_start %}
+    {% set h_arr = route.motor_hours_end %}
+    {% set h_diff = (h_arr - h_dep) if h_dep is not none and h_arr is not none else none %}
+    {% macro heure(ts) -%}
+        {%- if ts %}{{ ts[11:16] }}<small>{{ ts | jourmois }}</small>{% else %}—{% endif -%}
+    {%- endmacro %}
     <div class="bottom-panel">
-        <h4>Informations</h4>
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;text-align:center">— STATISTIQUES —</div>
-        <div class="stat-row"><span>Trip route</span><span>{% if lines %}{{ lines[-1].trip or '—' }} NM{% else %}—{% endif %}</span></div>
-
-        <div style="font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 6px;text-align:center">— HORAMETRE —</div>
-        <div class="stat-row"><span>Départ</span><span>{{ route.motor_hours_start or '—' }}</span></div>
-        <div class="stat-row"><span>Arrivée</span><span>{{ route.motor_hours_end or '—' }}</span></div>
-        <div class="stat-row">
-            <span>Durée moteur</span>
-            <span>{% if route.motor_hours_start and route.motor_hours_end %}{{ '%.1f h'|format(route.motor_hours_end - route.motor_hours_start) }}{% else %}—{% endif %}</span>
-        </div>
+        <h4>Récapitulatif</h4>
+        <table class="recap">
+            <thead>
+                <tr><th></th><th>Départ</th><th>Arrivée</th><th>Différence</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <th>Durée <span>(h:mm)</span></th>
+                    <td>{{ heure(route.start_time) }}</td>
+                    <td>{{ heure(route.end_time) }}</td>
+                    <td class="diff">{{ '%d:%02d'|format(duration_min // 60, duration_min % 60) if duration_min is not none else '—' }}</td>
+                </tr>
+                <tr>
+                    <th>Loch <span>(NM)</span></th>
+                    <td>{{ '%.1f'|format(loch_dep) if loch_dep is not none else '—' }}</td>
+                    <td>{{ '%.1f'|format(loch_arr) if loch_arr is not none else '—' }}</td>
+                    <td class="diff">{% if distance is not none %}{{ '%.1f'|format(distance) }}<small>parcourus</small>{% else %}—{% endif %}</td>
+                </tr>
+                <tr>
+                    <th>Heures moteur</th>
+                    <td>{{ '%.1f'|format(h_dep) if h_dep is not none else '—' }}</td>
+                    <td>{{ '%.1f'|format(h_arr) if h_arr is not none else '—' }}</td>
+                    <td class="diff">{{ '%.1f'|format(h_diff) if h_diff is not none else '—' }}</td>
+                </tr>
+                <tr>
+                    <th>Gasoil <span>(L)</span></th>
+                    <td>—</td>
+                    <td>—</td>
+                    <td class="diff">{{ '≈ %.0f'|format(h_diff * consumption) if h_diff is not none and consumption else '—' }}</td>
+                </tr>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th colspan="3">Vitesse moyenne</th>
+                    <td class="diff">{% if distance is not none and duration_min %}{{ '%.1f'|format(distance * 60 / duration_min) }} <span>kn</span>{% else %}—{% endif %}</td>
+                </tr>
+            </tfoot>
+        </table>
+        {% if consumption %}
+        <div class="recap-note">Gasoil estimé : heures moteur × {{ '%g'|format(consumption) }} L/h (fiche navire)</div>
+        {% endif %}
     </div>
 
     {# To-Do List #}

@@ -200,12 +200,12 @@
     </form>
     {# Position among this ship's cruises, not the id — same %03d as the list. #}
     {% if cruise.number %}
-    <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700">(Croisière N° {{ '%03d'|format(cruise.number) }})</div>
+    <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700"># {{ '%03d'|format(cruise.number) }}</div>
     {% endif %}
     {# À gauche du bandeau, « Croisière en cours » ou, pour une autre
-       croisière, « Croisière : » à la même place et dans la même typographie. #}
+       croisière, « Croisière » à la même place et dans la même typographie. #}
     <div class="cruise-mention cruise-etiquette" style="grid-area:mention">
-        {%- if is_current is defined and is_current %}Croisière en cours{% else %}Croisière :{% endif -%}
+        {%- if is_current is defined and is_current %}Croisière en cours{% else %}Croisière{% endif -%}
     </div>
 </div>
 

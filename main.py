@@ -4126,6 +4126,19 @@ async def create_route(
     return RedirectResponse(url=f"/routes/{route_id}?nouvelle=1", status_code=303)
 
 
+def _minutes_between(start, end) -> Optional[int]:
+    """Minutes from one stored timestamp to another (either shape, « T » or
+    space), or None when one is missing or unreadable — or the order is wrong."""
+    try:
+        a = datetime.fromisoformat(str(start)[:19])
+        b = datetime.fromisoformat(str(end)[:19])
+    except (TypeError, ValueError):
+        return None
+    if start is None or end is None or b < a:
+        return None
+    return int((b - a).total_seconds() // 60)
+
+
 @app.get("/routes/{route_id}", response_class=HTMLResponse)
 async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
     """The `nouvelle` flag is set by create_route and only opens the modal that
@@ -4148,9 +4161,14 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "SELECT * FROM logbook_lines WHERE route_id = ? ORDER BY timestamp ASC",
             (route_id,),
         )
+        lines = await cursor.fetchall()
         # Ce dont hérite la fenêtre « Nouvelle ligne ».
         previous = await _previous_conditions(db, route_id)
-        lines = await cursor.fetchall()
+        # Consommation du moteur (L/h, fiche navire) : le Récapitulatif en
+        # estime le gasoil, faute de jauge relevée.
+        cursor = await db.execute(
+            "SELECT engine_consumption FROM ship_info WHERE id = ?", (route["cruise_ship_id"],))
+        ship_row = await cursor.fetchone()
 
         cursor = await db.execute(
             "SELECT * FROM stopovers WHERE route_id = ? ORDER BY arrival_date ASC",
@@ -4199,6 +4217,8 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "todos": [dict(t) for t in todos],
             "ask_new_line": bool(nouvelle),
             "previous": previous,
+            "consumption": ship_row["engine_consumption"] if ship_row else None,
+            "duration_min": _minutes_between(route["start_time"], route["end_time"]),
         },
     )
 
