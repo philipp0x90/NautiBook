@@ -12,6 +12,9 @@
     .pleins td:first-child { text-align: left; }
     .pleins td.calc { color: #0f3a4a; }
     .pleins td.conso { font-weight: 700; }
+    .pleins .appoint { font-weight: 400; font-style: italic; color: var(--muted); font-size: 12px; }
+    .pleins td:has(.complet) .champ { justify-content: center; }
+    .pleins input.complet { width: auto; accent-color: var(--accent); cursor: pointer; }
     .pleins .incoherent { color: #b91c1c; font-size: 12px; font-weight: 600; }
     /* Cases modifiables : du texte au repos, un cadre au survol. */
     .pleins .champ { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin: 0; }
@@ -27,6 +30,29 @@
     /* Ligne de saisie d'un nouveau plein : cases visibles d'emblée. */
     .pleins tr.nouveau td { background: #f7fafc; border-bottom: 2px solid #dde5ee; }
     .pleins tr.nouveau input { border-color: #d5e0ea; background: #fff; }
+    /* Réservoir : jauge, trois chiffres, puis le détail du calcul. */
+    .reservoir { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
+                 padding: 14px 18px; margin-bottom: 18px; }
+    .reservoir-titre { font-size: 12px; font-weight: 700; color: #7d8fa3; text-transform: uppercase;
+                       letter-spacing: 1px; margin-bottom: 10px; }
+    .reservoir-titre span { font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .jauge-ligne { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .jauge { flex: 1; min-width: 200px; height: 16px; background: #eef3f7; border-radius: 8px; overflow: hidden;
+             border: 1px solid #dde5ee; }
+    .jauge-niveau { height: 100%; border-radius: 8px 0 0 8px; }
+    .jauge-niveau.haut { background: #22c55e; }
+    .jauge-niveau.moyen { background: #f59e0b; }
+    .jauge-niveau.bas { background: #ef4444; }
+    .jauge-texte { font-size: 13px; font-weight: 600; color: #0f3a4a; white-space: nowrap; }
+    .reservoir-chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 14px 0 10px;
+                          text-align: center; }
+    .reservoir-chiffres .titre { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase;
+                                 letter-spacing: 1px; }
+    .reservoir-chiffres .chiffre { font-size: 22px; font-weight: 700; color: #0f3a4a; margin-top: 4px; }
+    .reservoir-chiffres input { width: 52px; padding: 1px 4px; font: inherit; font-size: 12px; font-weight: 700;
+                                text-align: center; color: #0f3a4a; border: 1px solid #cfe3ef; border-radius: 5px; }
+    .reservoir-detail { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
+    .reservoir-detail a { color: var(--accent); }
     /* Bilan : trois pavés sous le tableau, comme le pied de l'écran d'origine. */
     .bilan { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
     .bilan > div { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
@@ -55,10 +81,62 @@
 <div class="stub">Aucun navire configuré.</div>
 {% else %}
 
+{# Réservoir — estimation (_tank_estimate) : plein au dernier plein complet,
+   plus les appoints depuis, moins les heures de moteur × la consommation.
+   La vitesse ne sert qu'au calcul du moment : rien n'est enregistré, elle
+   revient à 6 kn au rechargement. #}
+{% if tank %}
+{% set niveau = 'haut' if tank.percent > 50 else ('moyen' if tank.percent >= 25 else 'bas') %}
+<section class="reservoir">
+    <div class="reservoir-titre">Réservoir <span>· estimation</span></div>
+    <div class="jauge-ligne">
+        <div class="jauge"><div class="jauge-niveau {{ niveau }}" style="width:{{ '%.0f'|format(tank.percent) }}%"></div></div>
+        <div class="jauge-texte">≈ {{ '%.0f'|format(tank.remaining) }} L sur {{ tank.capacity | dec(0) }} L · {{ '%.0f'|format(tank.percent) }} %</div>
+    </div>
+    <div class="reservoir-chiffres">
+        <div>
+            <div class="titre">Gasoil restant</div>
+            <div class="chiffre">≈ {{ '%.0f'|format(tank.remaining) }} L</div>
+        </div>
+        <div>
+            <div class="titre">Autonomie</div>
+            <div class="chiffre">≈ {{ '%.0f'|format(tank.autonomy_hours) }} h</div>
+        </div>
+        <div>
+            <div class="titre">Autonomie à
+                <input type="number" id="vitesse" value="6" min="0.5" step="0.5" inputmode="decimal"
+                       oninput="autonomieMilles()" title="Vitesse moyenne au moteur — pour ce calcul seulement"> kn</div>
+            <div class="chiffre">≈ <span id="autonomie-milles">{{ '%.0f'|format(tank.autonomy_hours * 6) }}</span> NM</div>
+        </div>
+    </div>
+    <div class="reservoir-detail">
+        Depuis le plein du {{ tank.full.date | datefr }} ({{ tank.full.engine_hours | dec(0) }} h) :
+        {{ tank.since | dec(1) }} h de moteur × {{ tank.conso | dec(2) }} L/h ≈ {{ '%.0f'|format(tank.used) }} L consommés
+        {%- if tank.topped_up %}, {{ tank.topped_up | dec(1, 2) }} L d'appoint{% endif %}<br>
+        Dernier horamètre {{ tank.reading.hours | dec(1) }} h
+        {%- if tank.reading.route %} ({{ tank.reading.moment }} de la route
+            <a href="/routes/{{ tank.reading.route.id }}">{{ tank.reading.route.departure_location or '?' }} - {{ tank.reading.route.destination_location or '?' }}</a>)
+        {%- else %} (dernier plein){% endif %}
+    </div>
+</section>
+<script>
+function autonomieMilles() {
+    const v = parseFloat(document.getElementById('vitesse').value.replace(',', '.'));
+    document.getElementById('autonomie-milles').textContent =
+        v > 0 ? Math.round({{ tank.autonomy_hours }} * v) : '—';
+}
+</script>
+{% endif %}
+
 {% macro case(f, field, unit='', decimals=1, maximum=none) %}
 <form method="POST" action="/ship/fuel/{{ f.id }}/field/{{ field }}" class="champ">
     {% if field == 'date' %}
     <input type="date" name="value" value="{{ (f.date or '')[:10] }}" onchange="this.form.submit()">
+    {% elif field == 'full' %}
+    {# Décochée, une case n'envoie rien : le champ caché porte alors le 0. #}
+    <input type="hidden" name="value" value="0">
+    <input type="checkbox" name="value" value="1" class="complet" {{ 'checked' if f.full }} onchange="this.form.submit()"
+           title="Plein complet (réservoir rempli) ; décoché : un appoint">
     {% else %}
     <input type="text" inputmode="decimal" name="value" placeholder="—"
            value="{{ f[field] | dec(decimals, maximum) }}" onchange="this.form.submit()">
@@ -74,10 +152,11 @@
                 <th>Date</th>
                 <th>Horamètre</th>
                 <th>Quantité</th>
+                <th title="Réservoir rempli ; décoché : un appoint">Complet</th>
                 <th>Montant</th>
                 <th title="Montant ÷ litres">Prix/L</th>
-                <th title="Horamètre − horamètre du plein précédent">Heures</th>
-                <th title="Litres ÷ heures">Conso</th>
+                <th title="Horamètre − horamètre du dernier plein complet">Heures</th>
+                <th title="Litres remis (appoints compris) ÷ heures, d'un plein complet au suivant">Conso</th>
                 <th></th>
             </tr>
         </thead>
@@ -91,6 +170,7 @@
                 <td><input type="date" name="date" value="{{ today }}" form="nouveau-plein" required></td>
                 <td><div class="champ"><input type="text" inputmode="decimal" name="engine_hours" id="nouveau-horametre" placeholder="Horamètre" form="nouveau-plein" required><span class="unite">h</span></div></td>
                 <td><div class="champ"><input type="text" inputmode="decimal" name="liters" placeholder="Litres" form="nouveau-plein" required><span class="unite">L</span></div></td>
+                <td style="text-align:center"><input type="hidden" name="full" value="0" form="nouveau-plein"><input type="checkbox" name="full" value="1" class="complet" checked form="nouveau-plein" title="Plein complet (réservoir rempli) ; décoché : un appoint"></td>
                 <td><div class="champ"><input type="text" inputmode="decimal" name="amount" placeholder="Montant" form="nouveau-plein"><span class="unite">€</span></div></td>
                 <td colspan="4" style="text-align:left">
                     <button type="submit" form="nouveau-plein" class="btn btn-blue">Enregistrer</button>
@@ -106,6 +186,7 @@
                 <td>{{ case(f, 'date') }}</td>
                 <td>{{ case(f, 'engine_hours', 'h', 1) }}</td>
                 <td>{{ case(f, 'liters', 'L', 1, 2) }}</td>
+                <td style="text-align:center">{{ case(f, 'full') }}</td>
                 <td>{{ case(f, 'amount', '€', 2) }}</td>
                 <td class="calc">{{ (f.price | dec(3)) ~ ' €' if f.price is not none else '—' }}</td>
                 <td class="calc">
@@ -113,7 +194,11 @@
                     {%- elif f.hours is not none %}{{ f.hours | dec(1) }} h
                     {%- else %}—{% endif -%}
                 </td>
-                <td class="calc conso">{{ (f.conso | dec(2)) ~ ' L/h' if f.conso is not none else '—' }}</td>
+                <td class="calc conso">
+                    {%- if not f.full %}<span class="appoint" title="Ses litres comptent dans la conso du plein complet suivant">appoint</span>
+                    {%- elif f.conso is not none %}{{ f.conso | dec(2) }} L/h
+                    {%- else %}—{% endif -%}
+                </td>
                 <td style="width:1%">
                     <form method="POST" action="/ship/fuel/{{ f.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer ce plein ?')">

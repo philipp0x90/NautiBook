@@ -507,6 +507,7 @@ async def init_db():
                 engine_hours REAL,
                 liters REAL,
                 amount REAL,
+                full INTEGER NOT NULL DEFAULT 1,
                 created_at DATETIME
             )
         """)
@@ -650,6 +651,13 @@ async def _migrate(db):
     if "document_path" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE expenses ADD COLUMN document_path TEXT")
         print("Migration: expenses.document_path added")
+
+    # Pleins : complet ou appoint. Les pleins saisis avant la case étaient
+    # tous complets, d'où le défaut à 1.
+    cursor = await db.execute("PRAGMA table_info(fuel_fills)")
+    if "full" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE fuel_fills ADD COLUMN full INTEGER NOT NULL DEFAULT 1")
+        print("Migration: fuel_fills.full added")
 
     cursor = await db.execute("PRAGMA table_info(ship_documents)")
     if "valid_until" not in {row[1] for row in await cursor.fetchall()}:
@@ -2471,24 +2479,30 @@ async def delete_todo_item(item_id: int):
 
 # ── Gasoil ──
 # Un plein par ligne : date, horamètre, litres, montant payé — saisis, le
-# montant tel qu'il figure sur le ticket (comme sous FileMaker). Le prix au
-# litre, les heures (horamètre − celui du plein précédent) et la conso
-# (litres ÷ heures, méthode du plein complet) se calculent à chaque affichage :
-# corriger un horamètre recalcule ses heures et celles du plein suivant. La
-# moyenne est pondérée — total des litres ÷ total des heures — et non la
+# montant tel qu'il figure sur le ticket (comme sous FileMaker) — et s'il est
+# complet (réservoir rempli) ou un simple appoint. Le prix au litre, les heures
+# et la conso se calculent à chaque affichage : corriger un horamètre recalcule
+# tout ce qui en dépend.
+#
+# Méthode du plein complet : la conso se mesure d'un plein complet au suivant —
+# litres remis (appoints intermédiaires compris) ÷ heures entre les deux. Un
+# appoint n'a pas de conso à lui : on ignore ce qui restait dans le réservoir.
+# La moyenne est pondérée — total des litres ÷ total des heures — et non la
 # moyenne des conso, qui donnerait autant de poids à un plein de 5 h qu'à un
 # plein de 100 h. Elle remplace la consommation réputée (fiche navire) partout
-# où une consommation sert : fiche navire, Récapitulatif des routes.
+# où une consommation sert : fiche navire, Récapitulatif des routes, réservoir.
 
-FUEL_FIELDS = {"date": "date", "engine_hours": "number", "liters": "number", "amount": "number"}
+FUEL_FIELDS = {"date": "date", "engine_hours": "number", "liters": "number", "amount": "number",
+               "full": "bool"}
 
 
 async def _fuel_fills(db, ship_id: int):
     """Les pleins du navire dans l'ordre (date, puis horamètre), chacun complété
-    de price (au litre), hours et conso, et le bilan : totaux et moyenne pondérée sur les
-    pleins qui ont des heures. Un horamètre qui recule (faute de frappe) laisse
-    hours vide et marque la ligne `incoherent` au lieu d'une conso négative ;
-    le plein suivant se calcule alors sur le dernier horamètre plausible."""
+    de price (au litre), hours (depuis le dernier plein complet) et conso (sur
+    les pleins complets), et le bilan : totaux et moyenne pondérée. Un horamètre
+    qui ne dépasse pas celui du plein complet de référence (faute de frappe)
+    marque la ligne `incoherent` au lieu d'une conso négative, et n'en devient
+    pas la référence."""
     db.row_factory = aiosqlite.Row
     cursor = await db.execute(
         "SELECT * FROM fuel_fills WHERE ship_id = ?"
@@ -2496,27 +2510,29 @@ async def _fuel_fills(db, ship_id: int):
         (ship_id,),
     )
     fills = [dict(r) for r in await cursor.fetchall()]
-    previous_hours = None
+    last_full_hours = None   # horamètre du dernier plein complet
+    pending = 0.0            # litres des appoints faits depuis
     measured_liters = measured_hours = 0.0
     for f in fills:
         f["price"] = f["amount"] / f["liters"] if f["amount"] is not None and f["liters"] else None
         f["hours"] = f["conso"] = None
         f["incoherent"] = False
-        if f["engine_hours"] is not None:
-            if previous_hours is not None:
-                hours = f["engine_hours"] - previous_hours
-                if hours > 0:
-                    f["hours"] = hours
-                    if f["liters"] is not None:
-                        f["conso"] = f["liters"] / hours
-                        measured_liters += f["liters"]
-                        measured_hours += hours
-                else:
-                    # Ni heures, ni repère pour le plein suivant, qui se compare
-                    # au dernier horamètre plausible.
-                    f["incoherent"] = True
-                    continue
-            previous_hours = f["engine_hours"]
+        if f["engine_hours"] is None:
+            continue
+        if last_full_hours is not None:
+            hours = f["engine_hours"] - last_full_hours
+            if hours <= 0:
+                f["incoherent"] = True
+                continue
+            f["hours"] = hours
+        if not f["full"]:
+            pending += f["liters"] or 0
+            continue
+        if f["hours"] is not None and f["liters"] is not None:
+            f["conso"] = (pending + f["liters"]) / f["hours"]
+            measured_liters += pending + f["liters"]
+            measured_hours += f["hours"]
+        last_full_hours, pending = f["engine_hours"], 0.0
     stats = {
         "total_liters": sum(f["liters"] or 0 for f in fills),
         "total_amount": sum(f["amount"] or 0 for f in fills),
@@ -2526,11 +2542,12 @@ async def _fuel_fills(db, ship_id: int):
     return fills, stats
 
 
-async def _consumption(db, ship_id: int) -> dict:
+async def _consumption(db, ship_id: int, stats=None) -> dict:
     """La consommation qui sert (L/h) : mesurée sur les pleins s'il y en a,
     sinon la réputée de la fiche navire. `source` dit laquelle, `count` sur
     combien de pleins, `reputed` garde la réputée pour l'afficher à côté."""
-    _, stats = await _fuel_fills(db, ship_id)
+    if stats is None:
+        _, stats = await _fuel_fills(db, ship_id)
     cursor = await db.execute("SELECT engine_consumption FROM ship_info WHERE id = ?", (ship_id,))
     row = await cursor.fetchone()
     reputed = row[0] if row else None
@@ -2539,24 +2556,70 @@ async def _consumption(db, ship_id: int) -> dict:
     return {"value": reputed, "source": "reputee" if reputed else None, "count": 0, "reputed": reputed}
 
 
+async def _tank_estimate(db, ship, fills, consumption) -> Optional[dict]:
+    """Gasoil restant estimé : le réservoir plein (capacité, fiche navire) au
+    dernier plein complet, plus les appoints faits depuis, moins les heures de
+    moteur écoulées depuis × la consommation. Le dernier horamètre noté est le
+    plus élevé des horamètres de départ et d'arrivée des routes du navire, ou
+    celui d'un plein s'il est plus élevé. None s'il manque la capacité, la
+    consommation ou un plein complet."""
+    capacity, conso = ship["tank_fuel"], consumption["value"] if consumption else None
+    full = next((f for f in reversed(fills) if f["full"] and f["engine_hours"] is not None
+                 and not f["incoherent"]), None)
+    if not capacity or not conso or full is None:
+        return None
+    later = fills[fills.index(full) + 1:]
+    topped_up = sum(f["liters"] or 0 for f in later if not f["incoherent"])
+    reading = {"hours": max(f["engine_hours"] for f in fills if f["engine_hours"] is not None and not f["incoherent"]),
+               "route": None}
+    cursor = await db.execute(
+        "SELECT r.id, r.departure_location, r.destination_location, r.motor_hours_start, r.motor_hours_end"
+        " FROM routes r JOIN cruises c ON r.cruise_id = c.id WHERE c.ship_id = ?"
+        " ORDER BY MAX(COALESCE(r.motor_hours_start, 0), COALESCE(r.motor_hours_end, 0)) DESC LIMIT 1",
+        (ship["id"],),
+    )
+    route = await cursor.fetchone()
+    if route:
+        route_hours = max(h for h in (route["motor_hours_start"], route["motor_hours_end"], 0) if h is not None)
+        if route_hours > reading["hours"]:
+            reading = {"hours": route_hours, "route": dict(route),
+                       "moment": "arrivée" if route["motor_hours_end"] == route_hours else "départ"}
+    since = max(reading["hours"] - full["engine_hours"], 0)
+    used = since * conso
+    remaining = max(min(capacity + topped_up - used, capacity), 0)
+    return {
+        "capacity": capacity, "remaining": remaining, "percent": remaining / capacity * 100,
+        "autonomy_hours": remaining / conso, "conso": conso, "used": used, "since": since,
+        "full": full, "topped_up": topped_up, "reading": reading,
+    }
+
+
 @app.get("/ship/fuel", response_class=HTMLResponse)
 async def ship_fuel(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
-        fills, stats = await _fuel_fills(db, ship["id"]) if ship else ([], None)
+        fills, stats, consumption, tank = [], None, None, None
+        if ship:
+            fills, stats = await _fuel_fills(db, ship["id"])
+            consumption = await _consumption(db, ship["id"], stats)
+            tank = await _tank_estimate(db, ship, fills, consumption)
     return templates.TemplateResponse(
         "ship/fuel.html",
         {"request": request, "active_section": "ship", "current_ship": dict(ship) if ship else None,
          # Du plus récent au plus ancien ; le calcul, lui, se fait dans l'ordre
          # chronologique (_fuel_fills), chaque plein dépendant du précédent.
-         "fills": fills[::-1], "stats": stats, "today": date.today().isoformat()},
+         "fills": fills[::-1], "stats": stats, "consumption": consumption, "tank": tank,
+         "today": date.today().isoformat()},
     )
 
 
 def _fuel_value(kind: str, value: Optional[str]):
     """Une saisie de la page Gasoil, normalisée ; ValueError si ce n'est pas
-    un nombre (« 368,80 » comme « 368.80 »)."""
+    un nombre (« 368,80 » comme « 368.80 »). La case « Complet » arrive
+    doublée d'un champ caché à 0 : cochée, c'est la dernière valeur, 1."""
+    if kind == "bool":
+        return 1 if value == "1" else 0
     value = (value or "").strip() or None
     if kind == "number" and value is not None:
         return _import_amount(value)
@@ -2570,10 +2633,12 @@ async def create_fuel_fill(
     engine_hours: Optional[str] = Form(None),
     liters: Optional[str] = Form(None),
     amount: Optional[str] = Form(None),
+    full: List[str] = Form([]),
 ):
     try:
         values = [_fuel_value(FUEL_FIELDS[k], v) for k, v in
-                  (("date", date), ("engine_hours", engine_hours), ("liters", liters), ("amount", amount))]
+                  (("date", date), ("engine_hours", engine_hours), ("liters", liters), ("amount", amount),
+                   ("full", full[-1] if full else None))]
     except ValueError:
         return RedirectResponse(url="/ship/fuel", status_code=303)
     async with connect() as db:
@@ -2581,8 +2646,8 @@ async def create_fuel_fill(
         if ship is None:
             raise HTTPException(status_code=404, detail="Aucun navire")
         await db.execute(
-            "INSERT INTO fuel_fills (ship_id, date, engine_hours, liters, amount, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO fuel_fills (ship_id, date, engine_hours, liters, amount, full, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ship[0], *values, datetime.now()),
         )
         await db.commit()
@@ -2590,7 +2655,7 @@ async def create_fuel_fill(
 
 
 @app.post("/ship/fuel/{fill_id}/field/{field}")
-async def update_fuel_field(request: Request, fill_id: int, field: str, value: Optional[str] = Form(None)):
+async def update_fuel_field(request: Request, fill_id: int, field: str, value: List[str] = Form([])):
     """Modification sur place d'une case d'un plein ; FUEL_FIELDS tient le nom
     de colonne hors de l'URL. Une saisie qui n'est pas un nombre ne remplace
     pas la valeur enregistrée."""
@@ -2598,7 +2663,7 @@ async def update_fuel_field(request: Request, fill_id: int, field: str, value: O
     if kind is None:
         raise HTTPException(status_code=404, detail="Field not editable")
     try:
-        value = _fuel_value(kind, value)
+        value = _fuel_value(kind, value[-1] if value else None)
     except ValueError:
         return RedirectResponse(url="/ship/fuel", status_code=303)
     async with connect() as db:
