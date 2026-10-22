@@ -7,7 +7,7 @@
        l'équipier n'a pas de photo, pour que les lignes gardent la même hauteur. */
     .crew-thumb {
         width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
-        display: block; background: #dde5ee;
+        display: block; background: #dde5ee; overflow: hidden;   /* rogne la photo zoomée */
     }
     .crew-thumb-empty {
         width: 34px; height: 34px; border-radius: 50%; background: #dde5ee;
@@ -56,7 +56,7 @@
                 onclick="rowLink(event, '/crew/{{ m.id }}')">
                 <td style="width:1%">
                     {% if m.photo_path and fichier_visible(request, m.photo_path) %}
-                    <img src="{{ m.photo_path }}" alt="" class="crew-thumb">
+                    <span class="crew-thumb"><img src="{{ m.photo_path }}" alt="" style="display:block;width:100%;height:100%;{{ m.photo_crop | cadrage_equipier }}"></span>
                     {% else %}
                     <div class="crew-thumb-empty">{{ (m.first_name or m.last_name or '?')[0] | upper }}</div>
                     {% endif %}

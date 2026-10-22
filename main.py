@@ -382,7 +382,9 @@ async def init_db():
                 insurance_policy TEXT,
                 insurance_start TEXT,
                 insurance_end TEXT,
-                misc_notes TEXT
+                misc_notes TEXT,
+                photo_path TEXT,
+                photo_crop TEXT
             )
         """)
 
@@ -579,6 +581,7 @@ async def init_db():
                 phone TEXT,
                 email TEXT,
                 photo_path TEXT,
+                photo_crop TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -663,6 +666,21 @@ async def _migrate(db):
     if "valid_until" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE ship_documents ADD COLUMN valid_until TEXT")
         print("Migration: ship_documents.valid_until added")
+
+    # Photo du navire (fiche navire, choix du navire), dans IMG/Navire/.
+    cursor = await db.execute("PRAGMA table_info(ship_info)")
+    if "photo_path" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE ship_info ADD COLUMN photo_path TEXT")
+        print("Migration: ship_info.photo_path added")
+    # Cadrage de cette photo : « x y zoom » (filtre cadrage).
+    cursor = await db.execute("PRAGMA table_info(ship_info)")
+    if "photo_crop" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE ship_info ADD COLUMN photo_crop TEXT")
+        print("Migration: ship_info.photo_crop added")
+    cursor = await db.execute("PRAGMA table_info(crew_members)")
+    if "photo_crop" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE crew_members ADD COLUMN photo_crop TEXT")
+        print("Migration: crew_members.photo_crop added")
 
     # « Surface » (longueur × bau) retirée de la fiche : une valeur qui se
     # recalcule, et que personne ne consultait. La colonne part avec ses
@@ -849,6 +867,8 @@ DOC_MAX_BYTES = 20 * 1024 * 1024
 # enregistrées avant sont déplacées au démarrage par _move_crew_photos.
 CREW_SUBDIR = "SailingCrew"
 (IMG_DIR / CREW_SUBDIR).mkdir(exist_ok=True)
+SHIP_PHOTO_SUBDIR = "Navire"
+(IMG_DIR / SHIP_PHOTO_SUBDIR).mkdir(exist_ok=True)
 
 # Photos du carnet de voyage, protégées par la rubrique « carnet ».
 CARNET_SUBDIR = "Carnet"
@@ -894,6 +914,11 @@ async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str 
 async def _save_photo(upload: Optional[UploadFile]) -> Optional[str]:
     """Store an uploaded image in IMG/ and return the URL to use as photo_path."""
     return await _save_upload(upload, IMG_SUFFIXES)
+
+
+async def _save_ship_photo(upload: Optional[UploadFile]) -> Optional[str]:
+    """Photo du navire, dans IMG/Navire/ (réduite dans le navigateur)."""
+    return await _save_upload(upload, IMG_SUFFIXES, SHIP_PHOTO_SUBDIR)
 
 
 async def _save_crew_photo(upload: Optional[UploadFile]) -> Optional[str]:
@@ -1230,7 +1255,7 @@ async def _session_user(token: str) -> Optional[dict]:
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
-            """SELECT u.id, u.username, u.rank, u.crew_member_id, m.first_name, m.last_name, m.photo_path
+            """SELECT u.id, u.username, u.rank, u.crew_member_id, m.first_name, m.last_name, m.photo_path, m.photo_crop
                FROM sessions s JOIN users u ON s.user_id = u.id
                JOIN crew_members m ON u.crew_member_id = m.id
                WHERE s.token_hash = ? AND s.expires_at > ?""",
@@ -1324,11 +1349,11 @@ async def require_login_to_write(request: Request, call_next):
 # que les dossiers d'IMG_OPEN_FOLDERS (photos du carnet et des équipiers) — ailleurs, les
 # pages qu'il consulte montrent les initiales ou un cadenas (fichier_visible).
 IMG_FOLDER_SECTIONS = {"Invoices-Receipts": "comptes", "Documents": "navire", "SailingCrew": "equipiers",
-                       "Carnet": "carnet"}
+                       "Carnet": "carnet", "Navire": "navire"}
 # Dossiers visibles sans connexion : les photos du carnet de voyage et celles
 # des équipiers, que le Mousse peut regarder (choix de l'utilisateur,
 # 02/10/2026). Factures et documents du navire restent réservés aux comptes.
-IMG_OPEN_FOLDERS = {"Carnet", "SailingCrew"}
+IMG_OPEN_FOLDERS = {"Carnet", "SailingCrew", "Navire"}   # Navire : photo du bateau (22/10/2026)
 
 
 def can_see_file(user: Optional[dict], url: Optional[str]) -> bool:
@@ -1633,6 +1658,79 @@ SHIP_FIELDS = {
     )},
     "misc_notes": "textarea",
 }
+
+
+@app.post("/ship/info/photo")
+async def update_ship_photo(request: Request, photo_file: Optional[UploadFile] = File(None)):
+    """Photo du navire courant, choisie d'un clic sur celle de la fiche.
+    L'ancienne reste dans IMG/Navire/, comme toute photo remplacée."""
+    photo = await _save_ship_photo(photo_file)
+    if photo:
+        async with connect() as db:
+            ship = await _fetch_ship(db, get_current_ship_id(request))
+            if ship is None:
+                raise HTTPException(status_code=404, detail="Aucun navire")
+            # Une nouvelle photo repart du cadrage par défaut (centre, sans zoom).
+            await db.execute("UPDATE ship_info SET photo_path = ?, photo_crop = NULL WHERE id = ?", (photo, ship[0]))
+            await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
+
+
+def _crop_values(crop: Optional[str], default: str = "50 50 1") -> tuple:
+    """« x y zoom » → (x %, y %, zoom), bornés ; vide ou illisible : `default`
+    (le centre, sans zoom). x et y disent quel point de la photo reste au
+    centre du cadre (0 = bord gauche / haut, 100 = droit / bas)."""
+    try:
+        x, y, z = (float(v) for v in (crop or default).split())
+    except ValueError:
+        x, y, z = (float(v) for v in default.split())
+    return min(max(x, 0), 100), min(max(y, 0), 100), min(max(z, 1), 4)
+
+
+# Photo d'équipier jamais recadrée : un peu au-dessus du centre, là où est le
+# visage sur un portrait en hauteur.
+CREW_CROP_DEFAULT = "50 35 1"
+
+
+def _cadrage(crop: Optional[str], default: str = "50 50 1") -> str:
+    """Le style d'une <img> recadrée : object-fit: cover centré sur (x, y),
+    agrandie de zoom autour du même point. Sert à la photo du navire (bandeau,
+    vignettes) et à celles des équipiers (filtre cadrage_equipier)."""
+    x, y, z = _crop_values(crop, default)
+    return (f"object-fit:cover;object-position:{x:.1f}% {y:.1f}%;"
+            f"transform:scale({z:.3f});transform-origin:{x:.1f}% {y:.1f}%")
+
+
+templates.env.filters["cadrage"] = _cadrage
+templates.env.filters["cadrage_equipier"] = lambda crop: _cadrage(crop, CREW_CROP_DEFAULT)
+templates.env.globals["crew_crop_default"] = CREW_CROP_DEFAULT
+
+
+@app.post("/ship/info/photo/crop")
+async def crop_ship_photo(request: Request, x: float = Form(50), y: float = Form(50), zoom: float = Form(1)):
+    """Recadrage de la photo du navire : seul le cadrage est enregistré, la
+    photo reste entière, et se recadre autant de fois qu'on veut."""
+    x, y, zoom = _crop_values(f"{x} {y} {zoom}")
+    async with connect() as db:
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+        if ship is None:
+            raise HTTPException(status_code=404, detail="Aucun navire")
+        await db.execute("UPDATE ship_info SET photo_crop = ? WHERE id = ?", (f"{x:.1f} {y:.1f} {zoom:.3f}", ship[0]))
+        await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
+
+
+@app.post("/ship/info/photo/remove")
+async def remove_ship_photo(request: Request):
+    """Retire la photo de la fiche ; le fichier reste dans IMG/Navire/.
+    « remove » et non « delete » : un …/delete exigerait navire.supprimer."""
+    async with connect() as db:
+        ship = await _fetch_ship(db, get_current_ship_id(request))
+        if ship is None:
+            raise HTTPException(status_code=404, detail="Aucun navire")
+        await db.execute("UPDATE ship_info SET photo_path = NULL WHERE id = ?", (ship[0],))
+        await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
 
 
 @app.post("/ship/info/field/{field}")
@@ -3409,12 +3507,13 @@ async def update_crew(
                    id_type = ?, id_number = ?, phone = ?, email = ?,
                    -- COALESCE : soumettre le formulaire sans toucher à la photo
                    -- ne doit pas effacer celle déjà enregistrée.
-                   photo_path = COALESCE(?, photo_path)
+                   photo_path = COALESCE(?, photo_path),
+                   photo_crop = CASE WHEN ? IS NULL OR ? = photo_path THEN photo_crop END
                WHERE id = ?""",
             (first_name or None, last_name or None, gender or None, birth_date or None,
              birth_place or None, nationality or None, street or None, postal_code or None,
              city or None, id_type or None, id_number or None, phone or None, email or None,
-             photo, crew_id),
+             photo, photo, photo, crew_id),
         )
         await db.commit()
     return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
@@ -3467,8 +3566,21 @@ async def update_crew_photo(crew_id: int, photo_file: Optional[UploadFile] = Fil
     photo = await _save_crew_photo(photo_file)
     if photo:
         async with connect() as db:
-            await db.execute("UPDATE crew_members SET photo_path = ? WHERE id = ?", (photo, crew_id))
+            # Une nouvelle photo repart du cadrage par défaut.
+            await db.execute("UPDATE crew_members SET photo_path = ?, photo_crop = NULL WHERE id = ?", (photo, crew_id))
             await db.commit()
+    return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
+
+
+@app.post("/crew/{crew_id}/photo/crop")
+async def crop_crew_photo(crew_id: int, x: float = Form(50), y: float = Form(35), zoom: float = Form(1)):
+    """Recadrage de la photo d'un équipier, comme celle du navire : seul le
+    cadrage est enregistré (filtre cadrage_equipier)."""
+    x, y, zoom = _crop_values(f"{x} {y} {zoom}")
+    async with connect() as db:
+        await db.execute("UPDATE crew_members SET photo_crop = ? WHERE id = ?",
+                         (f"{x:.1f} {y:.1f} {zoom:.3f}", crew_id))
+        await db.commit()
     return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
 
 
@@ -3485,7 +3597,7 @@ async def remove_crew_photo(crew_id: int):
         if row is None:
             raise HTTPException(status_code=404, detail="Équipier introuvable")
         path = row[0]
-        await db.execute("UPDATE crew_members SET photo_path = NULL WHERE id = ?", (crew_id,))
+        await db.execute("UPDATE crew_members SET photo_path = NULL, photo_crop = NULL WHERE id = ?", (crew_id,))
         await db.commit()
         if path and path.startswith(IMG_URL + "/"):
             cursor = await db.execute("SELECT 1 FROM crew_members WHERE photo_path = ?", (path,))
@@ -3597,7 +3709,7 @@ async def _cruise_crew(db, cruise_id: int):
         """SELECT cc.id, cc.role, cc.embark_date, cc.disembark_date,
                   CAST(julianday(substr(cc.disembark_date, 1, 10))
                        - julianday(substr(cc.embark_date, 1, 10)) AS INTEGER) AS nights,
-                  m.id AS member_id, m.first_name, m.last_name, m.gender, m.photo_path
+                  m.id AS member_id, m.first_name, m.last_name, m.gender, m.photo_path, m.photo_crop
            FROM cruise_crew cc
            JOIN crew_members m ON cc.crew_member_id = m.id
            WHERE cc.cruise_id = ?
@@ -5077,7 +5189,7 @@ async def carnet(request: Request, croisiere: Optional[str] = None, edit: Option
             where += " AND e.cruise_id IS ?"
             args.append(selected)
         cursor = await db.execute(
-            f"""SELECT e.*, c.name AS cruise_name, m.first_name, m.last_name, m.photo_path AS author_photo
+            f"""SELECT e.*, c.name AS cruise_name, m.first_name, m.last_name, m.photo_path AS author_photo, m.photo_crop AS author_crop
                 FROM carnet_entries e
                 LEFT JOIN cruises c ON e.cruise_id = c.id
                 LEFT JOIN crew_members m ON e.crew_member_id = m.id

@@ -87,6 +87,32 @@
     }
     .champ-divers:hover { border-color: #cfe3ef; background: #f8fbfd; }
     .champ-divers:focus { border-color: var(--accent); background: #fff; outline: none; }
+    /* Photo du navire : bandeau sous la barre, recadré à sa hauteur. */
+    .photo-navire-cadre { margin: 0 0 16px; }
+    .photo-navire label { position: relative; display: block; cursor: pointer; border-radius: 8px; overflow: hidden; margin: 0; }
+    .photo-navire input[type=file] { display: none; }
+    .photo-navire img { display: block; width: 100%; height: 240px; object-fit: cover; }
+    .photo-navire .changer {
+        position: absolute; left: 0; right: 0; bottom: 0; padding: 6px; font-size: 12px; text-align: center;
+        color: #fff; background: rgba(15, 58, 74, .65); opacity: 0; transition: opacity .15s;
+    }
+    .photo-navire label:hover .changer { opacity: 1; }
+    .photo-navire .vide {
+        display: flex; align-items: center; justify-content: center; gap: 10px; height: 110px;
+        border: 2px dashed #d5e0ea; border-radius: 8px; color: var(--muted); font-weight: 600; font-size: 14px;
+    }
+    .photo-navire .vide svg { width: 26px; height: 26px; }
+    .photo-navire.depot-survol label { outline: 3px solid var(--accent); }
+    /* « Recadrer » (bouton seul) et « Retirer la photo » (bouton dans son
+       formulaire) : même boîte, même ligne, pour qu'ils s'alignent. */
+    .photo-navire-actions { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 4px; }
+    .photo-navire-actions form { display: flex; margin: 0; }
+    .photo-navire-actions button { font: inherit; font-size: 12px; line-height: 1.4; margin: 0; padding: 0; }
+    .photo-navire-actions .lien { background: none; border: 0; padding: 0; cursor: pointer; font-size: 12px; color: var(--accent); }
+    .photo-navire-actions .lien:hover { text-decoration: underline; }
+    .photo-navire-retirer { margin: 0; }
+    .photo-navire-retirer button { background: none; border: 0; padding: 0; cursor: pointer; font-size: 12px; color: #991b1b; }
+    .photo-navire-retirer button:hover { text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -147,6 +173,45 @@
         {% if resume %}<div class="fiche-resume">{{ resume }}</div>{% endif %}
     </div>
 </div>
+
+{# Photo du navire, en bandeau. Un clic dessus (ou une image déposée) en choisit
+   une autre, réduite dans le navigateur (data-photo-reduite) et envoyée
+   aussitôt. Sans photo : une zone pour en ajouter une, seulement pour qui peut
+   modifier la fiche. #}
+{% set photo_ok = ship.photo_path and fichier_visible(request, ship.photo_path) %}
+{% if photo_ok or peut(request, 'navire.modifier') %}
+<div class="photo-navire-cadre" data-recadrage>
+    <form method="POST" action="/ship/info/photo" enctype="multipart/form-data" class="photo-navire" data-depot-photo>
+        <label data-recadrage-zone title="{{ 'Changer la photo du navire' if photo_ok else 'Ajouter une photo du navire' }}">
+            {% if photo_ok %}
+            <img src="{{ ship.photo_path }}" alt="{{ ship.name or 'Navire' }}" style="{{ ship.photo_crop | cadrage }}">
+            <span class="consigne">Faites glisser la photo pour la cadrer</span>
+            <span class="changer">Changer la photo</span>
+            {% else %}
+            <span class="vide"><svg class="icon-boat"><use href="#icon-boat"></use></svg> Ajouter une photo du navire</span>
+            {% endif %}
+            <input type="file" name="photo_file" accept="image/*" data-photo-reduite="1600" onchange="this.form.submit()">
+        </label>
+    </form>
+    {% if photo_ok %}
+    {# Recadrer : on fait glisser la photo et on règle le zoom ; seul le cadrage
+       (« x y zoom », filtre cadrage) est enregistré, la photo reste entière. #}
+    {% set c = ship.photo_crop or '50 50 1' %}
+    {# « Retirer la photo » à gauche, « Recadrer » à droite. #}
+    <div class="photo-navire-actions photo-actions">
+        <form method="POST" action="/ship/info/photo/remove" class="photo-navire-retirer"
+              onsubmit="return confirm('Retirer la photo du navire ?')">
+            <button type="submit">Retirer la photo</button>
+        </form>
+        {% if peut(request, 'navire.modifier') %}
+        <button type="button" class="lien" data-cadrage-ouvrir>Recadrer</button>
+        {% endif %}
+    </div>
+    {% from "_recadrage.html" import barre_cadrage %}
+    {{ barre_cadrage('/ship/info/photo/crop', c) }}
+    {% endif %}
+</div>
+{% endif %}
 
 <div class="fiche-cartes">
 

@@ -1,0 +1,13 @@
+{# Recadrage d'une photo (navire, équipier) : la barre qui paraît en mode
+   recadrage — zoom, Enregistrer, Annuler. Le reste du contrat, et le script,
+   sont dans base.html (« Recadrage des photos ») : un conteneur
+   [data-recadrage], la zone [data-recadrage-zone] qui tient l'<img>, un
+   bouton [data-cadrage-ouvrir], et cette barre. `crop` : « x y zoom ». #}
+{% macro barre_cadrage(action, crop) %}
+<form method="POST" action="{{ action }}" class="cadrage-barre" hidden data-crop="{{ crop }}">
+    <input type="hidden" name="x"><input type="hidden" name="y"><input type="hidden" name="zoom">
+    <label>Zoom <input type="range" min="1" max="3" step="0.01" data-cadrage-zoom></label>
+    <button type="submit" class="btn btn-primary">Enregistrer</button>
+    <button type="button" class="btn" style="background:#eee;color:#333" data-cadrage-annuler>Annuler</button>
+</form>
+{% endmacro %}

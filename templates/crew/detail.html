@@ -21,7 +21,7 @@
     .champ-equipier input.nom { text-transform: uppercase; }
     .champ-lecture { background: #f1f5f8; border-radius: 6px; padding: 5px 10px; margin-top: 2px; color: #445; }
     /* La photo se change d'un clic dessus. */
-    .photo-equipier { position: relative; display: block; cursor: pointer; }
+    .photo-equipier { position: relative; display: block; cursor: pointer; border-radius: 8px; }
     .photo-equipier .changer {
         position: absolute; left: 0; right: 0; bottom: 0; padding: 4px; font-size: 12px;
         text-align: center; color: #fff; background: rgba(15, 58, 74, .65);
@@ -30,6 +30,15 @@
     .photo-equipier:hover .changer { opacity: 1; }
     .photo-retirer { background: none; border: 0; padding: 0; cursor: pointer; font-size: 12px; color: #991b1b; }
     .photo-retirer:hover { text-decoration: underline; }
+    /* « Effacer » à gauche, « Recadrer » à droite, sous la photo. */
+    .photo-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 2px; }
+    .photo-actions form { display: flex; margin: 0; }
+    .photo-actions button { font: inherit; font-size: 12px; line-height: 1.4; margin: 0; padding: 0; }
+    .photo-recadrer { background: none; border: 0; cursor: pointer; color: var(--accent); }
+    .photo-recadrer:hover { text-decoration: underline; }
+    /* La barre de recadrage, dans la colonne de 160 px : sur deux lignes. */
+    .colonne-photo .cadrage-barre { justify-content: center; }
+    .colonne-photo .cadrage-barre input[type=range] { width: 100px; }
     /* Colonne photo et rang d'accès. */
     .colonne-photo { width: 160px; display: grid; gap: 10px; align-content: start; }
     .acces { display: grid; gap: 6px; }
@@ -89,31 +98,46 @@
     <div class="colonne-photo">
         {# Un clic sur la photo ouvre le choix d'un fichier ; le choisir l'envoie
            aussitôt (formulaire à part, multipart). #}
+        {% set photo_ok = member.photo_path and fichier_visible(request, member.photo_path) %}
+        <div data-recadrage>
         <form method="POST" action="/crew/{{ member.id }}/photo" enctype="multipart/form-data">
             {# data-depot-photo : une photo glissée ici est prise comme si on
                l'avait choisie (base.html). #}
-            <label class="photo-equipier" data-depot-photo
-                   title="Changer la photo — cliquer ou y glisser une image. Toute photo convient : elle est recadrée en carré (visage au centre) et réduite automatiquement. JPEG, PNG ou HEIC.">
+            <label class="photo-equipier" data-depot-photo data-recadrage-zone
+                   title="Changer la photo — cliquer ou y glisser une image. Toute photo convient : elle est réduite automatiquement, et se cadre ensuite avec « Recadrer ». JPEG, PNG ou HEIC.">
                 {# Photo dans IMG/ : réservée aux comptes (serve_img) ; un
                    Mousse voit les initiales, comme pour une fiche sans photo. #}
-                {% if member.photo_path and fichier_visible(request, member.photo_path) %}
+                {% if photo_ok %}
                 <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
-                     style="width:160px;height:160px;object-fit:cover;border-radius:8px;display:block">
+                     style="width:160px;height:160px;display:block;{{ member.photo_crop | cadrage_equipier }}">
+                <span class="consigne">Glisser pour cadrer</span>
                 {% else %}
                 <div style="width:160px;height:160px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
                     {{ (member.first_name or member.last_name or '?')[0] | upper }}
                 </div>
                 {% endif %}
                 <span class="changer">{{ 'Changer la photo' if member.photo_path else 'Ajouter une photo' }}</span>
-                <input type="file" name="photo_file" accept="image/*" hidden data-photo-carree onchange="this.form.submit()">
+                {# Réduite (1000 px) sans recadrage : le cadre se règle ensuite
+                   avec « Recadrer », comme la photo du navire. #}
+                <input type="file" name="photo_file" accept="image/*" hidden data-photo-reduite="1000" onchange="this.form.submit()">
             </label>
         </form>
         {% if member.photo_path %}
-        <form method="POST" action="/crew/{{ member.id }}/photo/remove" style="text-align:center;margin-top:-4px"
-              onsubmit="return confirm('Supprimer la photo de cette fiche ?')">
-            <button type="submit" class="photo-retirer">Supprimer la photo</button>
-        </form>
+        <div class="photo-actions">
+            <form method="POST" action="/crew/{{ member.id }}/photo/remove"
+                  onsubmit="return confirm('Effacer la photo de cette fiche ?')">
+                <button type="submit" class="photo-retirer">Effacer</button>
+            </form>
+            {% if photo_ok and peut(request, 'equipiers.modifier') %}
+            <button type="button" class="photo-recadrer" data-cadrage-ouvrir>Recadrer</button>
+            {% endif %}
+        </div>
+        {% if photo_ok %}
+        {% from "_recadrage.html" import barre_cadrage %}
+        {{ barre_cadrage('/crew/' ~ member.id ~ '/photo/crop', member.photo_crop or crew_crop_default) }}
         {% endif %}
+        {% endif %}
+        </div>
 
         {# Rang d'accès. Tout le monde le voit ; seul l'Amiral le change (menu
            déroulant). Sans compte, l'équipier est Mousse. Le choix d'un rang
