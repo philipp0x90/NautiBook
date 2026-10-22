@@ -461,7 +461,8 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
     {% macro heure(ts) -%}
         {%- if ts %}{{ ts[11:16] }}<small>{{ ts | jourmois }}</small>{% else %}—{% endif -%}
     {%- endmacro %}
-    <div class="bottom-panel">
+    {# id : cible du lien du mode d'emploi Gasoil. #}
+    <div class="bottom-panel" id="recapitulatif" style="scroll-margin-top:20px">
         <h4>Récapitulatif</h4>
         <table class="recap">
             <thead>

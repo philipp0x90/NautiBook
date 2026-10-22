@@ -1,0 +1,86 @@
+{% extends "aide/_page.html" %}
+{# Texte validé par l'utilisateur (Guide Gasoil.rtf, 22/10/2026), mis en page
+   sans rien y changer ; seuls les liens ont été ajoutés. #}
+{% block aide_titre %}Gasoil · {% endblock %}
+{% block aide_contenu %}
+<h1>Page Gasoil — mode d'emploi</h1>
+
+<p>La page Gasoil (menu <a href="/ship/fuel"><b>Navire/Gasoil</b></a>) sert à :</p>
+<ul>
+    <li>tenir la <b>liste des pleins</b> du bateau ;</li>
+    <li><b>calculer</b> la <b>consommation réelle</b> du moteur ;</li>
+    <li><b>estimer ce qui reste</b> dans le réservoir et l'autonomie.</li>
+    <li>apporter une <b>information supplémentaire</b> à la lecture de la jauge, souvent assez imprécise.</li>
+</ul>
+
+<h2>1. Enregistrer un plein</h2>
+<ol>
+    <li>Touchez <b>« + Nouveau plein »</b>, dans la barre bleue en haut à droite. Une ligne de saisie apparaît en tête du tableau.</li>
+    <li>Remplissez :
+        <ul>
+            <li><b>Date</b> : celle du jour est déjà proposée.</li>
+            <li><b>Horamètre</b> : l'indication du compteur d'heures du moteur <b>au moment du plein</b>. C'est la donnée la plus importante : sans elle, rien ne peut se calculer.</li>
+            <li><b>Quantité</b> : les litres ajoutés dans le réservoir, avec les décimales du ticket si vous les avez (par exemple 108,07).</li>
+            <li><b>Plein / Appoint</b> : la glissière à droite des litres (voir plus bas).</li>
+            <li><b>Montant</b> : la somme payée, telle qu'elle figure sur le ticket.</li>
+        </ul>
+    </li>
+    <li>Touchez <b>« Enregistrer »</b>.</li>
+</ol>
+<p>Le prix au litre, les heures et la consommation se calculent tout seuls.</p>
+
+<p><b>Plein ou appoint ?</b></p>
+<ul>
+    <li><b>Plein</b> (glissière bleue) : le réservoir a été pleinement rempli. C'est le cas par défaut.</li>
+    <li><b>Appoint</b> (glissière orange) : on a ajouté du gasoil <b>sans remplir tout</b> le réservoir. Un appoint ne permet pas de calculer sa consommation à lui seul : les litres ajoutés seront comptés avec le plein suivant.</li>
+</ul>
+<p>Il est important de bien choisir : un appoint enregistré comme un plein fausserait la consommation.</p>
+
+<h2>2. Corriger ou supprimer</h2>
+<ul>
+    <li><b>Corriger</b> : touchez directement la case à modifier (date, horamètre, litres, montant), tapez la bonne valeur, puis sortez de la case. C'est enregistré. La virgule et le point sont acceptés tous les deux.</li>
+    <li><b>Plein ou appoint</b> : un toucher sur la glissière la fait basculer.</li>
+    <li><b>Supprimer un plein</b> : la croix orange ✕ en bout de ligne, après confirmation.</li>
+</ul>
+<p>Corriger un horamètre recalcule tout ce qui en dépend, y compris la consommation du plein suivant. Si un horamètre est <b>inférieur</b> à celui d'un plein précédent (faute de frappe), la ligne affiche <b>« horamètre ? »</b> en rouge : corrigez-le.</p>
+
+<h2>3. Lire le tableau</h2>
+<table>
+    <tr><th>Colonne</th><th>Signification</th></tr>
+    <tr><td><b>Prix/L</b></td><td>Montant ÷ litres</td></tr>
+    <tr><td><b>Heures</b></td><td>Heures moteur depuis le plein précédent</td></tr>
+    <tr><td><b>Moy./plein</b></td><td>Consommation mesurée par ce plein : litres ajoutés ÷ heures depuis le plein précédent (appoints compris)</td></tr>
+</table>
+<p>Le premier plein n'a ni heures ni consommation : il n'a pas de plein précédent pour comparaison.</p>
+<p>Sous le tableau :</p>
+<ul>
+    <li>le <b>total des litres</b> et le <b>total en euros</b> ;</li>
+    <li>la <b>consommation moyenne</b>, calculée sur les <b>3 derniers pleins</b>. Ces pleins sont assez récents pour refléter l'état actuel du moteur, et assez nombreux pour qu'un plein mal mesuré ne fausse pas tout.</li>
+</ul>
+
+<h2>4. Le réservoir et l'autonomie</h2>
+<p>L'encadré <b>Réservoir</b> en haut de la page <b>estime</b> ce qui reste selon le calcul :</p>
+<p class="formule">(réservoir plein au dernier plein <b>+</b> les appoints faits depuis) <b>−</b> (les heures moteur depuis ce plein × la consommation moyenne)</p>
+<p>Il affiche :</p>
+<ul>
+    <li>une <b>jauge</b>, verte au-dessus de 50 %, orange entre 25 et 50 %, rouge en dessous de 25 % ;</li>
+    <li>le <b>gasoil estimé restant</b>, en litres ;</li>
+    <li>l'<b>autonomie estimée</b> en heures moteur ;</li>
+    <li>l'<b>autonomie en milles</b>, à la vitesse indiquée dans la petite case (6 nœuds par défaut). Vous pouvez changer cette vitesse pour faire un calcul : elle n'est pas enregistrée et revient à 6 au prochain affichage.</li>
+</ul>
+
+<div class="attention">
+    <p>⚠️ <b>C'est une estimation, pas une jauge.</b> Elle n'est juste que si :</p>
+    <ul>
+        <li>les horamètres sont bien notés aux départs et arrivées des routes ;</li>
+        <li>les appoints sont bien marqués « Appoint ».</li>
+    </ul>
+    <p>En cas de doute, fiez-vous à la jauge du bord et gardez une marge.</p>
+</div>
+
+<h2>5. Où d'autre sert cette consommation ?</h2>
+<ul>
+    <li>Menu <a href="/ship/info#moteur"><b>Navire/Infos</b> (section Moteur)</a> : la <b>consommation</b> (réelle, mesurée) s'affiche au-dessus de la <b>consommation réputée</b> (celle annoncée à l'achat). La consommation réputée est utilisée quand aucun plein n'a encore été enregistré.</li>
+    <li>Menu <a href="/routes/current"><b>Route</b></a>, tableau <a href="/routes/current#recapitulatif"><b>Récapitulatif</b></a> : le gasoil consommé pendant cette route est estimé à partir des heures moteur × la consommation moyenne.</li>
+</ul>
+{% endblock %}

@@ -207,7 +207,8 @@
         {{ ligne('tank_water', 'Eau douce', 'L') }}
     </section>
 
-    <section class="card fiche-carte">
+    {# id : cible du lien « Navire/Infos (section Moteur) » du mode d'emploi Gasoil. #}
+    <section class="card fiche-carte" id="moteur" style="scroll-margin-top:20px">
         <h3>Moteur</h3>
         {{ ligne('engine_power', 'Puissance', 'cv') }}
         {# Consommation mesurée sur les pleins (page Gasoil), calculée à chaque

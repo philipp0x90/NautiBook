@@ -83,6 +83,12 @@
     /* Ligne de saisie d'un nouveau plein : cases visibles d'emblée. */
     .pleins tr.nouveau td { background: #f7fafc; border-bottom: 2px solid #dde5ee; }
     .pleins tr.nouveau input { border-color: #d5e0ea; background: #fff; }
+    /* « ? » du mode d'emploi, dans la barre : blanc, cerclé de blanc. Marges
+       négatives : il ne grandit pas la barre. */
+    .aide-rond { display: inline-flex; align-items: center; justify-content: center;
+                 width: 24px; height: 24px; margin: -10px 0; border: 2px solid #fff; border-radius: 50%;
+                 color: #fff; font-size: 15px; font-weight: 700; line-height: 1; text-decoration: none; }
+    .aide-rond:hover { background: rgba(255,255,255,.2); }
     /* Réservoir : jauge, trois chiffres, puis le détail du calcul. */
     .reservoir { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
                  padding: 14px 18px; margin-bottom: 18px; }
@@ -120,13 +126,19 @@
 {# « + Nouveau plein » dans la barre, comme sur les autres listes : son double
    invisible à gauche garde le titre centré, les marges négatives la hauteur
    de la barre. Il fait apparaître la ligne de saisie, en tête du tableau. #}
+{# À gauche, le mode d'emploi (« ? ») ; à droite « + Nouveau plein », ou son double
+   invisible pour qui ne peut pas ajouter : les deux de même largeur gardent
+   le titre centré. #}
 <div class="section-bar section-bar-collee">
+    {# Le « ? » dans une case de la largeur du bouton d'en face. #}
+    <span style="min-width:140px;display:flex;align-items:center">
+        <a href="/aide/gasoil" class="aide-rond" title="Mode d'emploi" aria-label="Mode d'emploi">?</a>
+    </span>
+    <div class="section-bar-title">Gasoil</div>
     {% if current_ship and peut(request, 'gasoil.modifier') %}
-    <span class="btn btn-yellow" style="visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouveau plein</span>
-    <div class="section-bar-title">Gasoil</div>
-    <button type="button" class="btn btn-yellow" style="margin:-10px 0" onclick="nouveauPlein()">+ Nouveau plein</button>
+    <button type="button" class="btn btn-yellow" style="min-width:140px;margin:-10px 0" onclick="nouveauPlein()">+ Nouveau plein</button>
     {% else %}
-    <div class="section-bar-title">Gasoil</div>
+    <span class="btn" style="min-width:140px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouveau plein</span>
     {% endif %}
 </div>
 

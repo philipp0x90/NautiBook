@@ -2477,6 +2477,37 @@ async def delete_todo_item(item_id: int):
     return RedirectResponse(url="/ship/todo", status_code=303)
 
 
+# ── Mode d'emploi ──
+# Un petit wiki : /aide, le sommaire, et une page par sujet, /aide/<slug>,
+# gabarit templates/aide/<slug>.html (qui étend aide/_page.html). Ajouter une
+# page : son gabarit, et une entrée ici, dans l'ordre du sommaire. Aucune règle
+# d'accès (SECTION_RULES) : l'aide est ouverte à tous, Mousse compris.
+
+AIDE_PAGES = [
+    {"slug": "gasoil", "title": "Gasoil",
+     "summary": "pleins, consommation, réservoir et autonomie"},
+]
+
+
+@app.get("/aide", response_class=HTMLResponse)
+async def aide_index(request: Request):
+    return templates.TemplateResponse(
+        "aide/index.html",
+        {"request": request, "active_section": "tools", "aide_pages": AIDE_PAGES, "aide_page": None},
+    )
+
+
+@app.get("/aide/{slug}", response_class=HTMLResponse)
+async def aide_page(request: Request, slug: str):
+    page = next((p for p in AIDE_PAGES if p["slug"] == slug), None)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page d'aide inconnue")
+    return templates.TemplateResponse(
+        f"aide/{slug}.html",
+        {"request": request, "active_section": "tools", "aide_pages": AIDE_PAGES, "aide_page": page},
+    )
+
+
 # ── Gasoil ──
 # Un plein par ligne : date, horamètre, litres, montant payé — saisis, le
 # montant tel qu'il figure sur le ticket (comme sous FileMaker) — et s'il est
@@ -2624,6 +2655,12 @@ async def ship_fuel(request: Request):
          "fills": fills[::-1], "stats": stats, "consumption": consumption, "tank": tank,
          "today": date.today().isoformat()},
     )
+
+
+@app.get("/ship/fuel/aide")
+async def ship_fuel_help():
+    """L'ancienne adresse du mode d'emploi Gasoil, devenu une page de /aide."""
+    return RedirectResponse(url="/aide/gasoil", status_code=301)
 
 
 def _fuel_value(kind: str, value: Optional[str]):

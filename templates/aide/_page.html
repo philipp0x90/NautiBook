@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{# Mode d'emploi : un petit wiki. Chaque page étend ce gabarit ; le sommaire,
+   à gauche, vient de AIDE_PAGES (main.py), où une nouvelle page s'ajoute. #}
+{% block title %}{% block aide_titre %}{% endblock %}Mode d'emploi — NautiBook{% endblock %}
+{% block head %}
+<style>
+    .aide-cadre { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 18px; align-items: start; }
+    .aide-sommaire { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 10px 0;
+                     position: sticky; top: calc(14px + var(--barre-h, 0px) + 6px); }
+    .aide-sommaire a { display: block; padding: 6px 14px; color: #1a1a2e; text-decoration: none; font-size: 14px;
+                       border-left: 3px solid transparent; }
+    .aide-sommaire a:hover { background: #f2f9fc; }
+    .aide-sommaire a.actif { border-left-color: #5bc8e0; background: #f2f9fc; font-weight: 700; color: #0f3a4a; }
+    .aide-sommaire .accueil { font-weight: 700; color: #0f3a4a; }
+    .aide-sommaire hr { border: none; border-top: 1px solid #eef3f7; margin: 6px 10px; }
+    .aide-fil { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .aide-fil a { color: var(--accent); text-decoration: none; }
+    /* Le texte des pages. */
+    .aide { font-size: 15px; line-height: 1.55; color: #1a1a2e; }
+    .aide h1 { font-size: 20px; margin: 0 0 14px; color: #0f3a4a; }
+    .aide h2 { font-size: 16px; margin: 22px 0 8px; color: #0f3a4a; }
+    .aide p { margin: 0 0 10px; }
+    .aide ul, .aide ol { margin: 0 0 12px; padding-left: 26px; }
+    .aide li { margin-bottom: 6px; }
+    .aide ul ul { margin-top: 6px; list-style: circle; }
+    .aide a { color: var(--accent); }
+    .aide table { border-collapse: collapse; margin: 4px 0 12px; width: 100%; }
+    .aide th, .aide td { border: 1px solid #dde5ee; padding: 6px 10px; text-align: left; vertical-align: top; }
+    .aide th { background: #f2f9fc; }
+    .aide .formule { background: #f7fafc; border-left: 3px solid #5bc8e0; padding: 8px 12px; margin: 0 0 10px; }
+    .aide .attention { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 14px; margin: 14px 0; }
+    .aide .attention p:last-child, .aide .attention ul:last-child { margin-bottom: 0; }
+    @media (max-width: 700px) {
+        .aide-cadre { grid-template-columns: 1fr; }
+        .aide-sommaire { position: static; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="section-bar section-bar-collee">
+    <div class="section-bar-title">Mode d'emploi</div>
+</div>
+
+<div class="aide-cadre">
+    <nav class="aide-sommaire" aria-label="Sommaire du mode d'emploi">
+        <a href="/aide" class="accueil{{ ' actif' if not aide_page }}">Sommaire</a>
+        <hr>
+        {% for page in aide_pages %}
+        <a href="/aide/{{ page.slug }}"{% if aide_page and aide_page.slug == page.slug %} class="actif"{% endif %}>{{ page.title }}</a>
+        {% endfor %}
+    </nav>
+    <article class="card aide">
+        {% if aide_page %}<div class="aide-fil"><a href="/aide">Mode d'emploi</a> › {{ aide_page.title }}</div>{% endif %}
+        {% block aide_contenu %}{% endblock %}
+    </article>
+</div>
+
+{% endblock %}
