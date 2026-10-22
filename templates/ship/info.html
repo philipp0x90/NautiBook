@@ -215,7 +215,7 @@
            plus qu'en l'absence de pleins. #}
         {% if consumption and consumption.source == 'mesuree' %}
         <a href="/ship/fuel" class="ligne" style="text-decoration:none;color:inherit" title="Voir les pleins">
-            <span class="libelle">Consommation <small style="color:var(--muted)">(mesurée sur {{ consumption.count }} plein{{ 's' if consumption.count > 1 }})</small></span>
+            <span class="libelle">Consommation <small style="color:var(--muted)">({{ derniers_pleins(consumption.count) }})</small></span>
             <span class="valeur" style="border-color:transparent;background:none">
                 <span style="padding:4px 6px;font-weight:600">{{ consumption.value | dec(2) }}</span>
                 <span class="unite">L/h</span>

@@ -502,7 +502,7 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
         </table>
         {% if conso %}
         <div class="recap-note">Gasoil estimé : heures moteur × {{ conso | dec(2) }} L/h
-            {%- if consumption.source == 'mesuree' %} (mesurée sur {{ consumption.count }} plein{{ 's' if consumption.count > 1 }}){% else %} (réputée){% endif %}</div>
+            {%- if consumption.source == 'mesuree' %} ({{ derniers_pleins(consumption.count) }}){% else %} (réputée){% endif %}</div>
         {% endif %}
     </div>
 

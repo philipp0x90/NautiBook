@@ -2487,10 +2487,16 @@ async def delete_todo_item(item_id: int):
 # Méthode du plein complet : la conso se mesure d'un plein complet au suivant —
 # litres remis (appoints intermédiaires compris) ÷ heures entre les deux. Un
 # appoint n'a pas de conso à lui : on ignore ce qui restait dans le réservoir.
-# La moyenne est pondérée — total des litres ÷ total des heures — et non la
-# moyenne des conso, qui donnerait autant de poids à un plein de 5 h qu'à un
-# plein de 100 h. Elle remplace la consommation réputée (fiche navire) partout
+# La moyenne porte sur les trois derniers pleins (RECENT_FILLS) et elle est
+# pondérée — leurs litres ÷ leurs heures — et non la moyenne de leurs conso,
+# qui donnerait autant de poids à un plein de 5 h qu'à un plein de 100 h. Elle remplace la consommation réputée (fiche navire) partout
 # où une consommation sert : fiche navire, Récapitulatif des routes, réservoir.
+
+RECENT_FILLS = 3   # pleins sur lesquels se mesure la consommation
+# « moy. 3 derniers pleins » / « dernier plein », partout où la consommation
+# mesurée dit d'où elle vient.
+templates.env.globals["derniers_pleins"] = (
+    lambda n: "dernier plein" if n == 1 else f"moy. {n} derniers pleins")
 
 FUEL_FIELDS = {"date": "date", "engine_hours": "number", "liters": "number", "amount": "number",
                "full": "bool"}
@@ -2512,7 +2518,6 @@ async def _fuel_fills(db, ship_id: int):
     fills = [dict(r) for r in await cursor.fetchall()]
     last_full_hours = None   # horamètre du dernier plein complet
     pending = 0.0            # litres des appoints faits depuis
-    measured_liters = measured_hours = 0.0
     for f in fills:
         f["price"] = f["amount"] / f["liters"] if f["amount"] is not None and f["liters"] else None
         f["hours"] = f["conso"] = None
@@ -2529,15 +2534,19 @@ async def _fuel_fills(db, ship_id: int):
             pending += f["liters"] or 0
             continue
         if f["hours"] is not None and f["liters"] is not None:
-            f["conso"] = (pending + f["liters"]) / f["hours"]
-            measured_liters += pending + f["liters"]
-            measured_hours += f["hours"]
+            f["measured_liters"] = pending + f["liters"]
+            f["conso"] = f["measured_liters"] / f["hours"]
         last_full_hours, pending = f["engine_hours"], 0.0
+    # La consommation qui sert partout (bilan, fiche navire, Récapitulatif,
+    # réservoir) : litres ÷ heures sur les trois derniers pleins mesurés —
+    # récente, mais pas à la merci d'un seul plein.
+    recent = [f for f in fills if f["conso"] is not None][-RECENT_FILLS:]
+    recent_hours = sum(f["hours"] for f in recent)
     stats = {
         "total_liters": sum(f["liters"] or 0 for f in fills),
         "total_amount": sum(f["amount"] or 0 for f in fills),
-        "average": measured_liters / measured_hours if measured_hours else None,
-        "count": sum(1 for f in fills if f["conso"] is not None),
+        "average": sum(f["measured_liters"] for f in recent) / recent_hours if recent_hours else None,
+        "count": len(recent),
     }
     return fills, stats
 
@@ -2559,11 +2568,13 @@ async def _consumption(db, ship_id: int, stats=None) -> dict:
 async def _tank_estimate(db, ship, fills, consumption) -> Optional[dict]:
     """Gasoil restant estimé : le réservoir plein (capacité, fiche navire) au
     dernier plein complet, plus les appoints faits depuis, moins les heures de
-    moteur écoulées depuis × la consommation. Le dernier horamètre noté est le
+    moteur écoulées depuis × la consommation (_consumption : les derniers
+    pleins, à défaut la réputée). Le dernier horamètre noté est le
     plus élevé des horamètres de départ et d'arrivée des routes du navire, ou
     celui d'un plein s'il est plus élevé. None s'il manque la capacité, la
     consommation ou un plein complet."""
-    capacity, conso = ship["tank_fuel"], consumption["value"] if consumption else None
+    capacity = ship["tank_fuel"]
+    conso = consumption["value"] if consumption else None
     full = next((f for f in reversed(fills) if f["full"] and f["engine_hours"] is not None
                  and not f["incoherent"]), None)
     if not capacity or not conso or full is None:
@@ -2589,7 +2600,8 @@ async def _tank_estimate(db, ship, fills, consumption) -> Optional[dict]:
     remaining = max(min(capacity + topped_up - used, capacity), 0)
     return {
         "capacity": capacity, "remaining": remaining, "percent": remaining / capacity * 100,
-        "autonomy_hours": remaining / conso, "conso": conso, "used": used, "since": since,
+        "autonomy_hours": remaining / conso, "conso": conso, "consumption": consumption,
+        "used": used, "since": since,
         "full": full, "topped_up": topped_up, "reading": reading,
     }
 
@@ -2616,8 +2628,8 @@ async def ship_fuel(request: Request):
 
 def _fuel_value(kind: str, value: Optional[str]):
     """Une saisie de la page Gasoil, normalisée ; ValueError si ce n'est pas
-    un nombre (« 368,80 » comme « 368.80 »). La case « Complet » arrive
-    doublée d'un champ caché à 0 : cochée, c'est la dernière valeur, 1."""
+    un nombre (« 368,80 » comme « 368.80 »). Plein ou appoint arrive des
+    boutons ronds des colonnes Plein (1) et Appoint (0)."""
     if kind == "bool":
         return 1 if value == "1" else 0
     value = (value or "").strip() or None
