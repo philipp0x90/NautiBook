@@ -23,16 +23,19 @@
     <form method="POST" action="/cruises/new" class="card" style="display:grid;gap:14px">
         <div>
             <label>Donner un nom à cette croisière</label>
-            <input type="text" name="name" placeholder="…" required>
+            <input type="text" name="name" placeholder="…" required value="{{ plan.name or '' if plan else '' }}">
+            {# Depuis un itinéraire : la croisière créée s'y rattache. #}
+            {% if plan %}<input type="hidden" name="itinerary_id" value="{{ plan.id }}">
+            <div class="meta" style="margin-top:4px">Sera rattachée à l'itinéraire « {{ plan.name or 'sans nom' }} ».</div>{% endif %}
         </div>
         <div class="grid" style="grid-template-columns:1fr 1fr">
             <div>
                 <label>Port de départ</label>
-                <input type="text" name="departure">
+                <input type="text" name="departure" value="{{ plan.departure or '' if plan else '' }}">
             </div>
             <div>
                 <label>Port d'arrivée</label>
-                <input type="text" name="destination">
+                <input type="text" name="destination" value="{{ plan.destination or '' if plan else '' }}">
             </div>
         </div>
         <div style="max-width:260px">
@@ -40,7 +43,7 @@
             {# Un clic n'importe où dans la case ouvre le calendrier (showPicker),
                comme le ferait l'icône de Chrome, masquée pour ne pas en avoir
                deux. La date en toutes lettres s'écrit à côté du libellé. #}
-            <input type="date" name="start_time" class="date-calendrier" id="start_time"
+            <input type="date" name="start_time" class="date-calendrier" id="start_time" value="{{ plan.start_date or '' if plan else '' }}"
                    onclick="if (this.showPicker) try { this.showPicker(); } catch (e) {}">
         </div>
         <div style="display:flex;gap:10px">

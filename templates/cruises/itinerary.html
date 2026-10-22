@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% block title %}Itinéraire{% if itinerary %} — {{ itinerary.name or 'sans nom' }}{% endif %} — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* Une étape par ligne, chaque case modifiable sur place (son propre
+       formulaire, envoyé au changement) ; jour, date et temps se calculent.
+       Les nuits supplémentaires suivent l'étape en lignes grises. */
+    .itin td, .itin th { white-space: nowrap; }
+    .itin thead th { text-align: center; }
+    .itin td { text-align: center; vertical-align: middle; padding: 1px 4px; font-variant-numeric: tabular-nums; }
+    .itin td.jour { color: #7d8fa3; font-weight: 700; font-size: 12px; }
+    .itin td.date { text-align: left; }
+    .itin td.lieu, .itin td.remarques { text-align: left; }
+    /* Remarques : la colonne prend la place qui reste ; le texte s'enroule sur
+       autant de lignes qu'il faut, aligné à gauche comme son titre. */
+    .itin td.remarques { white-space: normal; min-width: 180px; width: 100%; vertical-align: top; }
+    .itin td.remarques .remarque-apercu {
+        /* Pas de marge intérieure verticale : overflow rogne au bord intérieur,
+           une marge laisserait paraître le haut de la 3e ligne. */
+        padding: 0 6px; margin: 4px 0; line-height: 1.35; border: 1px solid transparent; border-radius: 5px;
+        cursor: text; white-space: pre-line;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+    }
+    .itin td.remarques .remarque-apercu:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .itin td.remarques .remarque-apercu.vide { color: #9aa8b6; }
+    .itin td.remarques [hidden] { display: none !important; }   /* hidden doit l'emporter sur les display ci-dessus */
+    .itin td.remarques textarea {
+        display: block; width: 100%; min-height: 24px; margin: 1px 0; padding: 2px 5px; resize: none; overflow: hidden;
+        font: inherit; line-height: 1.35; background: transparent; border: 1px solid transparent; border-radius: 5px;
+    }
+    .itin td.remarques textarea:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .itin td.remarques textarea:focus { border-color: var(--accent); background: #fff; outline: none; }
+    .itin thead th.remarques { text-align: left; padding-left: 9px; }
+    .itin form { margin: 0; }
+    .itin input, .itin select {
+        height: 24px; padding: 0 5px; margin: 1px 0; font: inherit;
+        background: transparent; border: 1px solid transparent; border-radius: 5px;
+    }
+    .itin input:hover, .itin select:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .itin input:focus, .itin select:focus { border-color: var(--accent); background: #fff; outline: none; }
+    .itin td.lieu input { width: 100%; min-width: 150px; }
+    /* Départ calé à droite, contre la distance et la durée qui le suivent ;
+       son titre aussi. */
+    .itin td.depart input { text-align: right; }
+    .itin thead th.depart { text-align: right; padding-right: 10px; }
+    .itin thead th.arrivee { text-align: left; padding-left: 10px; }   /* au-dessus des ports d'arrivée, calés à gauche */
+    .itin input.nombre { width: 52px; text-align: center; }   /* centré : sous son titre « NM » et au-dessus du total */
+    .itin input.nuits { width: 40px; text-align: center; }
+    .itin select { width: auto; padding-right: 2px; }
+    /* Statut : couleur selon l'état, pour voir d'un coup d'œil ce qui reste
+       à réserver. */
+    .itin select.statut-a-reserver { color: #b45309; font-weight: 600; }
+    .itin select.statut-reserve { color: #166534; font-weight: 600; }
+    /* iPad (880 px) : cases et marges resserrées pour tenir dans la largeur. */
+    @media (max-width: 1000px) {
+        .itin { font-size: 12px; }
+        .itin thead th { letter-spacing: 0; padding: 4px 3px; }
+        .itin td { padding: 1px 2px; }
+        .itin td.lieu input { min-width: 96px; }
+        .itin td.remarques { min-width: 120px; }
+        .itin input, .itin select { padding: 0 3px; }
+        .itin input.nombre { width: 40px; }
+        .itin input.nuits { width: 34px; }
+    }
+    .itin tr.repos td { color: #9aa8b6; font-style: italic; background: #fafcfd; }
+    .itin tr.repos td.jour { font-style: normal; }
+    .itin tfoot td { font-weight: 700; border-top: 2px solid #dde5ee; }
+    /* En-tête : ← croisière préc., le nom au centre, croisière suiv. → */
+    .itin-tete { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .itin-tete .nom { text-align: center; font-size: 17px; font-weight: 700; color: #0f3a4a; }
+    .itin-tete .nom small { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .itin-tete .nom a { color: inherit; text-decoration: none; }
+    .itin-reglages { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+                     margin-bottom: 10px; font-size: 13px; color: var(--muted); }
+    .itin-reglages .champ-date { display: flex; align-items: center; gap: 8px; }
+    /* La date : le texte en toutes lettres dans un cadre blanc toujours
+       visible (sans lui, rien ne dit qu'il faut en saisir une) ; la case date,
+       transparente, le recouvre et reçoit le clic. */
+    .date-lettres { position: relative; display: inline-flex; margin: 0; }
+    .date-lettres .texte { background: #fff; border: 1px solid #cfe3ef; border-radius: 5px; padding: 2px 8px;
+                           font-weight: 700; color: #0f3a4a; white-space: nowrap; }
+    .date-lettres:hover .texte { border-color: var(--accent); }
+    .date-lettres input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+                          padding: 0; margin: 0; border: 0; }
+    .itin-reglages .champ-date b { color: #0f3a4a; }
+    .itin-tete .nom input { font: inherit; border: 1px solid transparent; border-radius: 5px; background: transparent; padding: 1px 6px; }
+    .itin-tete .nom input:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .itin-tete .nom input { font-size: 17px; font-weight: 700; color: #0f3a4a; text-align: center; width: 340px; max-width: 100%; }
+    .itin-lien { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    /* Le choix affiché centré dans le menu (text-align-last : Chrome et Safari). */
+    .itin-lien select { width: auto; padding: 2px 6px; font-size: 13px; text-align: center; text-align-last: center; }
+    .itin-reglages #vitesse { width: 52px; padding: 2px 4px; font: inherit; font-weight: 700; text-align: center;
+                           color: #0f3a4a; border: 1px solid #cfe3ef; border-radius: 5px; }
+</style>
+{% endblock %}
+{% block content %}
+
+{# Barre : la liste des itinéraires à gauche ; « + Nouvel itinéraire » à
+   droite — un itinéraire sans croisière, à préparer avant de la créer —, ou
+   son double invisible, pour garder le titre centré. #}
+<div class="section-bar section-bar-collee">
+    <a href="/cruises/itinerary/list" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">← Liste des itinéraires</a>
+    <div class="section-bar-title">Itinéraire</div>
+    {% if peut(request, 'croisieres.modifier') %}
+    <form method="POST" action="/cruises/itinerary/new" style="margin:-10px 0">
+        <button type="submit" class="btn btn-yellow" style="min-width:160px">+ Nouvel itinéraire</button>
+    </form>
+    {% else %}
+    <span class="btn" style="min-width:160px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvel itinéraire</span>
+    {% endif %}
+</div>
+
+{% if not itinerary %}
+<div class="stub">Aucun itinéraire pour ce navire.
+    {% if peut(request, 'croisieres.modifier') %}<br>Préparez-en un avec « + Nouvel itinéraire ».{% endif %}</div>
+{% else %}
+
+{% set peut_modifier = peut(request, 'croisieres.modifier') %}
+{# ← → : les itinéraires du navire, dans l'ordre des dates de départ. #}
+<div class="itin-tete">
+    <div>{% if prev_id %}<a href="/cruises/itinerary/{{ prev_id }}" class="btn btn-blue">← Itinéraire Préc.</a>{% endif %}</div>
+    <div class="nom">
+        <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/field/name" style="margin:0">
+            <input type="text" name="value" value="{{ itinerary.name or '' }}" placeholder="Itinéraire sans nom"
+                   onchange="this.form.submit()" title="Nom de l'itinéraire">
+        </form>
+        <small>{% if is_current %}Croisière en cours{% elif not itinerary.cruise_id %}Projet{% endif %}</small>
+    </div>
+    <div style="justify-self:end">{% if next_id %}<a href="/cruises/itinerary/{{ next_id }}" class="btn btn-blue">Itinéraire Suiv. →</a>{% endif %}</div>
+</div>
+
+<div class="itin-reglages">
+    {# Le jour 0 : la date de départ de la croisière rattachée, qui l'emporte
+       (c'est le réel) ; sans elle, la date prévue de l'itinéraire. #}
+    <div class="champ-date"><span class="etiquette">Date de départ :</span>
+        {% if itinerary.cruise_id and itinerary.cruise_start %}
+        <b>{{ itinerary.cruise_start | datelongue }}</b>
+        <span style="font-size:12px">(date de la croisière)</span>
+        {% else %}
+        {# La date en toutes lettres (« vendredi 30 avril 2027 ») dans un cadre
+           blanc ; par-dessus, une case date invisible qui ouvre le calendrier
+           au clic — une case date ne sait pas écrire le mois en lettres. #}
+        <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/field/start_date" class="date-lettres">
+            <span class="texte">{{ itinerary.start_date | datelongue if itinerary.start_date else 'Choisir une date' }}</span>
+            <input type="date" name="value" value="{{ itinerary.start_date or '' }}" onchange="this.form.submit()"
+                   onclick="if (this.showPicker) try { this.showPicker(); } catch (e) {}" title="Date de départ prévue">
+        </form>
+        {% endif %}
+    </div>
+    {# Croisière rattachée : un menu (les croisières du navire sans itinéraire).
+       Sans croisière, « Créer la croisière » est en bas, près de « Supprimer
+       l'itinéraire ». #}
+    <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/attach" class="itin-lien" style="margin:0">
+        <span>Croisière :</span>
+        <select name="cruise_id" onchange="this.form.submit()">
+            <option value="">— aucune —</option>
+            {% for c in cruises %}
+            <option value="{{ c.id }}" {{ 'selected' if c.id == itinerary.cruise_id }}>{{ c.name or 'Croisière sans nom' }}{% if c.start_time %} ({{ c.start_time | datefr }}){% endif %}</option>
+            {% endfor %}
+        </select>
+        {% if itinerary.cruise_id %}<a href="/cruises/{{ itinerary.cruise_id }}" style="color:var(--accent)">ouvrir la croisière</a>{% endif %}
+    </form>
+    {# Vitesse pour le calcul du temps seulement : rien n'est enregistré, elle
+       revient à 6 nœuds au rechargement. #}
+    <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--muted)">Vitesse de croisière
+        <input type="number" id="vitesse" value="6" min="0.5" step="0.5" inputmode="decimal" oninput="tempsEtapes()"> kn</label>
+</div>
+
+{% macro case(stage, field, classe='') %}
+<form method="POST" action="/cruises/itinerary/stage/{{ stage.id }}/field/{{ field }}">
+    {% if field == 'type' or field == 'status' %}
+    {% set choix = itinerary_types if field == 'type' else itinerary_statuses %}
+    <select name="value" onchange="this.form.submit()"
+            {%- if field == 'status' %} class="statut-{{ {'A réserver': 'a-reserver', 'Réservé': 'reserve'}.get(stage.status, '') }}"{% endif %}>
+        <option value="">—</option>
+        {% for opt in choix %}<option value="{{ opt }}" {{ 'selected' if stage[field] == opt }}>{{ opt }}</option>{% endfor %}
+    </select>
+    {% elif field == 'distance' %}
+    <input type="text" inputmode="decimal" name="value" class="nombre" placeholder="—"
+           value="{{ stage.distance | dec(0, 1) }}" onchange="this.form.submit()">
+    {% elif field == 'remarks' %}
+    {# Repliée au repos : deux lignes au plus, « … » au-delà, le texte entier
+       en infobulle. Un clic la déplie en zone de texte (qui s'étire avec le
+       texte) ; enregistrée en la quittant si elle a changé, repliée sinon. #}
+    <div class="remarque-apercu{{ ' vide' if not stage.remarks }}" title="{{ stage.remarks or '' }}"
+         onclick="deplierRemarque(this)">{{ stage.remarks or '—' }}</div>
+    <textarea name="value" rows="1" placeholder="—" hidden onchange="this.form.submit()"
+              oninput="ajusterRemarque(this)" onblur="replierRemarque(this)">{{ stage.remarks or '' }}</textarea>
+    {% elif field == 'nights' %}
+    <input type="number" min="0" step="1" name="value" class="nuits" value="{{ stage.nights }}" onchange="this.form.submit()">
+    {% else %}
+    <input type="text" name="value" class="{{ classe }}" value="{{ stage[field] or '' }}" placeholder="—" onchange="this.form.submit()">
+    {% endif %}
+</form>
+{% endmacro %}
+
+<div class="tableau-colle">
+    <table class="data-table titres-legers itin">
+        <thead>
+            <tr>
+                <th title="Jour">J.</th><th>Date</th><th class="depart">Départ</th><th title="Distance en milles">NM</th><th>Durée</th>
+                <th class="arrivee">Arrivée</th><th>Nuits</th><th>Type</th><th class="remarques">Remarques</th><th>Statut</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            {% if row.kind == 'stage' %}
+            <tr>
+                <td class="jour">{{ row.day }}</td>
+                <td class="date">{{ row.date | jourmois if row.date else '—' }}</td>
+                <td class="lieu depart">{{ case(row, 'departure') }}</td>
+                <td>{{ case(row, 'distance') }}</td>
+                <td class="temps" data-distance="{{ row.distance or 0 }}">—</td>
+                <td class="lieu">{{ case(row, 'arrival') }}</td>
+                <td>{{ case(row, 'nights') }}</td>
+                <td>{{ case(row, 'type') }}</td>
+                <td class="remarques">{{ case(row, 'remarks') }}</td>
+                <td>{{ case(row, 'status') }}</td>
+                <td style="width:1%">
+                    <form method="POST" action="/cruises/itinerary/stage/{{ row.id }}/remove" style="display:inline"
+                          onsubmit="return confirm('Retirer cette étape ? Les suivantes remonteront d\'autant de jours.')">
+                        <button type="submit" class="btn btn-orange" style="padding:1px 8px;font-size:11px">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr class="repos">
+                <td class="jour">{{ row.day }}</td>
+                <td class="date">{{ row.date | jourmois if row.date else '—' }}</td>
+                <td class="lieu" colspan="9">à {{ row.place or '…' }}</td>
+            </tr>
+            {% endif %}
+            {% else %}
+            {# Pas encore d'étape : la ligne du jour 0, à commencer. #}
+            <tr>
+                <td class="jour">0</td>
+                <td class="date">{{ itinerary.start | jourmois if itinerary.start else '—' }}</td>
+                <td class="lieu" colspan="9" style="color:var(--muted)">
+                    {% if peut_modifier %}<i>ajoutez la première étape avec « + Étape »</i>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        {% if stages %}
+        <tfoot>
+            <tr>
+                <td colspan="3"></td>
+                <td>{{ total_distance | dec(0, 1) }}</td>
+                <td></td>
+                <td></td>
+                <td>{{ total_nights }}</td>
+                <td colspan="4"></td>
+            </tr>
+        </tfoot>
+        {% endif %}
+    </table>
+</div>
+
+{# Bas de page : « + Étape » à gauche ; à droite, « Créer la croisière »
+   (itinéraire sans croisière). Un itinéraire se supprime depuis la liste. #}
+<div id="fin" style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+    <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/stage/new">
+        <button type="submit" class="btn btn-yellow">+ Étape</button>
+    </form>
+    <div style="display:flex;align-items:center;gap:10px">
+    {% if not itinerary.cruise_id and voit(request, '/cruises/new') %}
+    <a href="/cruises/new?itinerary={{ itinerary.id }}" class="btn btn-primary">Créer la croisière</a>
+    {% endif %}
+    </div>
+</div>
+
+<script>
+// Temps de navigation = distance ÷ vitesse, au format « 8 h 50 » ; recalculé
+// quand la vitesse change. Rien n'est enregistré.
+function hm(heures) {
+    const m = Math.round(heures * 60);
+    return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0');
+}
+function tempsEtapes() {
+    const v = parseFloat(document.getElementById('vitesse').value.replace(',', '.'));
+    document.querySelectorAll('.itin td.temps').forEach(function (td) {
+        const d = parseFloat(td.dataset.distance);
+        if (v > 0 && d > 0) td.textContent = hm(d / v);
+        else td.textContent = d > 0 ? '—' : '-';
+    });
+}
+tempsEtapes();
+// Remarques : la zone de texte prend la hauteur de son texte ; l'aperçu
+// replié (2 lignes) laisse la place à la zone le temps de la saisie.
+function ajusterRemarque(zone) {
+    zone.style.height = 'auto';
+    zone.style.height = zone.scrollHeight + 2 + 'px';
+}
+function deplierRemarque(apercu) {
+    const zone = apercu.nextElementSibling;
+    apercu.hidden = true; zone.hidden = false;
+    ajusterRemarque(zone); zone.focus();
+}
+function replierRemarque(zone) {
+    // Modifiée, elle part à l'enregistrement (onchange) et la page se recharge.
+    if (zone.value !== zone.defaultValue) return;
+    zone.hidden = true; zone.previousElementSibling.hidden = false;
+}
+</script>
+
+{% endif %}
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Itinéraires — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* Une ligne par itinéraire, du plus récent au plus ancien ; un clic ouvre
+       l'itinéraire, la croix le supprime (ses étapes avec lui). */
+    .itins td, .itins th { white-space: nowrap; }
+    .itins thead th:not(:first-child), .itins td:not(:first-child) { text-align: center; }
+    .itins td.nom { font-weight: 700; }
+    .itins .projet { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase; letter-spacing: 1px; }
+    .itins a { color: var(--accent); text-decoration: none; }
+</style>
+{% endblock %}
+{% block content %}
+
+{# « + Nouvel itinéraire » à droite ; son double invisible garde le titre centré. #}
+<div class="section-bar section-bar-collee">
+    <span class="btn" style="min-width:160px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvel itinéraire</span>
+    <div class="section-bar-title">Liste des itinéraires</div>
+    {% if peut(request, 'croisieres.modifier') %}
+    <form method="POST" action="/cruises/itinerary/new" style="margin:-10px 0">
+        <button type="submit" class="btn btn-yellow" style="min-width:160px">+ Nouvel itinéraire</button>
+    </form>
+    {% else %}
+    <span class="btn" style="min-width:160px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvel itinéraire</span>
+    {% endif %}
+</div>
+
+{% if itineraries %}
+<div class="tableau-colle">
+    <table class="data-table titres-legers itins">
+        <thead>
+            <tr>
+                <th>Itinéraire</th>
+                <th>Date de départ</th>
+                <th>Croisière</th>
+                <th>Étapes</th>
+                <th>Distance</th>
+                <th>Nuits</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for i in itineraries %}
+            <tr style="cursor:pointer" title="Ouvrir cet itinéraire" onclick="rowLink(event, '/cruises/itinerary/{{ i.id }}')">
+                <td class="nom">{{ i.name or 'Itinéraire sans nom' }}</td>
+                <td>{{ i.start | datelongue if i.start else '—' }}</td>
+                <td>
+                    {%- if i.cruise_id %}<a href="/cruises/{{ i.cruise_id }}">{{ i.cruise_name or 'Croisière sans nom' }}</a>
+                    {%- else %}<span class="projet">Projet</span>{% endif -%}
+                </td>
+                <td>{{ i.stages }}</td>
+                <td>{{ (i.distance | dec(0, 1)) ~ ' NM' if i.distance else '—' }}</td>
+                <td>{{ i.nights or '—' }}</td>
+                <td style="width:1%">
+                    <form method="POST" action="/cruises/itinerary/{{ i.id }}/remove" style="display:inline"
+                          onsubmit="return confirm('Supprimer l\'itinéraire « {{ (i.name or 'sans nom') | replace("'", "\\'") }} » et toutes ses étapes ?{{ ' La croisière reste.' if i.cruise_id }}')">
+                        <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="stub">Aucun itinéraire pour ce navire.
+    {% if peut(request, 'croisieres.modifier') %}<br>Préparez-en un avec « + Nouvel itinéraire ».{% endif %}</div>
+{% endif %}
+
+{% endblock %}

@@ -75,6 +75,22 @@ def _jourmois(value):
     return f"{JOURS_COURTS[d.weekday()]} {d.day:02d}/{d.month:02d}"
 
 
+MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
+           "septembre", "octobre", "novembre", "décembre"]
+
+
+def _datelongue(value):
+    """ISO date → « vendredi 30 avril 2027 » : jour, quantième, mois en toutes
+    lettres, année. En dur, pour la même raison que _jourfr."""
+    if not value:
+        return "—"
+    try:
+        d = date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return "—"
+    return f"{JOURS_FR[d.weekday()]} {'1er' if d.day == 1 else d.day} {MOIS_FR[d.month - 1]} {d.year}"
+
+
 def _age(value):
     """Birth date → age in whole years, as of today.
 
@@ -229,6 +245,7 @@ def _dec(value, decimals=1, maximum=None):
 templates.env.filters["dec"] = _dec
 templates.env.filters["jourfr"] = _jourfr
 templates.env.filters["jourmois"] = _jourmois
+templates.env.filters["datelongue"] = _datelongue
 templates.env.filters["age"] = _age
 templates.env.filters["deg"] = _deg
 templates.env.filters["hpa"] = _hpa
@@ -543,6 +560,35 @@ async def init_db():
                 country TEXT,
                 notes TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS itineraries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ship_id INTEGER NOT NULL REFERENCES ship_info(id) ON DELETE CASCADE,
+                name TEXT,
+                start_date TEXT,
+                -- Croisière rattachée : une au plus, et un itinéraire par croisière
+                -- (index unique) ; supprimer la croisière détache l'itinéraire.
+                cruise_id INTEGER UNIQUE REFERENCES cruises(id) ON DELETE SET NULL,
+                created_at DATETIME
+            )
+        """)
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS itinerary_stages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                itinerary_id INTEGER NOT NULL REFERENCES itineraries(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL DEFAULT 0,
+                departure TEXT,
+                distance REAL,
+                arrival TEXT,
+                nights INTEGER NOT NULL DEFAULT 1,
+                type TEXT,
+                remarks TEXT,
+                status TEXT,
+                created_at DATETIME
             )
         """)
 
@@ -3909,6 +3955,320 @@ async def _default_cruise_id(db, ship_id: int) -> Optional[int]:
     row = await cursor.fetchone()
     return row[0] if row else None
 
+# ── Itinéraire ──
+# Le plan d'une croisière, étape par étape. Un itinéraire (itineraries) existe
+# avec ou sans croisière : on le prépare avant de créer la croisière — qui, une
+# fois créée, passerait pour « en cours » dès qu'on y est embarqué —, puis on
+# l'y rattache (une croisière, un itinéraire), ou on crée la croisière depuis
+# lui. Ses étapes (itinerary_stages) : départ, distance, arrivée, nuits sur
+# place, type, remarques, statut de réservation. Une ligne = une étape. Les
+# jours et les dates se calculent, jamais stockés : le jour 0 est la date de
+# départ de la croisière rattachée, à défaut la date prévue de l'itinéraire
+# (la croisière l'emporte : c'est le réel), et chaque étape commence autant de
+# jours après la précédente que celle-ci compte de nuits. Les nuits au-delà de
+# la première s'affichent en lignes grises (« à Venise ») : changer un nombre
+# de nuits décale la suite sans ajouter ni supprimer de ligne. Le temps de
+# navigation (distance ÷ vitesse) se calcule dans la page, à une vitesse
+# saisie là et jamais enregistrée.
+
+ITINERARY_FIELDS = {"name": "text", "start_date": "date"}
+STAGE_FIELDS = {"departure": "text", "distance": "number", "arrival": "text",
+                "nights": "int", "type": "text", "remarks": "text", "status": "text"}
+ITINERARY_TYPES = ["Port", "Marina", "Bouée", "Mouillage"]      # ceux des escales
+ITINERARY_STATUSES = ["A réserver", "Réservé", "N/A"]           # stockés tels quels
+templates.env.globals["itinerary_types"] = ITINERARY_TYPES
+templates.env.globals["itinerary_statuses"] = ITINERARY_STATUSES
+
+# Date de départ effective d'un itinéraire i (croisière c jointe en LEFT JOIN).
+ITINERARY_START = "COALESCE(NULLIF(substr(c.start_time, 1, 10), ''), i.start_date)"
+
+
+def _itinerary_rows(stages: list, start) -> list:
+    """Les lignes du tableau : chaque étape avec son jour et sa date, suivie
+    d'une ligne grise par nuit supplémentaire passée à son arrivée."""
+    try:
+        day0 = date.fromisoformat(str(start)[:10]) if start else None
+    except ValueError:
+        day0 = None
+    rows, day = [], 0
+    for stage in stages:
+        nights = max(stage["nights"] or 0, 0)
+        when = (day0 + timedelta(days=day)).isoformat() if day0 else None
+        rows.append({"kind": "stage", "day": day, "date": when, **stage})
+        for extra in range(1, nights):
+            when = (day0 + timedelta(days=day + extra)).isoformat() if day0 else None
+            rows.append({"kind": "rest", "day": day + extra, "date": when,
+                         "place": stage["arrival"] or stage["departure"]})
+        day += nights   # 0 nuit : escale de jour, l'étape suivante part le même jour
+    return rows
+
+
+async def _itinerary(db, itinerary_id: int):
+    db.row_factory = aiosqlite.Row
+    cursor = await db.execute(
+        f"""SELECT i.*, {ITINERARY_START} AS start, c.name AS cruise_name, c.start_time AS cruise_start
+            FROM itineraries i LEFT JOIN cruises c ON c.id = i.cruise_id WHERE i.id = ?""",
+        (itinerary_id,),
+    )
+    return await cursor.fetchone()
+
+
+async def _itinerary_neighbours(db, ship_id: int, itinerary_id: int):
+    """Itinéraires précédent et suivant du navire, dans l'ordre des dates de
+    départ (les itinéraires sans date en dernier)."""
+    cursor = await db.execute(
+        f"""SELECT i.id FROM itineraries i LEFT JOIN cruises c ON c.id = i.cruise_id
+            WHERE i.ship_id = ? ORDER BY {ITINERARY_START} IS NULL, {ITINERARY_START}, i.id""",
+        (ship_id,),
+    )
+    ids = [r[0] for r in await cursor.fetchall()]
+    if itinerary_id not in ids:
+        return None, None
+    k = ids.index(itinerary_id)
+    return (ids[k - 1] if k > 0 else None), (ids[k + 1] if k + 1 < len(ids) else None)
+
+
+async def _attach_itinerary(db, itinerary_id: int, cruise_id: Optional[int]):
+    """Rattache l'itinéraire à la croisière (None : le détache). Une croisière
+    sans date de départ prend la date prévue de l'itinéraire."""
+    await db.execute("UPDATE itineraries SET cruise_id = ? WHERE id = ?", (cruise_id, itinerary_id))
+    if cruise_id is not None:
+        await db.execute(
+            "UPDATE cruises SET start_time = (SELECT start_date FROM itineraries WHERE id = ?)"
+            " WHERE id = ? AND COALESCE(start_time, '') = ''",
+            (itinerary_id, cruise_id),
+        )
+
+
+@app.get("/cruises/itinerary", response_class=HTMLResponse)
+async def itinerary_current(request: Request):
+    """L'itinéraire de la croisière en cours, sinon le plus récent par date de
+    départ, rattaché ou non : un projet s'ouvre d'office pendant qu'on le prépare."""
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
+        current = await _current_cruise_id(db, ship_id)
+        cursor = await db.execute(
+            f"""SELECT i.id FROM itineraries i LEFT JOIN cruises c ON c.id = i.cruise_id
+                WHERE i.ship_id = ?
+                ORDER BY i.cruise_id IS ? DESC, {ITINERARY_START} IS NULL, {ITINERARY_START} DESC, i.id DESC
+                LIMIT 1""",
+            (ship_id, current),
+        )
+        row = await cursor.fetchone()
+    if row is None:
+        return templates.TemplateResponse(
+            "cruises/itinerary.html",
+            {"request": request, "active_section": "cruises", "itinerary": None})
+    return RedirectResponse(url=f"/cruises/itinerary/{row[0]}", status_code=302)
+
+
+@app.get("/cruises/itinerary/list", response_class=HTMLResponse)
+async def itinerary_list(request: Request):
+    """Les itinéraires du navire, du plus récent au plus ancien : date de
+    départ, croisière rattachée, étapes, distance et nuits ; une croix supprime."""
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"""SELECT i.id, i.name, {ITINERARY_START} AS start, i.cruise_id, c.name AS cruise_name,
+                       COUNT(s.id) AS stages, COALESCE(SUM(s.distance), 0) AS distance,
+                       COALESCE(SUM(s.nights), 0) AS nights
+                FROM itineraries i
+                LEFT JOIN cruises c ON c.id = i.cruise_id
+                LEFT JOIN itinerary_stages s ON s.itinerary_id = i.id
+                WHERE i.ship_id = ?
+                GROUP BY i.id
+                ORDER BY start IS NULL, start DESC, i.id DESC""",
+            (ship_id,),
+        )
+        itineraries = [dict(r) for r in await cursor.fetchall()]
+    return templates.TemplateResponse(
+        "cruises/itinerary_list.html",
+        {"request": request, "active_section": "cruises", "itineraries": itineraries},
+    )
+
+
+@app.post("/cruises/itinerary/new")
+async def create_itinerary(request: Request, name: Optional[str] = Form(None),
+                           start_date: Optional[str] = Form(None)):
+    """Un itinéraire sans croisière, à préparer."""
+    async with connect() as db:
+        cursor = await db.execute(
+            "INSERT INTO itineraries (ship_id, name, start_date, created_at) VALUES (?, ?, ?, ?)",
+            (get_current_ship_id(request), (name or "").strip() or None, start_date or None, datetime.now()),
+        )
+        itinerary_id = cursor.lastrowid
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
+
+
+@app.get("/cruises/itinerary/{itinerary_id}", response_class=HTMLResponse)
+async def itinerary_page(request: Request, itinerary_id: int):
+    async with connect() as db:
+        itinerary = await _itinerary(db, itinerary_id)
+        if itinerary is None:
+            raise HTTPException(status_code=404, detail="Itinéraire introuvable")
+        cursor = await db.execute(
+            "SELECT * FROM itinerary_stages WHERE itinerary_id = ? ORDER BY position, id", (itinerary_id,))
+        stages = [dict(r) for r in await cursor.fetchall()]
+        prev_id, next_id = await _itinerary_neighbours(db, itinerary["ship_id"], itinerary_id)
+        is_current = (itinerary["cruise_id"] is not None and
+                      await _current_cruise_id(db, itinerary["ship_id"]) == itinerary["cruise_id"])
+        # Croisières qu'on peut lui rattacher : celles du navire sans itinéraire.
+        cursor = await db.execute(
+            f"""SELECT c.id, c.name, c.start_time FROM cruises c
+                WHERE c.ship_id = ? AND (c.id = ? OR NOT EXISTS
+                    (SELECT 1 FROM itineraries x WHERE x.cruise_id = c.id))
+                ORDER BY {CRUISE_KEY.format(a='c')} DESC, c.id DESC""",
+            (itinerary["ship_id"], itinerary["cruise_id"]),
+        )
+        cruises = [dict(r) for r in await cursor.fetchall()]
+    return templates.TemplateResponse(
+        "cruises/itinerary.html",
+        {"request": request, "active_section": "cruises", "itinerary": dict(itinerary),
+         "rows": _itinerary_rows(stages, itinerary["start"]), "stages": stages, "cruises": cruises,
+         "total_distance": sum(s["distance"] or 0 for s in stages),
+         "total_nights": sum(max(s["nights"] or 0, 0) for s in stages),
+         "prev_id": prev_id, "next_id": next_id, "is_current": is_current},
+    )
+
+
+@app.post("/cruises/itinerary/{itinerary_id}/field/{field}")
+async def update_itinerary_field(itinerary_id: int, field: str, value: Optional[str] = Form(None)):
+    if field not in ITINERARY_FIELDS:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    async with connect() as db:
+        await db.execute(f"UPDATE itineraries SET {field} = ? WHERE id = ?",
+                         ((value or "").strip() or None, itinerary_id))
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
+
+
+@app.post("/cruises/itinerary/{itinerary_id}/attach")
+async def attach_itinerary(itinerary_id: int, cruise_id: Optional[str] = Form(None)):
+    """Rattache à une croisière, ou détache (choix vide). Une croisière n'a
+    qu'un itinéraire : l'index unique sur cruise_id le garantit."""
+    target = int(cruise_id) if cruise_id else None
+    async with connect() as db:
+        if target is not None:
+            cursor = await db.execute("SELECT 1 FROM itineraries WHERE cruise_id = ? AND id != ?",
+                                      (target, itinerary_id))
+            if await cursor.fetchone():
+                return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
+        await _attach_itinerary(db, itinerary_id, target)
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
+
+
+@app.post("/cruises/itinerary/{itinerary_id}/remove")
+async def remove_itinerary(itinerary_id: int):
+    """Supprime l'itinéraire et ses étapes (la croisière rattachée reste) —
+    la croix de la liste des itinéraires.
+    « remove » et non « delete » : planifier est l'affaire des Capitaines."""
+    async with connect() as db:
+        await db.execute("DELETE FROM itineraries WHERE id = ?", (itinerary_id,))
+        await db.commit()
+    return RedirectResponse(url="/cruises/itinerary/list", status_code=303)
+
+
+@app.post("/cruises/itinerary/{itinerary_id}/stage/new")
+async def create_itinerary_stage(itinerary_id: int):
+    """Une étape de plus, au bout : elle part de l'arrivée de la précédente
+    (à défaut, du port de départ de la croisière rattachée), pour une nuit."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            f"""SELECT i.id, {CRUISE_FROM} AS from_location FROM itineraries i
+                LEFT JOIN cruises c ON c.id = i.cruise_id WHERE i.id = ?""", (itinerary_id,))
+        itinerary = await cursor.fetchone()
+        if itinerary is None:
+            raise HTTPException(status_code=404, detail="Itinéraire introuvable")
+        cursor = await db.execute(
+            "SELECT arrival, position FROM itinerary_stages WHERE itinerary_id = ?"
+            " ORDER BY position DESC, id DESC LIMIT 1", (itinerary_id,))
+        last = await cursor.fetchone()
+        departure = last["arrival"] if last else itinerary["from_location"]
+        await db.execute(
+            "INSERT INTO itinerary_stages (itinerary_id, position, departure, nights, created_at)"
+            " VALUES (?, ?, ?, 1, ?)",
+            (itinerary_id, (last["position"] + 1) if last else 0, departure, datetime.now()),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}#fin", status_code=303)
+
+
+@app.post("/cruises/itinerary/stage/{stage_id}/field/{field}")
+async def update_itinerary_stage(stage_id: int, field: str, value: Optional[str] = Form(None)):
+    """Modification sur place d'une case ; STAGE_FIELDS tient le nom de
+    colonne hors de l'URL. Changer une arrivée la reporte au départ de l'étape
+    suivante tant que celui-ci reprenait l'ancienne arrivée (ou était vide)."""
+    kind = STAGE_FIELDS.get(field)
+    if kind is None:
+        raise HTTPException(status_code=404, detail="Field not editable")
+    value = (value or "").strip() or None
+    try:
+        if kind == "number" and value is not None:
+            value = _import_amount(value)
+        elif kind == "int":
+            value = max(int(value or 0), 0)
+    except ValueError:
+        value = 1 if kind == "int" else None
+    if field == "status" and value not in ITINERARY_STATUSES:
+        value = None
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM itinerary_stages WHERE id = ?", (stage_id,))
+        stage = await cursor.fetchone()
+        if stage is None:
+            raise HTTPException(status_code=404, detail="Étape introuvable")
+        await db.execute(f"UPDATE itinerary_stages SET {field} = ? WHERE id = ?", (value, stage_id))
+        if field == "arrival":
+            await db.execute(
+                "UPDATE itinerary_stages SET departure = ? WHERE id = ("
+                "  SELECT id FROM itinerary_stages WHERE itinerary_id = ? AND (position, id) > (?, ?)"
+                "  ORDER BY position, id LIMIT 1)"
+                " AND (departure IS NULL OR departure = ?)",
+                (value, stage["itinerary_id"], stage["position"], stage_id, stage["arrival"]),
+            )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{stage['itinerary_id']}", status_code=303)
+
+
+@app.post("/cruises/itinerary/stage/{stage_id}/remove")
+async def remove_itinerary_stage(stage_id: int):
+    """Retire une étape ; les suivantes remontent d'autant de jours."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT itinerary_id FROM itinerary_stages WHERE id = ?", (stage_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Étape introuvable")
+        await db.execute("DELETE FROM itinerary_stages WHERE id = ?", (stage_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{row[0]}", status_code=303)
+
+
+@app.post("/cruises/{cruise_id}/itinerary/new")
+async def create_cruise_itinerary(cruise_id: int):
+    """« + Itinéraire » sur la page d'une croisière qui n'en a pas : un
+    itinéraire à son nom, déjà rattaché."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT ship_id, name, start_time FROM cruises WHERE id = ?", (cruise_id,))
+        cruise = await cursor.fetchone()
+        if cruise is None:
+            raise HTTPException(status_code=404, detail="Cruise not found")
+        cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
+        existing = await cursor.fetchone()
+        if existing:
+            return RedirectResponse(url=f"/cruises/itinerary/{existing[0]}", status_code=303)
+        cursor = await db.execute(
+            "INSERT INTO itineraries (ship_id, name, start_date, cruise_id, created_at) VALUES (?, ?, ?, ?, ?)",
+            (cruise[0], cruise[1], (cruise[2] or "")[:10] or None, cruise_id, datetime.now()),
+        )
+        itinerary_id = cursor.lastrowid
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
+
+
 @app.get("/cruises", response_class=HTMLResponse)
 async def cruises_index(request: Request):
     return RedirectResponse(url="/cruises/current", status_code=302)
@@ -3953,6 +4313,8 @@ async def current_cruise(request: Request):
         stopovers = await cursor.fetchall()
         aboard, available_crew = await _cruise_crew(db, cruise_id)
         recap = await _cruise_recap(db, cruise)
+        cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
+        itinerary_row = await cursor.fetchone()
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
@@ -3967,6 +4329,7 @@ async def current_cruise(request: Request):
             "prev_cruise_id": prev_cruise_id,
             "next_cruise_id": next_cruise_id,
             "recap": recap,
+            "itinerary_id": itinerary_row[0] if itinerary_row else None,
         },
     )
 
@@ -4111,10 +4474,28 @@ async def all_stopovers(request: Request):
 
 
 @app.get("/cruises/new", response_class=HTMLResponse)
-async def new_cruise_form(request: Request):
+async def new_cruise_form(request: Request, itinerary: Optional[int] = None):
+    """?itinerary=<id> : « Créer la croisière » depuis un itinéraire — le
+    formulaire reprend son nom, sa date prévue, le départ de sa première étape
+    et l'arrivée de sa dernière ; la croisière créée s'y rattache."""
+    plan = None
+    if itinerary is not None:
+        async with connect() as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT id, name, start_date FROM itineraries WHERE id = ? AND cruise_id IS NULL", (itinerary,))
+            row = await cursor.fetchone()
+            if row:
+                plan = dict(row)
+                cursor = await db.execute(
+                    "SELECT departure, arrival FROM itinerary_stages WHERE itinerary_id = ?"
+                    " ORDER BY position, id", (itinerary,))
+                stages = await cursor.fetchall()
+                plan["departure"] = stages[0]["departure"] if stages else None
+                plan["destination"] = stages[-1]["arrival"] if stages else None
     return templates.TemplateResponse(
         "cruises/new.html",
-        {"request": request, "active_section": "cruises"},
+        {"request": request, "active_section": "cruises", "plan": plan},
     )
 
 
@@ -4158,6 +4539,8 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
         is_current = await _current_cruise_id(db, ship_id) == cruise_id
         aboard, available_crew = await _cruise_crew(db, cruise_id)
         recap = await _cruise_recap(db, cruise)
+        cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
+        itinerary_row = await cursor.fetchone()
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
@@ -4173,6 +4556,7 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
             "prev_cruise_id": prev_cruise_id,
             "next_cruise_id": next_cruise_id,
             "recap": recap,
+            "itinerary_id": itinerary_row[0] if itinerary_row else None,
         },
     )
 
@@ -4245,6 +4629,7 @@ async def create_cruise(
     destination: Optional[str] = Form(None),
     start_time: Optional[str] = Form(None),
     end_time: Optional[str] = Form(None),
+    itinerary_id: Optional[int] = Form(None),
 ):
     """Crée la croisière et y embarque la personne qui la crée, comme skipper,
     à la date de départ : une croisière n'est « en cours » qu'avec quelqu'un à
@@ -4264,6 +4649,12 @@ async def create_cruise(
                 "INSERT INTO cruise_crew (cruise_id, crew_member_id, role, embark_date) VALUES (?, ?, 'skipper', ?)",
                 (cruise_id, user["crew_member_id"], (start_time or "")[:10] or None),
             )
+        # Créée depuis un itinéraire : elle s'y rattache, s'il est encore libre.
+        if itinerary_id is not None:
+            cursor = await db.execute("SELECT 1 FROM itineraries WHERE id = ? AND cruise_id IS NULL",
+                                      (itinerary_id,))
+            if await cursor.fetchone():
+                await _attach_itinerary(db, itinerary_id, cruise_id)
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}?nouvelle=1#equipage", status_code=303)
 
