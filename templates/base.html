@@ -143,25 +143,27 @@
             transform: translateX(-50%);
             top: 100%;
             background: #fff;
-            border-radius: 14px;
+            border-radius: 10px;
             box-shadow: 0 8px 24px rgba(18,52,84,0.13);
-            min-width: 210px;
+            min-width: 160px;
             display: none;
             z-index: 300;
-            padding: 10px 0 6px;
+            padding: 6px 0 4px;
         }
         nav li:hover > .dropdown-menu { display: block; }
         nav .dropdown-menu a {
             display: block;
-            padding: 9px 18px;
+            /* Un cran au-dessus des libellés des onglets (13 px), pas davantage :
+               à 20 px, les sous-menus paraissaient démesurés. */
+            padding: 6px 14px;
             color: #1a1a2e;
-            font-size: 20px;
+            font-size: 14px;
             font-weight: 500;
             text-decoration: none;
-            border-radius: 8px;
-            margin: 2px 6px;
-            /* « Liste des croisières » et « Carnet d'adresses » dépassent les
-               210 px de min-width et se coupaient en deux lignes. Le menu
+            border-radius: 6px;
+            margin: 1px 5px;
+            /* « Liste des croisières » et « Carnet d'adresses » dépassent le
+               min-width et se coupaient en deux lignes. Le menu
                s'élargit à la place, min-width n'étant qu'un minimum. */
             white-space: nowrap;
         }
@@ -364,6 +366,27 @@
         .data-table.titres-legers th { background: var(--bg); color: #7d8fa3; font-size: 11px; font-weight: 700;
                                        text-transform: uppercase; letter-spacing: 1px;
                                        border-bottom: 1px solid #dde5ee; padding: 6px 10px; }
+        /* Récapitulatif (pages route et croisière) : mesures × départ, arrivée, différence. Titres
+           de colonnes comme .titres-legers, chiffres centrés, la différence en gras. */
+        .recap { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .recap thead th { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase;
+                          letter-spacing: 1px; padding: 4px 6px; border-bottom: 1px solid #dde5ee; text-align: center; }
+        .recap tbody th { text-align: left; font-weight: 600; padding: 6px 6px 6px 0; white-space: nowrap; }
+        .recap tbody th span { font-weight: 400; color: var(--muted); font-size: 12px; }
+        .recap td { text-align: center; padding: 6px; font-variant-numeric: tabular-nums; }
+        .recap tbody tr + tr > * { border-top: 1px solid #edf2f7; }
+        .recap .diff { font-weight: 700; color: #0f3a4a; background: #f2f9fc; }
+        .recap td small { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
+        .recap tfoot > tr > * { border-top: 2px solid #dde5ee; padding-top: 8px; }
+        .recap tfoot th { text-align: right; font-weight: 600; padding-right: 10px; }
+        .recap tfoot td span { font-weight: 400; color: var(--muted); font-size: 12px; }
+        /* Sous le Récapitulatif : le gasoil consommé et son coût, en pavés. */
+        .recap-gasoil { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+        .recap-gasoil > div { background: #f2f9fc; border-radius: 8px; padding: 10px 12px; text-align: center; }
+        .recap-gasoil .titre { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase; letter-spacing: 1px; }
+        .recap-gasoil .chiffre { font-size: 20px; font-weight: 700; color: #0f3a4a; margin-top: 2px; }
+        .recap-gasoil .detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .recap-note { margin-top: 8px; font-size: 11px; color: var(--muted); text-align: center; }
         .data-table tfoot td { font-weight: 700; border-top: 2px solid #5bc8e0; }
 
         /* ── Stub placeholder ── */

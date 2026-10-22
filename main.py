@@ -3519,6 +3519,72 @@ async def delete_crew(crew_id: int):
 # schema.
 
 
+async def _fuel_price(db, ship_id: int, until) -> tuple:
+    """(date, prix au litre) du dernier plein fait au plus tard le jour `until`
+    (une date ISO ; vide : aujourd'hui) — le prix payé à l'époque, pour chiffrer
+    le gasoil d'une route ou d'une croisière. À défaut, le plus ancien plein qui
+    suit ; (None, None) sans plein chiffré."""
+    until = str(until or date.today().isoformat())[:10]
+    cursor = await db.execute(
+        """SELECT date, amount / liters FROM fuel_fills
+           WHERE ship_id = ? AND liters > 0 AND amount IS NOT NULL AND date IS NOT NULL
+           ORDER BY date > ?, CASE WHEN date > ? THEN date END, date DESC LIMIT 1""",
+        (ship_id, until, until),
+    )
+    fill = await cursor.fetchone()
+    return (fill[0], fill[1]) if fill else (None, None)
+
+
+async def _cruise_recap(db, cruise) -> dict:
+    """Le Récapitulatif d'une croisière, comme celui d'une route (départ,
+    arrivée, différence), en jours plutôt qu'en heures, sans vitesse moyenne,
+    mais avec le coût estimé du gasoil.
+    - Durée : dates de départ et d'arrivée de la croisière, en jours — la même
+      soustraction que la liste des croisières.
+    - Loch : premier et dernier relevé des lignes de ses routes (MIN / MAX,
+      comme LOCH_FIRST / LOCH_LAST).
+    - Moteur : plus petit horamètre de départ et plus grand horamètre (arrivée,
+      à défaut départ) de ses routes.
+    - Gasoil : heures moteur × consommation (_consumption) ; son coût, au prix
+      au litre du dernier plein fait avant la fin de la croisière (à défaut, du
+      plus ancien qui suit)."""
+    days = None
+    try:
+        if cruise["start_time"] and cruise["end_time"]:
+            days = (date.fromisoformat(str(cruise["end_time"])[:10])
+                    - date.fromisoformat(str(cruise["start_time"])[:10])).days
+    except ValueError:
+        pass
+    cursor = await db.execute(
+        """SELECT MIN(l.log), MAX(l.log), COUNT(l.log) FROM logbook_lines l
+           JOIN routes r ON l.route_id = r.id WHERE r.cruise_id = ?""",
+        (cruise["id"],),
+    )
+    loch_first, loch_last, loch_count = await cursor.fetchone()
+    cursor = await db.execute(
+        """SELECT MIN(motor_hours_start),
+                  MAX(MAX(COALESCE(motor_hours_end, 0), COALESCE(motor_hours_start, 0)))
+           FROM routes WHERE cruise_id = ?""",
+        (cruise["id"],),
+    )
+    hours_start, hours_end = await cursor.fetchone()
+    if not hours_end:
+        hours_end = None
+    hours = hours_end - hours_start if hours_start is not None and hours_end is not None else None
+    consumption = await _consumption(db, cruise["ship_id"])
+    fuel = hours * consumption["value"] if hours is not None and consumption["value"] else None
+    price_date, price = await _fuel_price(db, cruise["ship_id"], cruise["end_time"])
+    return {
+        "days": days,
+        "loch_first": loch_first, "loch_last": loch_last if loch_count > 1 else None,
+        "distance": loch_last - loch_first if loch_count > 1 else None,
+        "hours_start": hours_start, "hours_end": hours_end, "hours": hours,
+        "fuel": fuel, "consumption": consumption,
+        "price": price, "price_date": price_date,
+        "cost": fuel * price if fuel is not None and price else None,
+    }
+
+
 async def _cruise_crew(db, cruise_id: int):
     """Who is aboard this cruise, and who could still be added.
 
@@ -3774,6 +3840,7 @@ async def current_cruise(request: Request):
         )
         stopovers = await cursor.fetchall()
         aboard, available_crew = await _cruise_crew(db, cruise_id)
+        recap = await _cruise_recap(db, cruise)
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
@@ -3787,6 +3854,7 @@ async def current_cruise(request: Request):
             "available_crew": available_crew,
             "prev_cruise_id": prev_cruise_id,
             "next_cruise_id": next_cruise_id,
+            "recap": recap,
         },
     )
 
@@ -3977,6 +4045,7 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
         # comme sur /cruises/current.
         is_current = await _current_cruise_id(db, ship_id) == cruise_id
         aboard, available_crew = await _cruise_crew(db, cruise_id)
+        recap = await _cruise_recap(db, cruise)
     return templates.TemplateResponse(
         "cruises/detail.html",
         {
@@ -3991,6 +4060,7 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
             "available_crew": available_crew,
             "prev_cruise_id": prev_cruise_id,
             "next_cruise_id": next_cruise_id,
+            "recap": recap,
         },
     )
 
@@ -4457,6 +4527,9 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
         # Consommation du moteur (L/h) : le Récapitulatif en estime le gasoil,
         # faute de jauge relevée — mesurée sur les pleins, sinon la réputée.
         consumption = await _consumption(db, route["cruise_ship_id"]) if route["cruise_ship_id"] else None
+        # Le prix au litre du dernier plein avant la fin de la route, pour le coût.
+        price_date, price = (await _fuel_price(db, route["cruise_ship_id"], route["end_time"])
+                             if route["cruise_ship_id"] else (None, None))
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -4507,6 +4580,7 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "ask_new_line": bool(nouvelle),
             "previous": previous,
             "consumption": consumption,
+            "fuel_price": price, "fuel_price_date": price_date,
             "duration_min": _minutes_between(route["start_time"], route["end_time"]),
         },
     )

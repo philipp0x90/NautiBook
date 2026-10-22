@@ -436,6 +436,54 @@
 </div>
 {% endif %}
 
+{# Récapitulatif — le même tableau que sur la page d'une route (classes
+   .recap de base.html), la durée en jours, sans vitesse moyenne, avec le coût
+   estimé du gasoil. Les chiffres viennent de _cruise_recap (main.py). #}
+{% set conso = recap.consumption.value %}
+<div class="card" id="recapitulatif" style="margin-bottom:16px;padding:14px;scroll-margin-top:20px">
+    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px">Récapitulatif</h4>
+    <table class="recap">
+        <thead>
+            <tr><th></th><th>Départ</th><th>Arrivée</th><th></th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <th>Durée <span>(jours)</span></th>
+                <td>{{ cruise.start_time | datefr if cruise.start_time else '—' }}</td>
+                <td>{{ cruise.end_time | datefr if cruise.end_time else '—' }}</td>
+                <td class="diff">{{ recap.days ~ (' jours' if recap.days > 1 else ' jour') if recap.days is not none else '—' }}</td>
+            </tr>
+            <tr>
+                <th>Loch <span>(NM)</span></th>
+                <td>{{ '%.1f'|format(recap.loch_first) if recap.loch_first is not none else '—' }}</td>
+                <td>{{ '%.1f'|format(recap.loch_last) if recap.loch_last is not none else '—' }}</td>
+                <td class="diff">{% if recap.distance is not none %}{{ '%.1f'|format(recap.distance) }}<small>milles parcourus</small>{% else %}—{% endif %}</td>
+            </tr>
+            <tr>
+                <th>Heures moteur</th>
+                <td>{{ '%.1f'|format(recap.hours_start) if recap.hours_start is not none else '—' }}</td>
+                <td>{{ '%.1f'|format(recap.hours_end) if recap.hours_end is not none else '—' }}</td>
+                <td class="diff">{{ '%.1f h'|format(recap.hours) if recap.hours is not none else '—' }}</td>
+            </tr>
+        </tbody>
+    </table>
+    {# Le gasoil n'a ni départ ni arrivée (aucune jauge relevée) : hors du
+       tableau, deux pavés d'estimation, chacun avec son calcul dessous. #}
+    <div class="recap-gasoil">
+        <div>
+            <div class="titre">Gasoil consommé</div>
+            <div class="chiffre">{{ '≈ %.0f L'|format(recap.fuel) if recap.fuel is not none else '—' }}</div>
+            {% if conso %}<div class="detail">{{ recap.hours | dec(1) if recap.hours is not none else '—' }} h × {{ conso | dec(2) }} L/h
+                {%- if recap.consumption.source == 'mesuree' %} ({{ derniers_pleins(recap.consumption.count) }}){% else %} (réputée){% endif %}</div>{% endif %}
+        </div>
+        <div>
+            <div class="titre">Coût du gasoil</div>
+            <div class="chiffre">{{ '≈ ' ~ (recap.cost | euros) if recap.cost is not none else '—' }}</div>
+            {% if recap.price %}<div class="detail">{{ recap.price | dec(3) }} €/L, prix du plein du {{ recap.price_date | datefr }}</div>{% endif %}
+        </div>
+    </div>
+</div>
+
 {# ── Cruise Map ── #}
 <div style="margin-bottom:24px;background:var(--card);border:1px solid #dde5ee;border-radius:8px;overflow:hidden">
     <div style="padding:10px 16px;background:#f7fbfd;border-bottom:1px solid #dde5ee;display:flex;align-items:center;justify-content:space-between;cursor:pointer"

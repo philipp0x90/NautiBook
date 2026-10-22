@@ -89,21 +89,6 @@
     .log-table .add-row td { background: #e8f7fb; }
     .log-table .add-row td a { color: var(--accent-dark); font-weight: 700; text-decoration: none; font-size: 14px; }
 
-    /* Récapitulatif : trois mesures × départ, arrivée, différence. Titres
-       de colonnes comme .titres-legers, chiffres centrés, la différence en gras. */
-    .recap { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .recap thead th { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase;
-                      letter-spacing: 1px; padding: 4px 6px; border-bottom: 1px solid #dde5ee; text-align: center; }
-    .recap tbody th { text-align: left; font-weight: 600; padding: 6px 6px 6px 0; white-space: nowrap; }
-    .recap tbody th span { font-weight: 400; color: var(--muted); font-size: 12px; }
-    .recap td { text-align: center; padding: 6px; font-variant-numeric: tabular-nums; }
-    .recap tbody tr + tr > * { border-top: 1px solid #edf2f7; }
-    .recap .diff { font-weight: 700; color: #0f3a4a; background: #f2f9fc; }
-    .recap td small { display: block; font-size: 10px; color: var(--muted); font-weight: 400; }
-    .recap tfoot > tr > * { border-top: 2px solid #dde5ee; padding-top: 8px; }
-    .recap tfoot th { text-align: right; font-weight: 600; padding-right: 10px; }
-    .recap tfoot td span { font-weight: 400; color: var(--muted); font-size: 12px; }
-    .recap-note { margin-top: 8px; font-size: 11px; color: var(--muted); text-align: center; }
     .stat-row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; border-bottom: 1px solid #edf2f7; }
     .stat-row:last-child { border-bottom: none; }
 
@@ -446,10 +431,9 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
        et d'arrivée de la route (duration_min, calculée par route_detail). Loch :
        premier et dernier relevé des lignes (MIN / MAX, un loch ne recule pas,
        comme LOCH_FIRST / LOCH_LAST) ; la différence est la distance parcourue.
-       Moteur : horamètres saisis au départ et à l'arrivée. Le gasoil n'est
-       relevé nulle part : estimé, heures moteur × consommation — mesurée sur
-       les pleins (page Gasoil), sinon la réputée de la fiche navire (_consumption).
-       Vitesse moyenne : distance ÷ durée. #}
+       Moteur : horamètres saisis au départ et à l'arrivée. Vitesse moyenne :
+       distance ÷ durée. Le gasoil, relevé nulle part, est estimé sous le
+       tableau : heures moteur × consommation (_consumption), et son coût. #}
     {% set conso = consumption.value if consumption else none %}
     {% set lochs = lines | map(attribute='log') | select('number') | list %}
     {% set loch_dep = lochs | min if lochs else none %}
@@ -466,32 +450,26 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
         <h4>Récapitulatif</h4>
         <table class="recap">
             <thead>
-                <tr><th></th><th>Départ</th><th>Arrivée</th><th>Différence</th></tr>
+                <tr><th></th><th>Départ</th><th>Arrivée</th><th></th></tr>
             </thead>
             <tbody>
                 <tr>
                     <th>Durée <span>(h:mm)</span></th>
                     <td>{{ heure(route.start_time) }}</td>
                     <td>{{ heure(route.end_time) }}</td>
-                    <td class="diff">{{ '%d:%02d'|format(duration_min // 60, duration_min % 60) if duration_min is not none else '—' }}</td>
+                    <td class="diff">{{ '%d:%02d h'|format(duration_min // 60, duration_min % 60) if duration_min is not none else '—' }}</td>
                 </tr>
                 <tr>
                     <th>Loch <span>(NM)</span></th>
                     <td>{{ '%.1f'|format(loch_dep) if loch_dep is not none else '—' }}</td>
                     <td>{{ '%.1f'|format(loch_arr) if loch_arr is not none else '—' }}</td>
-                    <td class="diff">{% if distance is not none %}{{ '%.1f'|format(distance) }}<small>parcourus</small>{% else %}—{% endif %}</td>
+                    <td class="diff">{% if distance is not none %}{{ '%.1f'|format(distance) }}<small>milles parcourus</small>{% else %}—{% endif %}</td>
                 </tr>
                 <tr>
                     <th>Heures moteur</th>
                     <td>{{ '%.1f'|format(h_dep) if h_dep is not none else '—' }}</td>
                     <td>{{ '%.1f'|format(h_arr) if h_arr is not none else '—' }}</td>
-                    <td class="diff">{{ '%.1f'|format(h_diff) if h_diff is not none else '—' }}</td>
-                </tr>
-                <tr>
-                    <th>Gasoil <span>(L)</span></th>
-                    <td>—</td>
-                    <td>—</td>
-                    <td class="diff">{{ '≈ %.0f'|format(h_diff * conso) if h_diff is not none and conso else '—' }}</td>
+                    <td class="diff">{{ '%.1f h'|format(h_diff) if h_diff is not none else '—' }}</td>
                 </tr>
             </tbody>
             <tfoot>
@@ -501,10 +479,23 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
                 </tr>
             </tfoot>
         </table>
-        {% if conso %}
-        <div class="recap-note">Gasoil estimé : heures moteur × {{ conso | dec(2) }} L/h
-            {%- if consumption.source == 'mesuree' %} ({{ derniers_pleins(consumption.count) }}){% else %} (réputée){% endif %}</div>
-        {% endif %}
+        {# Le gasoil hors du tableau, comme sur la page croisière : il n'a ni
+           départ ni arrivée relevés. Son coût au prix du dernier plein fait
+           avant la fin de la route (_fuel_price). #}
+        {% set fuel = h_diff * conso if h_diff is not none and conso else none %}
+        <div class="recap-gasoil">
+            <div>
+                <div class="titre">Gasoil consommé</div>
+                <div class="chiffre">{{ '≈ %.0f L'|format(fuel) if fuel is not none else '—' }}</div>
+                {% if conso %}<div class="detail">{{ h_diff | dec(1) if h_diff is not none else '—' }} h × {{ conso | dec(2) }} L/h
+                    {%- if consumption.source == 'mesuree' %} ({{ derniers_pleins(consumption.count) }}){% else %} (réputée){% endif %}</div>{% endif %}
+            </div>
+            <div>
+                <div class="titre">Coût du gasoil</div>
+                <div class="chiffre">{{ '≈ ' ~ ((fuel * fuel_price) | euros) if fuel is not none and fuel_price else '—' }}</div>
+                {% if fuel_price %}<div class="detail">{{ fuel_price | dec(3) }} €/L, prix du plein du {{ fuel_price_date | datefr }}</div>{% endif %}
+            </div>
+        </div>
     </div>
 
     {# To-Do List #}
