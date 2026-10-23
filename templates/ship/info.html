@@ -21,6 +21,18 @@
     .validite input:hover { border-color: #cfe3ef; background: #fff; }
     .validite.bientot input { color: #b45309; font-weight: 700; }
     .validite.expire input { color: #b91c1c; font-weight: 700; }
+    /* Date vide : Safari y montre la date du jour (en gris) comme indication —
+       on aurait dit une vraie date, sans ✕ pour l'effacer. Masquée hors saisie,
+       remplacée par un tiret posé sur la case. */
+    .validite { position: relative; }
+    .validite input[type=date].date-vide:not(:focus),
+    .validite input[type=date].date-vide:not(:focus)::-webkit-datetime-edit,
+    .validite input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-text,
+    .validite input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-day-field,
+    .validite input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-month-field,
+    .validite input[type=date].date-vide:not(:focus)::-webkit-datetime-edit-year-field { color: transparent; }
+    .validite .tiret { display: none; position: absolute; left: 8px; color: #9aa8b6; pointer-events: none; }
+    .validite input.date-vide:not(:focus) ~ .tiret { display: inline; }
     .validite-effacer { background: none; border: 0; padding: 0 2px; cursor: pointer; font-size: 12px; color: #9aa8b6; }
     .validite-effacer:hover { color: #991b1b; }
     .validite-badge { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
@@ -351,6 +363,7 @@
                         <form method="POST" action="/ship/documents/{{ d.id }}/valid-from" class="validite">
                             <input type="date" name="value" value="{{ d.valid_from or '' }}"
                                    title="Date de début de validité (facultative)" onchange="this.form.submit()">
+                            <span class="tiret">—</span>
                             {% if d.valid_from %}
                             <button type="button" class="validite-effacer" title="Sans date de début"
                                     onclick="if (confirm('Retirer la date de début de validité ?')) { this.form.elements.value.value = ''; this.form.submit(); }">✕</button>
@@ -365,6 +378,7 @@
                         <form method="POST" action="/ship/documents/{{ d.id }}/valid-until" class="validite {{ etat or '' }}">
                             <input type="date" name="value" value="{{ d.valid_until or '' }}"
                                    title="Date de fin de validité (facultative)" onchange="this.form.submit()">
+                            <span class="tiret">—</span>
                             {# ✕ : efface la date (acte de vente, document sans
                                échéance) ; une case date ne se vide pas
                                commodément à la main, surtout sur iPad. #}
