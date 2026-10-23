@@ -239,6 +239,8 @@
         {{ ligne('engine_serial', 'N° de série') }}
         {{ ligne('displacement', 'Déplacement', 'T') }}
         {{ ligne('ballast', 'Poids du lest', 'T') }}
+        {# Préremplit la vitesse des pages Gasoil et Itinéraire (6 kn sans elle). #}
+        {{ ligne('cruising_speed', 'Vitesse de croisière', 'kn') }}
     </section>
 
     <section class="card fiche-carte">

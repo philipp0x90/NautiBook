@@ -401,7 +401,8 @@ async def init_db():
                 insurance_end TEXT,
                 misc_notes TEXT,
                 photo_path TEXT,
-                photo_crop TEXT
+                photo_crop TEXT,
+                cruising_speed REAL
             )
         """)
 
@@ -723,6 +724,12 @@ async def _migrate(db):
     if "photo_path" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE ship_info ADD COLUMN photo_path TEXT")
         print("Migration: ship_info.photo_path added")
+    # Vitesse de croisière (kn) : la valeur de départ des calculs de vitesse
+    # des pages Gasoil et Itinéraire (_cruising_speed).
+    cursor = await db.execute("PRAGMA table_info(ship_info)")
+    if "cruising_speed" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE ship_info ADD COLUMN cruising_speed REAL")
+        print("Migration: ship_info.cruising_speed added")
     # Cadrage de cette photo : « x y zoom » (filtre cadrage).
     cursor = await db.execute("PRAGMA table_info(ship_info)")
     if "photo_crop" not in {row[1] for row in await cursor.fetchall()}:
@@ -1711,6 +1718,7 @@ SHIP_FIELDS = {
         "mast_height", "clearance_no_mast", "displacement", "ballast",
         "sail_main", "sail_genoa", "sail_spinnaker", "sail_trinquette", "sail_portant",
         "tank_fuel", "tank_water", "engine_power", "engine_consumption", "engine_hours_initial",
+        "cruising_speed",
     )},
     **{f: "date" for f in (
         "issued_date", "valid_until", "engine_hours_date", "insurance_start", "insurance_end",
@@ -2634,35 +2642,83 @@ async def delete_todo_item(item_id: int):
     return RedirectResponse(url="/ship/todo", status_code=303)
 
 
-# ── Mode d'emploi ──
-# Un petit wiki : /aide, le sommaire, et une page par sujet, /aide/<slug>,
-# gabarit templates/aide/<slug>.html (qui étend aide/_page.html). Ajouter une
-# page : son gabarit, et une entrée ici, dans l'ordre du sommaire. Aucune règle
-# d'accès (SECTION_RULES) : l'aide est ouverte à tous, Mousse compris.
+# ── À propos ──
+# La version : le dernier commit du dépôt, lu une fois au démarrage (le Pi
+# tourne sur un clone git, deploy.sh redémarre l'app à chaque mise à jour).
 
-AIDE_PAGES = [
+def _app_version() -> Optional[str]:
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%h %cs"], cwd=Path(__file__).parent,
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
+APP_VERSION = _app_version()
+
+
+@app.get("/a-propos", response_class=HTMLResponse)
+async def about(request: Request):
+    """Ce qu'est NautiBook, qui l'a fait, sa version. Ouverte à tous."""
+    commit, _, day = (APP_VERSION or "").partition(" ")
+    return templates.TemplateResponse(
+        "about.html",
+        {"request": request, "active_section": None, "commit": commit or None, "commit_date": day or None},
+    )
+
+
+# ── Mode d'emploi ──
+# Un petit wiki : /help, le sommaire, et une page par sujet, /help/<slug>,
+# gabarit templates/help/<slug>.html (qui étend help/_page.html). Ajouter une
+# page : son gabarit, et une entrée ici, dans l'ordre du sommaire. Aucune règle
+# d'accès (SECTION_RULES) : l'aide est ouverte à tous, Mousse compris. On y
+# arrive par le menu de l'ancre (accueil), avec « À propos ».
+
+HELP_PAGES = [
     {"slug": "gasoil", "title": "Gasoil",
      "summary": "pleins, consommation, réservoir et autonomie"},
 ]
 
 
-@app.get("/aide", response_class=HTMLResponse)
-async def aide_index(request: Request):
+@app.get("/help", response_class=HTMLResponse)
+async def help_index(request: Request):
     return templates.TemplateResponse(
-        "aide/index.html",
-        {"request": request, "active_section": "tools", "aide_pages": AIDE_PAGES, "aide_page": None},
+        "help/index.html",
+        {"request": request, "active_section": None, "help_pages": HELP_PAGES, "help_page": None},
     )
 
 
-@app.get("/aide/{slug}", response_class=HTMLResponse)
-async def aide_page(request: Request, slug: str):
-    page = next((p for p in AIDE_PAGES if p["slug"] == slug), None)
+@app.get("/help/{slug}", response_class=HTMLResponse)
+async def help_page(request: Request, slug: str):
+    page = next((p for p in HELP_PAGES if p["slug"] == slug), None)
     if page is None:
         raise HTTPException(status_code=404, detail="Page d'aide inconnue")
     return templates.TemplateResponse(
-        f"aide/{slug}.html",
-        {"request": request, "active_section": "tools", "aide_pages": AIDE_PAGES, "aide_page": page},
+        f"help/{slug}.html",
+        {"request": request, "active_section": None, "help_pages": HELP_PAGES, "help_page": page},
     )
+
+
+@app.get("/aide")
+@app.get("/aide/{slug}")
+async def old_help_address(slug: Optional[str] = None):
+    """Les anciennes adresses du mode d'emploi (/aide…), devenu /help."""
+    return RedirectResponse(url=f"/help/{slug}" if slug else "/help", status_code=301)
+
+
+# Vitesse de croisière : celle de la fiche navire (carte Caractéristiques),
+# 6 nœuds si elle n'est pas renseignée. Elle préremplit la case de vitesse des
+# pages Gasoil (autonomie en milles) et Itinéraire (durées), qui reste
+# modifiable pour un calcul du moment et n'enregistre rien.
+DEFAULT_CRUISING_SPEED = 6.0
+
+
+async def _cruising_speed(db, ship_id: int) -> float:
+    cursor = await db.execute("SELECT cruising_speed FROM ship_info WHERE id = ?", (ship_id,))
+    row = await cursor.fetchone()
+    speed = row[0] if row else None
+    return speed if speed and speed > 0 else DEFAULT_CRUISING_SPEED
 
 
 # ── Gasoil ──
@@ -2800,7 +2856,9 @@ async def ship_fuel(request: Request):
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
         fills, stats, consumption, tank = [], None, None, None
+        speed = DEFAULT_CRUISING_SPEED
         if ship:
+            speed = await _cruising_speed(db, ship["id"])
             fills, stats = await _fuel_fills(db, ship["id"])
             consumption = await _consumption(db, ship["id"], stats)
             tank = await _tank_estimate(db, ship, fills, consumption)
@@ -2810,14 +2868,15 @@ async def ship_fuel(request: Request):
          # Du plus récent au plus ancien ; le calcul, lui, se fait dans l'ordre
          # chronologique (_fuel_fills), chaque plein dépendant du précédent.
          "fills": fills[::-1], "stats": stats, "consumption": consumption, "tank": tank,
+         "cruising_speed": speed,
          "today": date.today().isoformat()},
     )
 
 
 @app.get("/ship/fuel/aide")
 async def ship_fuel_help():
-    """L'ancienne adresse du mode d'emploi Gasoil, devenu une page de /aide."""
-    return RedirectResponse(url="/aide/gasoil", status_code=301)
+    """L'ancienne adresse du mode d'emploi Gasoil, devenu une page de /help."""
+    return RedirectResponse(url="/help/gasoil", status_code=301)
 
 
 def _fuel_value(kind: str, value: Optional[str]):
@@ -4156,13 +4215,14 @@ async def itinerary_page(request: Request, itinerary_id: int):
             (itinerary["ship_id"], itinerary["cruise_id"]),
         )
         cruises = [dict(r) for r in await cursor.fetchall()]
+        speed = await _cruising_speed(db, itinerary["ship_id"])
     return templates.TemplateResponse(
         "cruises/itinerary.html",
         {"request": request, "active_section": "cruises", "itinerary": dict(itinerary),
          "rows": _itinerary_rows(stages, itinerary["start"]), "stages": stages, "cruises": cruises,
          "total_distance": sum(s["distance"] or 0 for s in stages),
          "total_nights": sum(max(s["nights"] or 0, 0) for s in stages),
-         "prev_id": prev_id, "next_id": next_id, "is_current": is_current},
+         "prev_id": prev_id, "next_id": next_id, "is_current": is_current, "cruising_speed": speed},
     )
 
 

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}À propos — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* Contenu de départ, à ajuster par l'utilisateur : ce qu'est l'app, qui l'a
+       faite, avec quoi, et sa version (le dernier commit, APP_VERSION). */
+    .apropos { max-width: 680px; margin: 0 auto; font-size: 15px; line-height: 1.55; color: #1a1a2e; }
+    .apropos h2 { font-size: 16px; margin: 20px 0 8px; color: #0f3a4a; }
+    .apropos p { margin: 0 0 10px; }
+    .apropos ul { margin: 0 0 12px; padding-left: 22px; }
+    .apropos li { margin-bottom: 4px; }
+    .apropos a { color: var(--accent); }
+    .apropos .version { font-size: 13px; color: var(--muted); }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-title">À propos</div>
+</div>
+
+<div class="card apropos">
+    <h2 style="margin-top:0">NautiBook</h2>
+    <p>Le journal de bord électronique de <b>{{ request.state.ship_name or 'votre navire' }}</b> : les
+       croisières, les routes et leurs lignes de journal, l'équipage, les escales, le gasoil,
+       les comptes et le carnet de voyage. Les mesures des instruments du bord (vent, cap,
+       vitesse, position, sonde…) sont relevées automatiquement depuis le réseau du bateau.</p>
+    <p>L'application tourne à bord, sur un Raspberry Pi, et s'utilise depuis n'importe quel
+       appareil connecté au wifi du bateau : iPad, iPhone, ordinateur.</p>
+
+    <h2>Auteurs</h2>
+    <p>Benoit &amp; Tom Mansion, 2026.</p>
+
+    <h2>Avec</h2>
+    <ul>
+        <li>les données des instruments par <b>SignalK</b> (passerelle iKommunicate) ;</li>
+        <li>les cartes d'<b>OpenStreetMap</b>, affichées avec <b>Leaflet</b> ;</li>
+        <li>la météo de <b>Windy</b>.</li>
+    </ul>
+
+    <h2>Aide</h2>
+    <p>Le <a href="/help">mode d'emploi</a> décrit les pages de l'application.</p>
+
+    {% if commit %}
+    <p class="version">Version {{ commit }}{% if commit_date %} du {{ commit_date | datefr }}{% endif %}</p>
+    {% endif %}
+</div>
+
+{% endblock %}

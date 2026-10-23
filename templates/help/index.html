@@ -1,12 +1,12 @@
-{% extends "aide/_page.html" %}
+{% extends "help/_page.html" %}
 {% block aide_contenu %}
 <h1>Mode d'emploi</h1>
 <p>Le mode d'emploi de NautiBook, page par page. Choisissez un sujet dans le
    sommaire, ou ci-dessous ; les pages renvoient les unes aux autres et vers
    les écrans qu'elles décrivent.</p>
 <ul>
-    {% for page in aide_pages %}
-    <li><a href="/aide/{{ page.slug }}"><b>{{ page.title }}</b></a> — {{ page.summary }}</li>
+    {% for page in help_pages %}
+    <li><a href="/help/{{ page.slug }}"><b>{{ page.title }}</b></a> — {{ page.summary }}</li>
     {% endfor %}
 </ul>
 {% endblock %}

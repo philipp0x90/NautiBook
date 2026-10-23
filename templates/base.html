@@ -137,7 +137,7 @@
 
 
         /* Dropdown */
-        nav .dropdown-menu {
+        .dropdown-menu {
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
@@ -150,8 +150,11 @@
             z-index: 300;
             padding: 6px 0 4px;
         }
-        nav li:hover > .dropdown-menu { display: block; }
-        nav .dropdown-menu a {
+        nav li:hover > .dropdown-menu, .logo-menu:hover > .dropdown-menu { display: block; }
+        /* Menu de l'ancre (accueil) : calé à gauche, l'ancre étant au bord. */
+        .logo-menu { position: relative; flex-shrink: 0; }
+        .logo-menu > .dropdown-menu { left: 6px; transform: none; }
+        .dropdown-menu a {
             display: block;
             /* Un cran au-dessus des libellés des onglets (13 px), pas davantage :
                à 20 px, les sous-menus paraissaient démesurés. */
@@ -167,7 +170,7 @@
                s'élargit à la place, min-width n'étant qu'un minimum. */
             white-space: nowrap;
         }
-        nav .dropdown-menu a:hover { background: #e8f4f9; }
+        .dropdown-menu a:hover { background: #e8f4f9; }
 
         /* Chercher, compte, réglages : même forme que les onglets (icône et
            libellé), en bleu de l'ancre. */
@@ -589,6 +592,8 @@
 <header class="topbar">
     {# Ancre (icone-ancre-nautibook.svg), inlined like the other artwork. The link
        carries the label, so the icon itself is hidden from screen readers. #}
+    {# L'ancre mène à l'accueil ; son menu, à « À propos » et au mode d'emploi. #}
+    <div class="logo-menu">
     <a href="/" class="topbar-logo" title="Accueil" aria-label="Accueil — NautiBook">
         <svg viewBox="0 0 64 64" aria-hidden="true">
             <g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
@@ -599,6 +604,13 @@
             </g>
         </svg>
     </a>
+    <div class="dropdown-menu">
+        <a href="/">Accueil</a>
+        <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
+        <a href="/a-propos">À propos</a>
+        <a href="/help">Aide</a>
+    </div>
+    </div>
 
     <nav class="main-nav" role="navigation" aria-label="Main">
         <ul>
@@ -646,8 +658,6 @@
                 <div class="dropdown-menu">
                     <a href="/tools/weather">Météo</a>
                     <a href="/tools/chart">Carte</a>
-                    <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
-                    <a href="/aide">Mode d'emploi</a>
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'gallery' else '' }}">

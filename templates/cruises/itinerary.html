@@ -199,10 +199,11 @@
         </select>
         {% if itinerary.cruise_id %}<a href="/cruises/{{ itinerary.cruise_id }}" style="color:var(--accent)">ouvrir la croisière</a>{% endif %}
     </form>
-    {# Vitesse pour le calcul du temps seulement : rien n'est enregistré, elle
-       revient à 6 nœuds au rechargement. #}
+    {# Vitesse pour le calcul du temps seulement : préremplie avec la vitesse
+       de croisière de la fiche navire (6 kn sans elle), rien n'est enregistré,
+       elle y revient au rechargement. #}
     <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--muted)">Vitesse de croisière
-        <input type="number" id="vitesse" value="6" min="0.5" step="0.5" inputmode="decimal" oninput="tempsEtapes()"> kn</label>
+        <input type="number" id="vitesse" value="{{ '%g' | format(cruising_speed) }}" min="0.5" step="0.5" inputmode="decimal" oninput="tempsEtapes()"> kn</label>
 </div>
 </div>
 

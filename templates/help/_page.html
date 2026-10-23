@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {# Mode d'emploi : un petit wiki. Chaque page étend ce gabarit ; le sommaire,
-   à gauche, vient de AIDE_PAGES (main.py), où une nouvelle page s'ajoute. #}
+   à gauche, vient de HELP_PAGES (main.py), où une nouvelle page s'ajoute. #}
 {% block title %}{% block aide_titre %}{% endblock %}Mode d'emploi — NautiBook{% endblock %}
 {% block head %}
 <style>
@@ -44,14 +44,14 @@
 
 <div class="aide-cadre">
     <nav class="aide-sommaire" aria-label="Sommaire du mode d'emploi">
-        <a href="/aide" class="accueil{{ ' actif' if not aide_page }}">Sommaire</a>
+        <a href="/help" class="accueil{{ ' actif' if not help_page }}">Sommaire</a>
         <hr>
-        {% for page in aide_pages %}
-        <a href="/aide/{{ page.slug }}"{% if aide_page and aide_page.slug == page.slug %} class="actif"{% endif %}>{{ page.title }}</a>
+        {% for page in help_pages %}
+        <a href="/help/{{ page.slug }}"{% if help_page and help_page.slug == page.slug %} class="actif"{% endif %}>{{ page.title }}</a>
         {% endfor %}
     </nav>
     <article class="card aide">
-        {% if aide_page %}<div class="aide-fil"><a href="/aide">Mode d'emploi</a> › {{ aide_page.title }}</div>{% endif %}
+        {% if help_page %}<div class="aide-fil"><a href="/help">Mode d'emploi</a> › {{ help_page.title }}</div>{% endif %}
         {% block aide_contenu %}{% endblock %}
     </article>
 </div>

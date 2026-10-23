@@ -1,4 +1,4 @@
-{% extends "aide/_page.html" %}
+{% extends "help/_page.html" %}
 {# Texte validé par l'utilisateur (Guide Gasoil.rtf, 22/10/2026), mis en page
    sans rien y changer ; seuls les liens ont été ajoutés. #}
 {% block aide_titre %}Gasoil · {% endblock %}
@@ -66,7 +66,7 @@
     <li>une <b>jauge</b>, verte au-dessus de 50 %, orange entre 25 et 50 %, rouge en dessous de 25 % ;</li>
     <li>le <b>gasoil estimé restant</b>, en litres ;</li>
     <li>l'<b>autonomie estimée</b> en heures moteur ;</li>
-    <li>l'<b>autonomie en milles</b>, à la vitesse indiquée dans la petite case (6 nœuds par défaut). Vous pouvez changer cette vitesse pour faire un calcul : elle n'est pas enregistrée et revient à 6 au prochain affichage.</li>
+    <li>l'<b>autonomie en milles</b>, à la vitesse de croisière renseignée dans la <a href="/ship/info">fiche navire</a> (6 nœuds si elle n'est pas renseignée). Vous pouvez la changer pour faire un calcul : elle n'est pas enregistrée et revient à la vitesse de la fiche au prochain affichage.</li>
 </ul>
 
 <div class="attention">

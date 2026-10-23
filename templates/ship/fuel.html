@@ -132,7 +132,7 @@
 <div class="section-bar section-bar-collee">
     {# Le « ? » dans une case de la largeur du bouton d'en face. #}
     <span style="min-width:140px;display:flex;align-items:center">
-        <a href="/aide/gasoil" class="aide-rond" title="Mode d'emploi" aria-label="Mode d'emploi">?</a>
+        <a href="/help/gasoil" class="aide-rond" title="Mode d'emploi" aria-label="Mode d'emploi">?</a>
     </span>
     <div class="section-bar-title">Gasoil</div>
     {% if current_ship and peut(request, 'gasoil.modifier') %}
@@ -149,8 +149,9 @@
 {# Réservoir — estimation (_tank_estimate) : plein au dernier plein complet,
    plus les appoints depuis, moins les heures de moteur × la consommation (les
    trois derniers pleins).
-   La vitesse ne sert qu'au calcul du moment : rien n'est enregistré, elle
-   revient à 6 kn au rechargement. #}
+   La vitesse ne sert qu'au calcul du moment : préremplie avec la vitesse de
+   croisière de la fiche navire (6 kn sans elle), rien n'est enregistré, elle
+   y revient au rechargement. #}
 {% if tank %}
 {% set niveau = 'haut' if tank.percent > 50 else ('moyen' if tank.percent >= 25 else 'bas') %}
 <section class="reservoir">
@@ -170,9 +171,9 @@
         </div>
         <div>
             <div class="titre">Autonomie à
-                <input type="number" id="vitesse" value="6" min="0.5" step="0.5" inputmode="decimal"
+                <input type="number" id="vitesse" value="{{ '%g' | format(cruising_speed) }}" min="0.5" step="0.5" inputmode="decimal"
                        oninput="autonomieMilles()" title="Vitesse moyenne au moteur — pour ce calcul seulement"> kn</div>
-            <div class="chiffre">≈ <span id="autonomie-milles">{{ '%.0f'|format(tank.autonomy_hours * 6) }}</span> NM</div>
+            <div class="chiffre">≈ <span id="autonomie-milles">{{ '%.0f'|format(tank.autonomy_hours * cruising_speed) }}</span> NM</div>
         </div>
     </div>
     <div class="reservoir-detail">
