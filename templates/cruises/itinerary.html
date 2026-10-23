@@ -7,13 +7,20 @@
        Les nuits supplémentaires suivent l'étape en lignes grises. */
     .itin td, .itin th { white-space: nowrap; }
     .itin thead th { text-align: center; }
-    .itin td { text-align: center; vertical-align: middle; padding: 1px 4px; font-variant-numeric: tabular-nums; }
+    /* Tout en haut de la ligne : une remarque dépliée sur deux lignes laisse
+       les autres cases à hauteur de sa première ligne. Les cases de simple
+       texte (jour, date, durée) descendent de quelques pixels pour se caler
+       sur le texte des cases modifiables. */
+    .itin td { text-align: center; vertical-align: top; padding: 1px 4px; font-variant-numeric: tabular-nums; }
+    .itin tbody tr:not(.repos) td.jour, .itin tbody tr:not(.repos) td.date, .itin td.temps { padding-top: 7px; }
+    .itin td.suppr { padding-top: 4px; }
     .itin td.jour { color: #7d8fa3; font-weight: 700; font-size: 12px; }
     .itin td.date { text-align: left; }
     .itin td.lieu, .itin td.remarques { text-align: left; }
     /* Remarques : la colonne prend la place qui reste ; le texte s'enroule sur
        autant de lignes qu'il faut, aligné à gauche comme son titre. */
-    .itin td.remarques { white-space: normal; min-width: 180px; width: 100%; vertical-align: top; }
+    /* Pas de width: 100 % : elle prenait la place des ports, rognés. */
+    .itin td.remarques { white-space: normal; min-width: 180px; }
     .itin td.remarques .remarque-apercu {
         /* Pas de marge intérieure verticale : overflow rogne au bord intérieur,
            une marge laisserait paraître le haut de la 3e ligne. */
@@ -64,11 +71,27 @@
     }
     .itin tr.repos td { color: #9aa8b6; font-style: italic; background: #fafcfd; }
     .itin tr.repos td.jour { font-style: normal; }
-    .itin tfoot td { font-weight: 700; border-top: 2px solid #dde5ee; }
+    /* Signature en bas de page : petite, grise, photos rondes de 18 px. */
+    .itin-signature { margin-top: 22px; text-align: center; font-size: 12px; color: var(--muted); }
+    .itin-signature b { color: #445; font-weight: 600; }
+    .itin-signature .sep { margin: 0 8px; }
+    .signe-avatar { display: inline-block; width: 18px; height: 18px; border-radius: 50%; overflow: hidden;
+                    vertical-align: -4px; margin: 0 2px; background: #dde5ee; }
+    /* En-tête collé (même seuil que .tableau-colle, base.html) : sous la barre
+       bleue, sur le fond de la page ; les titres du tableau se collent sous
+       lui. Plus bas que 701 px, rien ne se colle, comme ailleurs. */
+    @media (min-width: 701px) {
+        .itin-entete { position: sticky; top: calc(14px + var(--barre-h, 0px)); z-index: 145;
+                       background: var(--bg); margin: 0 -18px; padding: 0 18px; }
+        .tableau-colle.itin-page thead { top: calc(14px + var(--barre-h, 0px) + var(--entete-h, 0px)); }
+    }
     /* En-tête : ← croisière préc., le nom au centre, croisière suiv. → */
     .itin-tete { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; margin-bottom: 12px; }
-    .itin-tete .nom { text-align: center; font-size: 17px; font-weight: 700; color: #0f3a4a; }
-    .itin-tete .nom small { display: block; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .itin-tete .nom { display: flex; flex-direction: column; align-items: center; gap: 0;
+                      font-size: 17px; font-weight: 700; color: #0f3a4a; }
+    .barre-mention { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px;
+                     opacity: .9; line-height: 1.2; }
+    .itin-tete .nom .totaux { white-space: nowrap; font-size: 14px; font-weight: 600; color: #0f3a4a; }
     .itin-tete .nom a { color: inherit; text-decoration: none; }
     .itin-reglages { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
                      margin-bottom: 10px; font-size: 13px; color: var(--muted); }
@@ -85,7 +108,7 @@
     .itin-reglages .champ-date b { color: #0f3a4a; }
     .itin-tete .nom input { font: inherit; border: 1px solid transparent; border-radius: 5px; background: transparent; padding: 1px 6px; }
     .itin-tete .nom input:hover { border-color: #cfe3ef; background: #f8fbfd; }
-    .itin-tete .nom input { font-size: 17px; font-weight: 700; color: #0f3a4a; text-align: center; width: 340px; max-width: 100%; }
+    .itin-tete .nom input { font-size: 17px; font-weight: 700; color: #0f3a4a; text-align: center; width: auto; max-width: 340px; }
     .itin-lien { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     /* Le choix affiché centré dans le menu (text-align-last : Chrome et Safari). */
     .itin-lien select { width: auto; padding: 2px 6px; font-size: 13px; text-align: center; text-align-last: center; }
@@ -100,7 +123,13 @@
    son double invisible, pour garder le titre centré. #}
 <div class="section-bar section-bar-collee">
     <a href="/cruises/itinerary/list" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">← Liste des itinéraires</a>
-    <div class="section-bar-title">Itinéraire</div>
+    {# Sous le titre, la mention : projet (sans croisière) ou croisière en cours. #}
+    <div class="section-bar-title">Itinéraire
+        {% if itinerary %}
+        {% if is_current %}<div class="barre-mention">Croisière en cours</div>
+        {% elif not itinerary.cruise_id %}<div class="barre-mention">Projet</div>{% endif %}
+        {% endif %}
+    </div>
     {% if peut(request, 'croisieres.modifier') %}
     <form method="POST" action="/cruises/itinerary/new" style="margin:-10px 0">
         <button type="submit" class="btn btn-yellow" style="min-width:160px">+ Nouvel itinéraire</button>
@@ -116,15 +145,25 @@
 {% else %}
 
 {% set peut_modifier = peut(request, 'croisieres.modifier') %}
+{# En-tête collé sous la barre bleue avec les titres du tableau : nom et
+   flèches, date de départ, croisière, vitesse — tout reste en vue pendant
+   qu'on fait défiler les étapes. Sa hauteur (--entete-h, mesurée plus bas)
+   place les titres collés du tableau juste dessous. #}
+<div class="itin-entete" id="itin-entete">
 {# ← → : les itinéraires du navire, dans l'ordre des dates de départ. #}
 <div class="itin-tete">
     <div>{% if prev_id %}<a href="/cruises/itinerary/{{ prev_id }}" class="btn btn-blue">← Itinéraire Préc.</a>{% endif %}</div>
+    {# Le nom — modifiable sur place, sa case à la largeur du texte —, les
+       totaux dessous. La mention (projet / en cours) est sous le titre de la barre. #}
     <div class="nom">
         <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/field/name" style="margin:0">
+            {% set libelle = itinerary.name or 'Itinéraire sans nom' %}
             <input type="text" name="value" value="{{ itinerary.name or '' }}" placeholder="Itinéraire sans nom"
-                   onchange="this.form.submit()" title="Nom de l'itinéraire">
+                   size="{{ [libelle | length, 8] | max }}" onchange="this.form.submit()" title="Nom de l'itinéraire">
         </form>
-        <small>{% if is_current %}Croisière en cours{% elif not itinerary.cruise_id %}Projet{% endif %}</small>
+        {% if stages %}
+        <div class="totaux">{{ total_nights }} nuit{{ 's' if total_nights > 1 }} - {{ total_distance | dec(0, 1) }} milles</div>
+        {% endif %}
     </div>
     <div style="justify-self:end">{% if next_id %}<a href="/cruises/itinerary/{{ next_id }}" class="btn btn-blue">Itinéraire Suiv. →</a>{% endif %}</div>
 </div>
@@ -165,6 +204,7 @@
     <label style="margin:0;display:flex;align-items:center;gap:6px;font-weight:600;color:var(--muted)">Vitesse de croisière
         <input type="number" id="vitesse" value="6" min="0.5" step="0.5" inputmode="decimal" oninput="tempsEtapes()"> kn</label>
 </div>
+</div>
 
 {% macro case(stage, field, classe='') %}
 <form method="POST" action="/cruises/itinerary/stage/{{ stage.id }}/field/{{ field }}">
@@ -194,7 +234,7 @@
 </form>
 {% endmacro %}
 
-<div class="tableau-colle">
+<div class="tableau-colle itin-page">
     <table class="data-table titres-legers itin">
         <thead>
             <tr>
@@ -216,7 +256,7 @@
                 <td>{{ case(row, 'type') }}</td>
                 <td class="remarques">{{ case(row, 'remarks') }}</td>
                 <td>{{ case(row, 'status') }}</td>
-                <td style="width:1%">
+                <td class="suppr" style="width:1%">
                     <form method="POST" action="/cruises/itinerary/stage/{{ row.id }}/remove" style="display:inline"
                           onsubmit="return confirm('Retirer cette étape ? Les suivantes remonteront d\'autant de jours.')">
                         <button type="submit" class="btn btn-orange" style="padding:1px 8px;font-size:11px">✕</button>
@@ -240,32 +280,41 @@
             </tr>
             {% endfor %}
         </tbody>
-        {% if stages %}
-        <tfoot>
-            <tr>
-                <td colspan="3"></td>
-                <td>{{ total_distance | dec(0, 1) }}</td>
-                <td></td>
-                <td></td>
-                <td>{{ total_nights }}</td>
-                <td colspan="4"></td>
-            </tr>
-        </tfoot>
-        {% endif %}
     </table>
 </div>
 
-{# Bas de page : « + Étape » à gauche ; à droite, « Créer la croisière »
-   (itinéraire sans croisière). Un itinéraire se supprime depuis la liste. #}
-<div id="fin" style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;gap:10px">
+{# Bas de page : « + Étape » à gauche, « Dupliquer » au centre, « Créer la
+   croisière » à droite (itinéraire sans croisière). Un itinéraire se
+   supprime depuis la liste. #}
+{# Grille 1fr auto 1fr : « Dupliquer » reste au centre de la page. #}
+<div id="fin" style="margin-top:12px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px">
     <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/stage/new">
         <button type="submit" class="btn btn-yellow">+ Étape</button>
     </form>
-    <div style="display:flex;align-items:center;gap:10px">
+    {# Une copie de l'itinéraire et de ses étapes, en projet, « … - copie ». #}
+    <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/duplicate">
+        <button type="submit" class="btn btn-nav btn-arrivee">Dupliquer</button>
+    </form>
+    <div style="justify-self:end">
     {% if not itinerary.cruise_id and voit(request, '/cruises/new') %}
     <a href="/cruises/new?itinerary={{ itinerary.id }}" class="btn btn-primary">Créer la croisière</a>
     {% endif %}
     </div>
+</div>
+
+{# Qui l'a créé, qui l'a modifié en dernier, et quand (_touch_itinerary).
+   Un itinéraire créé avant ce suivi n'a pas d'auteur : la date seule. #}
+{% macro signataire(nom, photo, cadrage) -%}
+    {%- if nom %} par
+    {% if photo and fichier_visible(request, photo) %}<span class="signe-avatar"><img src="{{ photo }}" alt="" style="display:block;width:100%;height:100%;{{ cadrage | cadrage_equipier }}"></span>{% endif %}
+    <b>{{ nom }}</b>{% endif -%}
+{%- endmacro %}
+<div class="itin-signature">
+    Créé le {{ itinerary.created_at | datefr }}{{ signataire(itinerary.created_name, itinerary.created_photo, itinerary.created_crop) }}
+    {%- if itinerary.updated_at %}
+    <span class="sep">·</span> Dernière modification le {{ itinerary.updated_at | datefr }} à {{ (itinerary.updated_at | string)[11:16] }}
+    {{- signataire(itinerary.updated_name, itinerary.updated_photo, itinerary.updated_crop) }}
+    {%- endif %}
 </div>
 
 <script>
@@ -284,6 +333,14 @@ function tempsEtapes() {
     });
 }
 tempsEtapes();
+// Hauteur de l'en-tête collé, pour placer les titres du tableau dessous.
+(function () {
+    const entete = document.getElementById('itin-entete');
+    if (!entete) return;
+    const regler = () => document.documentElement.style.setProperty('--entete-h', entete.offsetHeight + 'px');
+    regler();
+    addEventListener('resize', regler);
+})();
 // Remarques : la zone de texte prend la hauteur de son texte ; l'aperçu
 // replié (2 lignes) laisse la place à la zone le temps de la saisie.
 function ajusterRemarque(zone) {

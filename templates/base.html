@@ -266,8 +266,9 @@
         }
 
         /* ── Layout ── */
-        .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 18px 48px; }
-        main { min-height: 60vh; }
+        .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 18px 20px; }
+        /* Pas de hauteur minimale : elle poussait le pied de page loin sous un
+           contenu court (430 px de vide sous le mode d'emploi). */
 
         /* ── Common components ── */
         .card { background: var(--card); padding: 16px; border-radius: 8px; border: 1px solid #dde5ee; }
@@ -409,8 +410,11 @@
         .stub { text-align: center; padding: 80px 0; color: var(--muted); font-size: 16px; }
 
         /* ── Footer ── */
-        footer { text-align: center; padding: 28px 0 10px; color: var(--muted); font-size: 13px; border-top: 1px solid #dde5ee; margin-top: 40px; }
-        .footer-ship { margin-bottom: 5px; font-size: 17px; font-weight: 700; color: var(--accent-dark); }
+        /* Pied de page : une ligne discrète, « Bebe Samba · Nautibook ». Le nom
+           du navire n'y est qu'un rappel — il est déjà dans le menu et sur
+           l'accueil — et ne prend plus une ligne à lui en 17 px. */
+        footer { text-align: center; padding: 10px 0 0; color: var(--muted); font-size: 12px; border-top: 1px solid #dde5ee; margin-top: 24px; }
+        .footer-ship { font-weight: 700; color: var(--accent-dark); }
         .icon-boat { width: 1em; height: 1em; vertical-align: -0.1em; }
         /* Même dimensionnement en em pour la roue crantée, qui sert aussi dans
            le titre de la page Paramètres. */
@@ -707,10 +711,7 @@
        le rôle de signature. #}
     {% block footer %}
     <footer>
-        {% if request.state.ship_name %}
-        <div class="footer-ship">{{ request.state.ship_name }}</div>
-        {% endif %}
-        — Nautibook —
+        {% if request.state.ship_name %}<span class="footer-ship">{{ request.state.ship_name }}</span> · {% endif %}Nautibook
     </footer>
     {% endblock %}
 </div>

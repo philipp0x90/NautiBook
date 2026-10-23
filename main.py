@@ -572,7 +572,12 @@ async def init_db():
                 -- Croisière rattachée : une au plus, et un itinéraire par croisière
                 -- (index unique) ; supprimer la croisière détache l'itinéraire.
                 cruise_id INTEGER UNIQUE REFERENCES cruises(id) ON DELETE SET NULL,
-                created_at DATETIME
+                created_at DATETIME,
+                -- Qui l'a créé, qui l'a modifié en dernier et quand (fiches
+                -- équipier) : la ligne « Créé par … · Dernière modification par … ».
+                created_by INTEGER REFERENCES crew_members(id) ON DELETE SET NULL,
+                updated_at DATETIME,
+                updated_by INTEGER REFERENCES crew_members(id) ON DELETE SET NULL
             )
         """)
 
@@ -723,6 +728,14 @@ async def _migrate(db):
     if "photo_crop" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE ship_info ADD COLUMN photo_crop TEXT")
         print("Migration: ship_info.photo_crop added")
+    cursor = await db.execute("PRAGMA table_info(itineraries)")
+    columns = {row[1] for row in await cursor.fetchall()}
+    for column, kind in (("created_by", "INTEGER REFERENCES crew_members(id) ON DELETE SET NULL"),
+                         ("updated_at", "DATETIME"),
+                         ("updated_by", "INTEGER REFERENCES crew_members(id) ON DELETE SET NULL")):
+        if column not in columns:
+            await db.execute(f"ALTER TABLE itineraries ADD COLUMN {column} {kind}")
+            print(f"Migration: itineraries.{column} added")
     cursor = await db.execute("PRAGMA table_info(crew_members)")
     if "photo_crop" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE crew_members ADD COLUMN photo_crop TEXT")
@@ -4006,11 +4019,30 @@ def _itinerary_rows(stages: list, start) -> list:
 async def _itinerary(db, itinerary_id: int):
     db.row_factory = aiosqlite.Row
     cursor = await db.execute(
-        f"""SELECT i.*, {ITINERARY_START} AS start, c.name AS cruise_name, c.start_time AS cruise_start
-            FROM itineraries i LEFT JOIN cruises c ON c.id = i.cruise_id WHERE i.id = ?""",
+        f"""SELECT i.*, {ITINERARY_START} AS start, c.name AS cruise_name, c.start_time AS cruise_start,
+                   cb.first_name AS created_name, cb.photo_path AS created_photo, cb.photo_crop AS created_crop,
+                   ub.first_name AS updated_name, ub.photo_path AS updated_photo, ub.photo_crop AS updated_crop
+            FROM itineraries i LEFT JOIN cruises c ON c.id = i.cruise_id
+            LEFT JOIN crew_members cb ON cb.id = i.created_by
+            LEFT JOIN crew_members ub ON ub.id = i.updated_by
+            WHERE i.id = ?""",
         (itinerary_id,),
     )
     return await cursor.fetchone()
+
+
+def _who(request: Request) -> Optional[int]:
+    """La fiche équipier de la personne connectée, pour signer une création ou
+    une modification d'itinéraire."""
+    user = _template_user(request)
+    return user.get("crew_member_id") if user else None
+
+
+async def _touch_itinerary(db, itinerary_id: int, request: Request):
+    """Signe la dernière modification d'un itinéraire : tout ce qui change le
+    plan (nom, date, croisière, étapes) passe par ici."""
+    await db.execute("UPDATE itineraries SET updated_at = ?, updated_by = ? WHERE id = ?",
+                     (datetime.now(), _who(request), itinerary_id))
 
 
 async def _itinerary_neighbours(db, ship_id: int, itinerary_id: int):
@@ -4094,8 +4126,9 @@ async def create_itinerary(request: Request, name: Optional[str] = Form(None),
     """Un itinéraire sans croisière, à préparer."""
     async with connect() as db:
         cursor = await db.execute(
-            "INSERT INTO itineraries (ship_id, name, start_date, created_at) VALUES (?, ?, ?, ?)",
-            (get_current_ship_id(request), (name or "").strip() or None, start_date or None, datetime.now()),
+            "INSERT INTO itineraries (ship_id, name, start_date, created_at, created_by) VALUES (?, ?, ?, ?, ?)",
+            (get_current_ship_id(request), (name or "").strip() or None, start_date or None, datetime.now(),
+             _who(request)),
         )
         itinerary_id = cursor.lastrowid
         await db.commit()
@@ -4134,18 +4167,20 @@ async def itinerary_page(request: Request, itinerary_id: int):
 
 
 @app.post("/cruises/itinerary/{itinerary_id}/field/{field}")
-async def update_itinerary_field(itinerary_id: int, field: str, value: Optional[str] = Form(None)):
+async def update_itinerary_field(request: Request, itinerary_id: int, field: str,
+                                 value: Optional[str] = Form(None)):
     if field not in ITINERARY_FIELDS:
         raise HTTPException(status_code=404, detail="Field not editable")
     async with connect() as db:
         await db.execute(f"UPDATE itineraries SET {field} = ? WHERE id = ?",
                          ((value or "").strip() or None, itinerary_id))
+        await _touch_itinerary(db, itinerary_id, request)
         await db.commit()
     return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
 
 
 @app.post("/cruises/itinerary/{itinerary_id}/attach")
-async def attach_itinerary(itinerary_id: int, cruise_id: Optional[str] = Form(None)):
+async def attach_itinerary(request: Request, itinerary_id: int, cruise_id: Optional[str] = Form(None)):
     """Rattache à une croisière, ou détache (choix vide). Une croisière n'a
     qu'un itinéraire : l'index unique sur cruise_id le garantit."""
     target = int(cruise_id) if cruise_id else None
@@ -4156,8 +4191,35 @@ async def attach_itinerary(itinerary_id: int, cruise_id: Optional[str] = Form(No
             if await cursor.fetchone():
                 return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
         await _attach_itinerary(db, itinerary_id, target)
+        await _touch_itinerary(db, itinerary_id, request)
         await db.commit()
     return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
+
+
+@app.post("/cruises/itinerary/{itinerary_id}/duplicate")
+async def duplicate_itinerary(request: Request, itinerary_id: int):
+    """Copie de l'itinéraire et de ses étapes, nommée « … - copie » : un
+    projet (sans croisière), qui part à la même date (celle de la croisière
+    si l'original y est rattaché)."""
+    async with connect() as db:
+        itinerary = await _itinerary(db, itinerary_id)
+        if itinerary is None:
+            raise HTTPException(status_code=404, detail="Itinéraire introuvable")
+        cursor = await db.execute(
+            "INSERT INTO itineraries (ship_id, name, start_date, created_at, created_by) VALUES (?, ?, ?, ?, ?)",
+            (itinerary["ship_id"], f"{itinerary['name'] or 'Itinéraire sans nom'} - copie",
+             itinerary["start"], datetime.now(), _who(request)),
+        )
+        copy_id = cursor.lastrowid
+        await db.execute(
+            """INSERT INTO itinerary_stages (itinerary_id, position, departure, distance, arrival, nights,
+                                             type, remarks, status, created_at)
+               SELECT ?, position, departure, distance, arrival, nights, type, remarks, status, ?
+               FROM itinerary_stages WHERE itinerary_id = ? ORDER BY position, id""",
+            (copy_id, datetime.now(), itinerary_id),
+        )
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{copy_id}", status_code=303)
 
 
 @app.post("/cruises/itinerary/{itinerary_id}/remove")
@@ -4172,7 +4234,7 @@ async def remove_itinerary(itinerary_id: int):
 
 
 @app.post("/cruises/itinerary/{itinerary_id}/stage/new")
-async def create_itinerary_stage(itinerary_id: int):
+async def create_itinerary_stage(request: Request, itinerary_id: int):
     """Une étape de plus, au bout : elle part de l'arrivée de la précédente
     (à défaut, du port de départ de la croisière rattachée), pour une nuit."""
     async with connect() as db:
@@ -4193,12 +4255,13 @@ async def create_itinerary_stage(itinerary_id: int):
             " VALUES (?, ?, ?, 1, ?)",
             (itinerary_id, (last["position"] + 1) if last else 0, departure, datetime.now()),
         )
+        await _touch_itinerary(db, itinerary_id, request)
         await db.commit()
     return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}#fin", status_code=303)
 
 
 @app.post("/cruises/itinerary/stage/{stage_id}/field/{field}")
-async def update_itinerary_stage(stage_id: int, field: str, value: Optional[str] = Form(None)):
+async def update_itinerary_stage(request: Request, stage_id: int, field: str, value: Optional[str] = Form(None)):
     """Modification sur place d'une case ; STAGE_FIELDS tient le nom de
     colonne hors de l'URL. Changer une arrivée la reporte au départ de l'étape
     suivante tant que celui-ci reprenait l'ancienne arrivée (ou était vide)."""
@@ -4230,12 +4293,13 @@ async def update_itinerary_stage(stage_id: int, field: str, value: Optional[str]
                 " AND (departure IS NULL OR departure = ?)",
                 (value, stage["itinerary_id"], stage["position"], stage_id, stage["arrival"]),
             )
+        await _touch_itinerary(db, stage["itinerary_id"], request)
         await db.commit()
     return RedirectResponse(url=f"/cruises/itinerary/{stage['itinerary_id']}", status_code=303)
 
 
 @app.post("/cruises/itinerary/stage/{stage_id}/remove")
-async def remove_itinerary_stage(stage_id: int):
+async def remove_itinerary_stage(request: Request, stage_id: int):
     """Retire une étape ; les suivantes remontent d'autant de jours."""
     async with connect() as db:
         cursor = await db.execute("SELECT itinerary_id FROM itinerary_stages WHERE id = ?", (stage_id,))
@@ -4243,12 +4307,13 @@ async def remove_itinerary_stage(stage_id: int):
         if row is None:
             raise HTTPException(status_code=404, detail="Étape introuvable")
         await db.execute("DELETE FROM itinerary_stages WHERE id = ?", (stage_id,))
+        await _touch_itinerary(db, row[0], request)
         await db.commit()
     return RedirectResponse(url=f"/cruises/itinerary/{row[0]}", status_code=303)
 
 
 @app.post("/cruises/{cruise_id}/itinerary/new")
-async def create_cruise_itinerary(cruise_id: int):
+async def create_cruise_itinerary(request: Request, cruise_id: int):
     """« + Itinéraire » sur la page d'une croisière qui n'en a pas : un
     itinéraire à son nom, déjà rattaché."""
     async with connect() as db:
@@ -4261,8 +4326,9 @@ async def create_cruise_itinerary(cruise_id: int):
         if existing:
             return RedirectResponse(url=f"/cruises/itinerary/{existing[0]}", status_code=303)
         cursor = await db.execute(
-            "INSERT INTO itineraries (ship_id, name, start_date, cruise_id, created_at) VALUES (?, ?, ?, ?, ?)",
-            (cruise[0], cruise[1], (cruise[2] or "")[:10] or None, cruise_id, datetime.now()),
+            "INSERT INTO itineraries (ship_id, name, start_date, cruise_id, created_at, created_by)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (cruise[0], cruise[1], (cruise[2] or "")[:10] or None, cruise_id, datetime.now(), _who(request)),
         )
         itinerary_id = cursor.lastrowid
         await db.commit()
@@ -4655,6 +4721,7 @@ async def create_cruise(
                                       (itinerary_id,))
             if await cursor.fetchone():
                 await _attach_itinerary(db, itinerary_id, cruise_id)
+                await _touch_itinerary(db, itinerary_id, request)
         await db.commit()
     return RedirectResponse(url=f"/cruises/{cruise_id}?nouvelle=1#equipage", status_code=303)
 
