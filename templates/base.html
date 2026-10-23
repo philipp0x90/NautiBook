@@ -592,7 +592,7 @@
 <header class="topbar">
     {# Ancre (icone-ancre-nautibook.svg), inlined like the other artwork. The link
        carries the label, so the icon itself is hidden from screen readers. #}
-    {# L'ancre mène à l'accueil ; son menu, à « À propos » et au mode d'emploi. #}
+    {# L'ancre mène à l'accueil ; son menu, au mode d'emploi (Aide) et à « À propos ». #}
     <div class="logo-menu">
     <a href="/" class="topbar-logo" title="Accueil" aria-label="Accueil — NautiBook">
         <svg viewBox="0 0 64 64" aria-hidden="true">
@@ -605,8 +605,9 @@
         </svg>
     </a>
     <div class="dropdown-menu">
-        <a href="/a-propos">À propos</a>
         <a href="/help">Aide</a>
+        <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
+        <a href="/a-propos">À propos</a>
     </div>
     </div>
 
