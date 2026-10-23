@@ -21,6 +21,8 @@
     .validite input:hover { border-color: #cfe3ef; background: #fff; }
     .validite.bientot input { color: #b45309; font-weight: 700; }
     .validite.expire input { color: #b91c1c; font-weight: 700; }
+    .validite-effacer { background: none; border: 0; padding: 0 2px; cursor: pointer; font-size: 12px; color: #9aa8b6; }
+    .validite-effacer:hover { color: #991b1b; }
     .validite-badge { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
     .validite.bientot .validite-badge { background: #d97706; }
     .validite.expire .validite-badge { background: #dc2626; }
@@ -323,7 +325,7 @@
         {% if documents %}
         <table class="data-table" style="margin-bottom:12px">
             <thead>
-                <tr><th>Titre</th><th>Type</th><th>Ajouté le</th><th>Valable jusqu'au</th><th></th></tr>
+                <tr><th>Titre</th><th>Type</th><th>Valable du</th><th>au</th><th></th></tr>
             </thead>
             <tbody>
                 {% for d in documents %}
@@ -343,7 +345,18 @@
                         {% if pdf %}<span class="doc-type doc-pdf">PDF</span>
                         {% else %}<span class="doc-type doc-img">Image</span>{% endif %}
                     </td>
-                    <td style="white-space:nowrap">{{ d.created_at | datefr }}</td>
+                    {# Début de validité, à la place de la date d'ajout, sans
+                       intérêt : même case que la fin, ✕ pour l'effacer. #}
+                    <td style="white-space:nowrap">
+                        <form method="POST" action="/ship/documents/{{ d.id }}/valid-from" class="validite">
+                            <input type="date" name="value" value="{{ d.valid_from or '' }}"
+                                   title="Date de début de validité (facultative)" onchange="this.form.submit()">
+                            {% if d.valid_from %}
+                            <button type="button" class="validite-effacer" title="Sans date de début"
+                                    onclick="if (confirm('Retirer la date de début de validité ?')) { this.form.elements.value.value = ''; this.form.submit(); }">✕</button>
+                            {% endif %}
+                        </form>
+                    </td>
                     {# Validité modifiable sur place, son propre formulaire comme
                        les champs d'une fiche contact. Rouge une fois dépassée,
                        orange dans le mois qui précède. #}
@@ -352,6 +365,13 @@
                         <form method="POST" action="/ship/documents/{{ d.id }}/valid-until" class="validite {{ etat or '' }}">
                             <input type="date" name="value" value="{{ d.valid_until or '' }}"
                                    title="Date de fin de validité (facultative)" onchange="this.form.submit()">
+                            {# ✕ : efface la date (acte de vente, document sans
+                               échéance) ; une case date ne se vide pas
+                               commodément à la main, surtout sur iPad. #}
+                            {% if d.valid_until %}
+                            <button type="button" class="validite-effacer" title="Sans date de validité"
+                                    onclick="if (confirm('Retirer la date de validité de ce document ?')) { this.form.elements.value.value = ''; this.form.submit(); }">✕</button>
+                            {% endif %}
                             {% if etat == 'expire' %}<span class="validite-badge">Expiré</span>
                             {% elif etat == 'bientot' %}<span class="validite-badge">Expire bientôt</span>{% endif %}
                         </form>
@@ -377,7 +397,10 @@
                    style="flex:2;min-width:220px">
             <input type="file" name="document_file" accept="image/*,application/pdf" required
                    style="flex:2;min-width:220px">
-            <label class="doc-validite">Valable jusqu'au
+            <label class="doc-validite">Valable du
+                <input type="date" name="valid_from" title="Facultatif">
+            </label>
+            <label class="doc-validite">au
                 <input type="date" name="valid_until" title="Facultatif">
             </label>
             <button type="submit" class="btn btn-yellow">+ Ajouter document</button>

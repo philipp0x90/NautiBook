@@ -297,10 +297,11 @@
         {% if peut(request, 'identite.voir') %}
         <section style="display:grid;gap:12px">
             <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Adresse</h3>
-            <div class="grid" style="grid-template-columns:2fr 1fr 2fr;gap:12px">
+            <div class="grid" style="grid-template-columns:2fr 1fr 2fr 1.5fr;gap:12px">
                 {{ champ('street', 'Rue et numéro') }}
                 {{ champ('postal_code', 'Code postal') }}
                 {{ champ('city', 'Localité') }}
+                {{ champ('country', 'Pays') }}
             </div>
         </section>
 

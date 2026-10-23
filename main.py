@@ -540,6 +540,7 @@ async def init_db():
                 ship_id INTEGER NOT NULL REFERENCES ship_info(id) ON DELETE CASCADE,
                 title TEXT,
                 path TEXT NOT NULL,
+                valid_from TEXT,
                 valid_until TEXT,
                 created_at DATETIME
             )
@@ -628,6 +629,7 @@ async def init_db():
                 street TEXT,
                 postal_code TEXT,
                 city TEXT,
+                country TEXT,
                 id_type TEXT,
                 id_number TEXT,
                 phone TEXT,
@@ -718,6 +720,11 @@ async def _migrate(db):
     if "valid_until" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE ship_documents ADD COLUMN valid_until TEXT")
         print("Migration: ship_documents.valid_until added")
+    # Début de validité (« Valable du »), à la place de la date d'ajout dans la liste.
+    cursor = await db.execute("PRAGMA table_info(ship_documents)")
+    if "valid_from" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE ship_documents ADD COLUMN valid_from TEXT")
+        print("Migration: ship_documents.valid_from added")
 
     # Photo du navire (fiche navire, choix du navire), dans IMG/Navire/.
     cursor = await db.execute("PRAGMA table_info(ship_info)")
@@ -743,6 +750,11 @@ async def _migrate(db):
         if column not in columns:
             await db.execute(f"ALTER TABLE itineraries ADD COLUMN {column} {kind}")
             print(f"Migration: itineraries.{column} added")
+    # Pays de l'adresse d'un équipier (section Adresse de sa fiche).
+    cursor = await db.execute("PRAGMA table_info(crew_members)")
+    if "country" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE crew_members ADD COLUMN country TEXT")
+        print("Migration: crew_members.country added")
     cursor = await db.execute("PRAGMA table_info(crew_members)")
     if "photo_crop" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE crew_members ADD COLUMN photo_crop TEXT")
@@ -1245,7 +1257,7 @@ PERMISSIONS = {
 # Champs d'une fiche équipier rangés sous « identité, adresse » : ils suivent la
 # rubrique identite, les autres la rubrique equipiers.
 IDENTITY_FIELDS = ("birth_date", "birth_place", "nationality", "id_type", "id_number",
-                   "street", "postal_code", "city")
+                   "street", "postal_code", "city", "country")
 
 # Adresse → rubrique. Première règle qui convient ; une adresse qu'aucune ne
 # couvre est libre (accueil, recherche, connexion…). Des expressions simples,
@@ -1647,6 +1659,7 @@ DOC_EXPIRY_WARNING_DAYS = 30
 async def add_ship_document(
     request: Request,
     title: Optional[str] = Form(None),
+    valid_from: Optional[str] = Form(None),
     valid_until: Optional[str] = Form(None),
     document_file: Optional[UploadFile] = File(None),
 ):
@@ -1660,9 +1673,10 @@ async def add_ship_document(
             if ship is None:
                 raise HTTPException(status_code=404, detail="Aucun navire")
             await db.execute(
-                "INSERT INTO ship_documents (ship_id, title, path, valid_until, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (ship[0], title, path, valid_until or None, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                "INSERT INTO ship_documents (ship_id, title, path, valid_from, valid_until, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (ship[0], title, path, valid_from or None, valid_until or None,
+                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             )
             await db.commit()
     return RedirectResponse(url="/ship/info", status_code=303)
@@ -1675,6 +1689,15 @@ async def set_ship_document_validity(doc_id: int, value: Optional[str] = Form(No
     document n'a plus d'échéance."""
     async with connect() as db:
         await db.execute("UPDATE ship_documents SET valid_until = ? WHERE id = ?", (value or None, doc_id))
+        await db.commit()
+    return RedirectResponse(url="/ship/info", status_code=303)
+
+
+@app.post("/ship/documents/{doc_id}/valid-from")
+async def set_ship_document_valid_from(doc_id: int, value: Optional[str] = Form(None)):
+    """Début de validité, modifiable sur place comme la fin ; vide, aucun."""
+    async with connect() as db:
+        await db.execute("UPDATE ship_documents SET valid_from = ? WHERE id = ?", (value or None, doc_id))
         await db.commit()
     return RedirectResponse(url="/ship/info", status_code=303)
 
@@ -3492,6 +3515,7 @@ async def create_crew(
     street: Optional[str] = Form(None),
     postal_code: Optional[str] = Form(None),
     city: Optional[str] = Form(None),
+    country: Optional[str] = Form(None),
     id_type: Optional[str] = Form(None),
     id_number: Optional[str] = Form(None),
     phone_code: Optional[str] = Form(None),
@@ -3506,12 +3530,12 @@ async def create_crew(
         await db.execute(
             """INSERT INTO crew_members
                (first_name, last_name, gender, birth_date, birth_place, nationality,
-                street, postal_code, city, id_type, id_number, phone, email, photo_path)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                street, postal_code, city, country, id_type, id_number, phone, email, photo_path)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (first_name or None, last_name or None, gender or None, birth_date or None,
              birth_place or None, nationality or None, street or None, postal_code or None,
-             city or None, id_type or None, id_number or None, phone or None, email or None,
-             photo),
+             city or None, country or None, id_type or None, id_number or None, phone or None,
+             email or None, photo),
         )
         await db.commit()
     return RedirectResponse(url="/crew", status_code=303)
@@ -3606,6 +3630,7 @@ async def update_crew(
     street: Optional[str] = Form(None),
     postal_code: Optional[str] = Form(None),
     city: Optional[str] = Form(None),
+    country: Optional[str] = Form(None),
     id_type: Optional[str] = Form(None),
     id_number: Optional[str] = Form(None),
     phone_code: Optional[str] = Form(None),
@@ -3621,7 +3646,7 @@ async def update_crew(
         await db.execute(
             """UPDATE crew_members SET
                    first_name = ?, last_name = ?, gender = ?, birth_date = ?, birth_place = ?,
-                   nationality = ?, street = ?, postal_code = ?, city = ?,
+                   nationality = ?, street = ?, postal_code = ?, city = ?, country = ?,
                    id_type = ?, id_number = ?, phone = ?, email = ?,
                    -- COALESCE : soumettre le formulaire sans toucher à la photo
                    -- ne doit pas effacer celle déjà enregistrée.
@@ -3630,8 +3655,8 @@ async def update_crew(
                WHERE id = ?""",
             (first_name or None, last_name or None, gender or None, birth_date or None,
              birth_place or None, nationality or None, street or None, postal_code or None,
-             city or None, id_type or None, id_number or None, phone or None, email or None,
-             photo, photo, photo, crew_id),
+             city or None, country or None, id_type or None, id_number or None, phone or None,
+             email or None, photo, photo, photo, crew_id),
         )
         await db.commit()
     return RedirectResponse(url=f"/crew/{crew_id}", status_code=303)
@@ -3644,7 +3669,7 @@ async def update_crew(
 CREW_FIELDS = {
     **{f: "text" for f in (
         "first_name", "last_name", "birth_place", "nationality",
-        "street", "postal_code", "city", "id_number", "email",
+        "street", "postal_code", "city", "country", "id_number", "email",
     )},
     "birth_date": "date",
     "gender": "select",
@@ -6131,8 +6156,8 @@ SEARCH_SECTIONS = [
     {
         "title": "Équipiers",
         "section": "equipiers",
-        "fields": ["first_name", "last_name", "city", "nationality", "email", "phone"],
-        "sql": "SELECT id, first_name, last_name, city, nationality, email, phone "
+        "fields": ["first_name", "last_name", "city", "country", "nationality", "email", "phone"],
+        "sql": "SELECT id, first_name, last_name, city, country, nationality, email, phone "
                "FROM crew_members WHERE ({where}) "
                "ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE",
         "url": lambda r: f"/crew/{r['id']}",

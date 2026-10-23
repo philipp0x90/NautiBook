@@ -605,8 +605,6 @@
         </svg>
     </a>
     <div class="dropdown-menu">
-        <a href="/">Accueil</a>
-        <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
         <a href="/a-propos">À propos</a>
         <a href="/help">Aide</a>
     </div>
@@ -928,6 +926,34 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
         form.x.value = x.toFixed(1); form.y.value = y.toFixed(1); form.zoom.value = z.toFixed(3);
     });
 });
+
+// Garder sa place après un enregistrement. Chaque modification sur place est
+// un formulaire envoyé, puis la page se recharge : elle revenait en haut. On
+// note la position de la zone qui défile (#defile) au départ du formulaire —
+// et à tout départ de la page —, et on la rétablit au retour sur la même
+// adresse, dans les secondes qui suivent. Une adresse avec ancre (#journal,
+// #fin…) garde la main : l'ancre l'emporte.
+(function () {
+    const zone = document.getElementById('defile');
+    if (!zone) return;
+    const CLE = 'nb-defilement';
+    function noter() {
+        try {
+            sessionStorage.setItem(CLE, JSON.stringify(
+                { chemin: location.pathname, haut: zone.scrollTop, quand: Date.now() }));
+        } catch (e) { /* navigation privée : tant pis */ }
+    }
+    document.addEventListener('submit', noter, true);
+    addEventListener('pagehide', noter);
+    let note = null;
+    try { note = JSON.parse(sessionStorage.getItem(CLE) || 'null'); } catch (e) {}
+    if (note && note.chemin === location.pathname && !location.hash && Date.now() - note.quand < 15000) {
+        zone.scrollTop = note.haut;
+        // Une seconde fois quand tout est chargé (images, cartes) : la hauteur
+        // de la page peut encore avoir changé.
+        addEventListener('load', () => { zone.scrollTop = note.haut; });
+    }
+})();
 
 // Hauteurs du menu et de la barre collée de la page, pour ce qui se colle
 // dessous (.section-bar-collee, .tableau-colle).
