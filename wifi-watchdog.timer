@@ -1,0 +1,12 @@
+[Unit]
+Description=Chien de garde du wifi, toutes les deux minutes
+
+[Timer]
+# Laisser le wifi s'établir après un démarrage avant le premier contrôle.
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=wifi-watchdog.service
+
+[Install]
+WantedBy=timers.target

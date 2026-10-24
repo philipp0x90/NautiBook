@@ -1,0 +1,10 @@
+[Unit]
+Description=Chien de garde du wifi (relance, puis redémarrage si le routeur reste injoignable)
+
+[Service]
+Type=oneshot
+# root : nmcli radio et systemctl reboot l'exigent. Le script ne touche à rien
+# d'autre (voir wifi-watchdog.sh).
+ExecStart=/home/pi/NautiBook/wifi-watchdog.sh
+StandardOutput=journal
+StandardError=journal

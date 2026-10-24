@@ -63,6 +63,37 @@ journalctl -u nautibook-update -n 30           # ce qu'il a trouvé
 sudo systemctl start nautibook-update.service  # forcer un contrôle tout de suite
 ```
 
+## Wifi : garder le Pi en ligne
+
+Deux réglages, pour que le Pi ne disparaisse pas du wifi du bord :
+
+- **pas de mise en veille du wifi** (`wifi-powersave-off.conf`) : sur un Pi, la
+  puce wifi endormie ne se réveille pas toujours ;
+- **un chien de garde** (`wifi-watchdog.sh`, toutes les deux minutes) : si le Pi ne
+  joint plus le routeur, il relance son wifi ; au bout de 6 minutes sans réseau,
+  il redémarre. Jamais dans l'heure qui suit un démarrage, ni plus d'une fois
+  toutes les six heures : un routeur éteint au port ne fait pas redémarrer le Pi
+  en boucle.
+
+À installer une seule fois, sur le Pi (après une mise à jour qui a apporté ces
+fichiers) :
+
+```bash
+cd /home/pi/NautiBook
+sudo cp wifi-powersave-off.conf /etc/NetworkManager/conf.d/
+sudo cp wifi-watchdog.service wifi-watchdog.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now wifi-watchdog.timer
+sudo systemctl reload NetworkManager      # prend en compte la veille coupée
+iw dev wlan0 get power_save               # doit répondre « Power save: off »
+```
+
+Pour voir ce qu'il fait :
+
+```bash
+journalctl -u wifi-watchdog -n 30         # ses interventions (rien tant que tout va bien)
+```
+
 ## Synchronisation des bases de données
 
 Pour télécharger le fichier `logbook.db` depuis le Pi (qui doit etre sur le meme réseau local):
