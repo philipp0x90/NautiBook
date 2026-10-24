@@ -641,6 +641,10 @@
                 <a href="/cruises/current"><svg class="nav-ic" aria-hidden="true"><use href="#nav-croisieres"></use></svg><span class="nav-lib">Croisières</span></a>
                 <div class="dropdown-menu">
                     <a href="/cruises/current">Croisière en cours</a>
+                    {# La dernière croisière consultée, si ce n'est pas celle en
+                       cours : on y revient d'ici (cookie last_cruise, main.py). #}
+                    {% set derniere = derniere_croisiere(request) %}
+                    {% if derniere %}<a href="/cruises/{{ derniere.id }}" title="Dernière croisière consultée">{{ derniere.name or 'Croisière sans nom' }}</a>{% endif %}
                     <a href="/cruises/list">Liste des croisières</a>
                     {% if voit(request, '/cruises/new') %}<a href="/cruises/new">Nouvelle croisière</a>{% endif %}
                     <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">

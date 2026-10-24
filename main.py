@@ -20,7 +20,7 @@ import requests
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from utils import get_sensor_data, get_position, get_awa
 import import_filemaker
 import passwords
@@ -4402,6 +4402,36 @@ async def cruises_index(request: Request):
     return RedirectResponse(url="/cruises/current", status_code=302)
 
 
+# La dernière croisière consultée, quand ce n'est pas la croisière en cours :
+# le menu Croisières y ramène d'un clic (« Croisière en cours », puis elle).
+# Gardée par appareil dans un cookie — navire, id et nom, le nom pour afficher
+# le menu sans requête — et oubliée dès qu'on ouvre la croisière en cours.
+LAST_CRUISE_COOKIE = "last_cruise"
+
+
+def _remember_cruise(response, cruise, is_current: bool):
+    if is_current:
+        response.delete_cookie(LAST_CRUISE_COOKIE)
+    else:
+        valeur = json.dumps({"ship": cruise["ship_id"], "id": cruise["id"], "name": cruise["name"] or ""})
+        response.set_cookie(LAST_CRUISE_COOKIE, quote(valeur), max_age=365 * 24 * 3600, httponly=True)
+    return response
+
+
+def _last_cruise(request: Request) -> Optional[dict]:
+    """La dernière croisière consultée, si elle est du navire courant."""
+    try:
+        valeur = json.loads(unquote(request.cookies.get(LAST_CRUISE_COOKIE, "")))
+    except ValueError:
+        return None
+    if not isinstance(valeur, dict) or valeur.get("ship") != get_current_ship_id(request):
+        return None
+    return valeur
+
+
+templates.env.globals["derniere_croisiere"] = _last_cruise
+
+
 @app.get("/cruises/current", response_class=HTMLResponse)
 async def current_cruise(request: Request):
     ship_id = get_current_ship_id(request)
@@ -4443,7 +4473,7 @@ async def current_cruise(request: Request):
         recap = await _cruise_recap(db, cruise)
         cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
         itinerary_row = await cursor.fetchone()
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "cruises/detail.html",
         {
             "request": request,
@@ -4460,6 +4490,7 @@ async def current_cruise(request: Request):
             "itinerary_id": itinerary_row[0] if itinerary_row else None,
         },
     )
+    return _remember_cruise(response, cruise, True)
 
 
 # ── Import d'une croisière FileMaker ──
@@ -4688,7 +4719,7 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
         recap = await _cruise_recap(db, cruise)
         cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
         itinerary_row = await cursor.fetchone()
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "cruises/detail.html",
         {
             "request": request,
@@ -4706,6 +4737,7 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
             "itinerary_id": itinerary_row[0] if itinerary_row else None,
         },
     )
+    return _remember_cruise(response, cruise, is_current)
 
 
 @app.post("/cruises/{cruise_id}/arrival")
@@ -4761,11 +4793,16 @@ async def cruise_set_name(cruise_id: int, name: Optional[str] = Form(None)):
 
 
 @app.post("/cruises/{cruise_id}/delete")
-async def delete_cruise(cruise_id: int):
+async def delete_cruise(request: Request, cruise_id: int):
     async with connect() as db:
         await db.execute("DELETE FROM cruises WHERE id = ?", (cruise_id,))
         await db.commit()
-    return RedirectResponse(url="/cruises/list", status_code=303)
+    response = RedirectResponse(url="/cruises/list", status_code=303)
+    # Supprimée, elle ne peut plus rester « la dernière consultée » du menu.
+    derniere = _last_cruise(request)
+    if derniere and derniere.get("id") == cruise_id:
+        response.delete_cookie(LAST_CRUISE_COOKIE)
+    return response
 
 
 @app.post("/cruises/new")

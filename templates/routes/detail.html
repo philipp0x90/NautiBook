@@ -114,6 +114,10 @@
         .route-layout { grid-template-columns: 1fr; }
         .bottom-grid { grid-template-columns: 1fr; }
     }
+    /* Lien vers la croisière, à gauche du nom de la route. */
+    .route-croisiere { font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none;
+                       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .route-croisiere:hover { text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -134,18 +138,21 @@
 
     <div style="text-align:center">
         <div style="font-size:18px;font-weight:700;border:2px solid #dde5ee;border-radius:8px;padding:8px 20px;display:inline-block">
-            {# Même forme courte que dans le tableau de la page croisière. À côté,
-               le numéro de la croisière puis celui de la route (« 001·04 ») ;
-               le nom de la croisière en infobulle. #}
+            {# Même forme courte que dans le tableau de la page croisière. Plus de
+               numéro (« 001·04 ») : la croisière est nommée à gauche, et le
+               numéro de la route reste dans la liste des routes. #}
             {% if route.departure_location and route.destination_location %}
                 {{ route.departure_location }} - {{ route.destination_location }}
-                <span style="font-size:14px;color:var(--muted)" title="{{ route.cruise_name or '' }}">
-                    ({% if route.cruise_number %}{{ '%03d'|format(route.cruise_number) }}·{% endif %}{{ '%02d'|format(route.number) }})
-                </span>
             {% else %}
                 Route #{{ route.number }}
             {% endif %}
         </div>
+        {# La croisière de la route, centrée sous son nom : un clic y ramène,
+           que la croisière soit en cours ou passée. #}
+        {% if route.cruise_id %}
+        <div style="margin-top:3px"><a href="/cruises/{{ route.cruise_id }}" class="route-croisiere"
+           title="Ouvrir la croisière">‹ {{ route.cruise_name or 'Croisière' }}</a></div>
+        {% endif %}
     </div>
 
     <div style="justify-self:end">
