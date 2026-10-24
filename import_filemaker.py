@@ -1,6 +1,7 @@
 """Import ponctuel d'une croisière de l'ancienne solution FileMaker.
 
-Lit les trois exports CSV d'une croisière (UTF-8, séparateur « ; » ou « , »)
+Lit les trois exports CSV d'une croisière — ou de toutes à la fois, voir
+decouper() — (UTF-8, séparateur « ; » ou « , »)
 — la croisière, ses routes, ses lignes — et les écrit dans une base NautiBook :
 la croisière, ses routes, leurs lignes de journal, les escales et l'équipage.
 Chaque fichier est reconnu à ses titres de colonnes, pas à son nom.
@@ -40,7 +41,9 @@ import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
-VOILES = {"GV 1ris + Gén.": "GV 1 Ris + Génois", "+ Appui mot.": "+ Appui Moteur"}
+VOILES = {"GV 1ris + Gén.": "GV 1 Ris + Génois", "GV 2ris + Gén.": "GV 2 Ris + Génois",
+          "GV 1ris+ Trinq.": "GV 1 Ris + Trinq.", "GV 2ris+ Trinq.": "GV 2 Ris + Trinq.",
+          "+ Appui mot.": "+ Appui Moteur", "A sec": "À sec"}
 TYPES_ESCALE = {}   # FileMaker et NautiBook ont les mêmes types (Port, Marina, Bouée, Mouillage)
 VOILES_APP = {"Moteur", "GV + Génois", "GV 1 Ris + Génois", "GV 2 Ris + Génois", "GV + Moteur",
               "+ Appui Moteur", "Génois seul", "GV seule", "GV + Trinq.", "GV 1 Ris + Trinq.",
@@ -128,14 +131,21 @@ def nombre(v):
 
 
 def dms(v):
-    """« 41°56'14,14 N » → 41.937261 ; « 15°53'25,28 E » → 15.890356."""
+    """« 41°56'14,14 N » → 41.937261 ; « 15°53'25,28 E » → 15.890356.
+    Les croisières de 2022-2023 ont d'autres formes, acceptées aussi :
+    secondes suivies de '' (« 5°36'20,13'' E »), sans secondes (« 43°04'N »),
+    secondes sans partie entière (« 43°04',50 N » : 0,50 s). Sans degrés
+    (« °0'0 N », la rubrique vide de FileMaker), pas de position."""
     v = texte(v)
     if v is None:
         return None
-    m = re.fullmatch(r"(\d+)°(\d+)'([\d,.]+)\s*([NSEW])", v)
+    m = re.fullmatch(r"(\d*)°(\d+)'(?:([\d,.]*)(?:''|\"|″)?)?\s*([NSEW])", v)
     if not m:
         raise ValueError(f"position illisible : {v}")
-    d = int(m[1]) + int(m[2]) / 60 + float(m[3].replace(",", ".")) / 3600
+    if not m[1]:
+        return None
+    secondes = (m[3] or "").replace(",", ".")
+    d = int(m[1]) + int(m[2]) / 60 + (float(secondes) if secondes.strip(".") else 0) / 3600
     return round(-d if m[4] in "SW" else d, 6)
 
 
@@ -167,7 +177,7 @@ def importer(base, nom: str, navire: int, exports: dict) -> dict:
         return _importer(base, nom, navire, croisiere_rows, routes_rows, lignes_rows, remarques)
     except ImportErreur:
         raise
-    except (ValueError, KeyError, IndexError) as e:
+    except (ValueError, KeyError, IndexError, TypeError) as e:
         raise ImportErreur(f"Valeur illisible dans les exports : {e}") from e
 
 
@@ -315,7 +325,10 @@ def _importer(base, nom, navire, croisiere_rows, routes_rows, lignes_rows, remar
                 "INSERT INTO cruise_crew (cruise_id, crew_member_id, role, embark_date, disembark_date) "
                 "VALUES (?, ?, ?, ?, ?)",
                 (cruise_id, membre_id, "skipper" if not equipage else "crew",
-                 jour(r["ta_Equipages::Embarquement"]).isoformat(), jour(r["ta_Equipages::Débarquement"]).isoformat()))
+                 # Sans date d'embarquement ou de débarquement : celles de la
+                 # croisière (l'équipier l'a faite entière, le cas courant).
+                 (jour(r["ta_Equipages::Embarquement"]) if texte(r["ta_Equipages::Embarquement"]) else debut).isoformat(),
+                 (jour(r["ta_Equipages::Débarquement"]) if texte(r["ta_Equipages::Débarquement"]) else fin).isoformat()))
             equipage.append(f"{nom_complet} ({'fiche existante' if trouve else 'fiche créée'})")
 
         db.commit()
@@ -329,16 +342,122 @@ def _importer(base, nom, navire, croisiere_rows, routes_rows, lignes_rows, remar
             "escales": n_escales, "equipage": equipage, "remarques": remarques}
 
 
+# ── Plusieurs croisières à la fois ──
+# Les trois exports peuvent porter toutes les croisières d'un coup (« Afficher
+# tous les enregistrements » dans FileMaker, puis trois exports). decouper()
+# les répartit : une croisière commence à chaque rangée qui porte un
+# _ID_Croisière (les rangées suivantes, sans, sont son équipage et ses
+# escales) ; une route va à sa croisière par ext_ID_Croisière si l'export
+# l'a, sinon par sa date de départ, comprise entre le début et la fin de la
+# croisière ; une ligne suit sa route (ext_ID_Route).
+
+def nom_auto(c) -> str:
+    """Le nom d'une croisière faute de rubrique dans FileMaker : « Ancona-Tremiti
+    2025 », ou « Portorosa 2024 » pour une boucle."""
+    origine, destination = texte(c["Croisière_Origine"]) or "?", texte(c["Croisière_Destination"]) or "?"
+    lieux = origine if plie(origine) == plie(destination) else f"{origine}-{destination}"
+    return f"{lieux} {jour(c['Croisière_date_debut']).year}"
+
+
+def decouper(exports: dict) -> list:
+    """Les exports (sortie de reconnaitre()) → une liste d'exports d'une seule
+    croisière chacun, dans l'ordre du fichier. Lève ImportErreur pour une route
+    qu'aucune croisière ne réclame, ou une ligne sans sa route."""
+    croisieres = []
+    for r in exports["croisière"]:
+        if texte(r["_ID_Croisière"]):
+            croisieres.append({"croisière": [r], "routes": [], "lignes": []})
+        elif croisieres:
+            croisieres[-1]["croisière"].append(r)
+    par_id = {texte(c["croisière"][0]["_ID_Croisière"]): c for c in croisieres}
+
+    route_croisiere, courante = {}, None
+    for r in exports["routes"]:
+        if texte(r["_ID_Route"]):
+            courante = None
+            if texte(r.get("ext_ID_Croisière")):
+                courante = par_id.get(texte(r["ext_ID_Croisière"]))
+            else:
+                depart = moment(r["RO_Moment_Depart"]).date()
+                for c in croisieres:
+                    tete = c["croisière"][0]
+                    fin = jour(tete["Croisière_date_fin"]) if texte(tete["Croisière_date_fin"]) else depart
+                    if jour(tete["Croisière_date_debut"]) <= depart <= fin:
+                        courante = c
+                        break
+            if courante is None:
+                raise ImportErreur(f"Route {r['_ID_Route']} ({texte(r['RO_Origine'])} → {texte(r['RO_Destination'])}, "
+                                   f"{texte(r['RO_Moment_Depart'])}) : aucune croisière à ces dates.")
+            route_croisiere[int(r["_ID_Route"])] = courante
+        if courante is not None:
+            courante["routes"].append(r)
+
+    for l in exports["lignes"]:
+        if not texte(l["_ID_Ligne"]):
+            continue
+        c = route_croisiere.get(int(l["ext_ID_Route"]))
+        if c is None:
+            raise ImportErreur(f"Ligne {l['_ID_Ligne']} : route {l['ext_ID_Route']} absente de l'export des routes.")
+        c["lignes"].append(l)
+    return croisieres
+
+
+def importer_serie(base, navire: int, exports: dict) -> list:
+    """Importe chaque croisière des exports, chacune dans sa propre transaction
+    (importer()). Une croisière dont les dates chevauchent une croisière déjà
+    présente sur le navire est sautée — elle y est sans doute déjà, sous un
+    autre nom ; une croisière en erreur est signalée sans arrêter les autres.
+    Renvoie un compte rendu par croisière."""
+    compte_rendu = []
+    for ex in decouper(exports):
+        c = ex["croisière"][0]
+        nom = nom_auto(c)
+        debut = jour(c["Croisière_date_debut"])
+        fin = jour(c["Croisière_date_fin"]) if texte(c["Croisière_date_fin"]) else debut
+        db = sqlite3.connect(base)
+        try:
+            deja = db.execute(
+                "SELECT name, substr(start_time, 1, 10), substr(end_time, 1, 10) FROM cruises "
+                "WHERE ship_id = ? AND substr(start_time, 1, 10) <= ? "
+                "AND COALESCE(NULLIF(substr(end_time, 1, 10), ''), substr(start_time, 1, 10)) >= ?",
+                (navire, fin.isoformat(), debut.isoformat())).fetchone()
+        finally:
+            db.close()
+        if deja:
+            compte_rendu.append({"nom": nom, "debut": debut, "fin": fin,
+                                 "saute": f"chevauche « {deja[0]} » déjà présente"})
+            continue
+        try:
+            compte_rendu.append({**importer(base, nom, navire, ex), "debut": debut, "fin": fin})
+        except ImportErreur as e:
+            compte_rendu.append({"nom": nom, "debut": debut, "fin": fin, "erreur": str(e)})
+    return compte_rendu
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("dossier", type=Path, help="dossier contenant les trois exports .csv")
     p.add_argument("--base", type=Path, required=True, help="la base NautiBook où écrire")
-    p.add_argument("--nom", required=True, help="nom de la croisière dans NautiBook")
+    p.add_argument("--nom", help="nom de la croisière (une seule croisière) ; plusieurs : nommées d'après "
+                                 "leurs lieux et leur année")
     p.add_argument("--navire", type=int, default=1, help="id du navire (ship_info), 1 par défaut")
     args = p.parse_args()
     try:
         exports = reconnaitre({f.name: lire(f) for f in sorted(args.dossier.glob("*.csv"))})
-        r = importer(args.base, args.nom, args.navire, exports)
+        if len(decouper(exports)) > 1:
+            for r in importer_serie(args.base, args.navire, exports):
+                quand = f"{r['debut']:%d/%m/%Y}"
+                if "saute" in r:
+                    print(f"- sautée    {r['nom']} ({quand}) : {r['saute']}")
+                elif "erreur" in r:
+                    print(f"! erreur    {r['nom']} ({quand}) : {r['erreur']}")
+                else:
+                    print(f"+ importée  {r['nom']} ({quand}) : {r['routes']} routes, {r['lignes']} lignes, "
+                          f"{r['escales']} escales ; équipage : {', '.join(r['equipage'])}")
+                    for m in r["remarques"]:
+                        print("      ! " + m)
+            return
+        r = importer(args.base, args.nom or nom_auto(exports["croisière"][0]), args.navire, exports)
     except ImportErreur as e:
         sys.exit(str(e))
     print(f"« {r['nom']} » importée dans {args.base} (croisière n° {r['cruise_id']}) :")

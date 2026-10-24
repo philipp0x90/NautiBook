@@ -4397,29 +4397,6 @@ async def remove_itinerary_stage(request: Request, stage_id: int):
     return RedirectResponse(url=f"/cruises/itinerary/{row[0]}", status_code=303)
 
 
-@app.post("/cruises/{cruise_id}/itinerary/new")
-async def create_cruise_itinerary(request: Request, cruise_id: int):
-    """« + Itinéraire » sur la page d'une croisière qui n'en a pas : un
-    itinéraire à son nom, déjà rattaché."""
-    async with connect() as db:
-        cursor = await db.execute("SELECT ship_id, name, start_time FROM cruises WHERE id = ?", (cruise_id,))
-        cruise = await cursor.fetchone()
-        if cruise is None:
-            raise HTTPException(status_code=404, detail="Cruise not found")
-        cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
-        existing = await cursor.fetchone()
-        if existing:
-            return RedirectResponse(url=f"/cruises/itinerary/{existing[0]}", status_code=303)
-        cursor = await db.execute(
-            "INSERT INTO itineraries (ship_id, name, start_date, cruise_id, created_at, created_by)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (cruise[0], cruise[1], (cruise[2] or "")[:10] or None, cruise_id, datetime.now(), _who(request)),
-        )
-        itinerary_id = cursor.lastrowid
-        await db.commit()
-    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}", status_code=303)
-
-
 @app.get("/cruises", response_class=HTMLResponse)
 async def cruises_index(request: Request):
     return RedirectResponse(url="/cruises/current", status_code=302)
@@ -4527,6 +4504,13 @@ async def cruise_import(request: Request, nom: Optional[str] = Form(None),
         if not lus:
             raise import_filemaker.ImportErreur("Choisissez les trois fichiers exportés de FileMaker.")
         exports = import_filemaker.reconnaitre(lus)
+        # Toutes les croisières d'un coup : chacune importée à part, nommée
+        # d'après ses lieux et son année, celles déjà présentes sautées.
+        if len(import_filemaker.decouper(exports)) > 1:
+            serie = await asyncio.to_thread(import_filemaker.importer_serie, DATABASE_URL,
+                                            get_current_ship_id(request), exports)
+            return await _cruise_import_page(request, serie=serie)
+        nom = (nom or "").strip() or import_filemaker.nom_auto(exports["croisière"][0])
         resultat = await asyncio.to_thread(import_filemaker.importer, DATABASE_URL, nom,
                                            get_current_ship_id(request), exports)
     except import_filemaker.ImportErreur as e:
@@ -4535,8 +4519,13 @@ async def cruise_import(request: Request, nom: Optional[str] = Form(None),
 
 
 @app.get("/cruises/list", response_class=HTMLResponse)
-async def cruise_list(request: Request):
+async def cruise_list(request: Request, ordre: Optional[str] = None):
+    """?ordre=desc (la plus récente en tête, par défaut) ou asc : choisi par les
+    flèches de la barre, et gardé pour l'appareil dans le cookie cruise_order."""
     ship_id = get_current_ship_id(request)
+    if ordre not in ("asc", "desc"):
+        ordre = request.cookies.get("cruise_order")
+    ordre = "asc" if ordre == "asc" else "desc"
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -4559,20 +4548,27 @@ async def cruise_list(request: Request):
                        -- 12.299999999999955 pour 512.3 - 500.0.
                        ROUND(COALESCE(c.loch_end, {LOCH_LAST})
                              - COALESCE(c.loch_start, {LOCH_FIRST}), 1) AS distance
-                FROM cruises c WHERE c.ship_id = ? ORDER BY {CRUISE_ORDER}""",
+                FROM cruises c WHERE c.ship_id = ?
+                -- La plus récente en tête, ou la plus ancienne (ordre) ; les
+                -- numéros (001 = la plus ancienne) restent ceux de CRUISE_NUMBER.
+                ORDER BY COALESCE(c.start_time, c.created_at) {"ASC" if ordre == "asc" else "DESC"},
+                         c.id {"ASC" if ordre == "asc" else "DESC"}""",
             (ship_id,),
         )
         cruises = await cursor.fetchall()
         current_id = await _current_cruise_id(db, ship_id)
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "cruises/list.html",
         {
             "request": request,
             "active_section": "cruises",
             "cruises": [dict(c) for c in cruises],
             "current_cruise_id": current_id,
+            "ordre": ordre,
         },
     )
+    response.set_cookie("cruise_order", ordre, max_age=365 * 24 * 3600, httponly=True)
+    return response
 
 
 @app.get("/cruises/stopovers", response_class=HTMLResponse)

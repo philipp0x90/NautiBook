@@ -19,6 +19,20 @@
         font-size: 11px; font-weight: 700; text-transform: none;
         letter-spacing: 0.5px; white-space: nowrap;
     }
+    /* Nom de la croisière : il passe à la ligne s'il est long (« Saint-Mandrier-
+       La Seyne-sur-mer 2023 ») au lieu d'élargir le tableau au-delà de l'écran. */
+    .nom-croisiere { font-weight: 700; text-transform: uppercase; min-width: 150px; line-height: 1.3; }
+    /* iPad (880 px) : titres sans espacement, cellules plus serrées. */
+    @media (max-width: 1000px) {
+        .liste-croisieres th { letter-spacing: 0; padding-left: 6px; padding-right: 6px; }
+        .liste-croisieres td { padding-left: 6px; padding-right: 6px; }
+    }
+    .ordre-titre { display: flex; align-items: center; justify-content: center; gap: 12px; }
+    .ordre-fleches { display: inline-flex; gap: 2px; margin: -10px 0; }   /* ne grandit pas la barre */
+    .ordre-fleches a { color: #fff; opacity: .45; text-decoration: none; font-size: 14px; padding: 4px 5px;
+                       border-radius: 5px; line-height: 1; }
+    .ordre-fleches a:hover { opacity: .9; background: rgba(255,255,255,.18); }
+    .ordre-fleches a.actif { opacity: 1; }
 </style>
 {% endblock %}
 
@@ -28,13 +42,22 @@
    Croisières (base.html). La croisière en cours se repère dans le tableau et
    s'ouvre d'un clic sur sa ligne. #}
 
+{# Les flèches, juste à gauche du titre : ▼ la plus récente en tête, ▲ la plus
+   ancienne ; la flèche de l'ordre affiché est pleine. Le choix est gardé pour
+   l'appareil (cookie cruise_order). #}
 <div class="section-bar section-bar-collee">
-    <div class="section-bar-title">Liste des croisières</div>
+    <div class="section-bar-title ordre-titre">
+        <span class="ordre-fleches">
+            <a href="/cruises/list?ordre=desc" class="{{ 'actif' if ordre == 'desc' }}" title="Les plus récentes d'abord" aria-label="Les plus récentes d'abord">▼</a>
+            <a href="/cruises/list?ordre=asc" class="{{ 'actif' if ordre == 'asc' }}" title="Les plus anciennes d'abord" aria-label="Les plus anciennes d'abord">▲</a>
+        </span>
+        Liste des croisières
+    </div>
 </div>
 
 {% if cruises %}
 <div class="tableau-colle">
-    <table class="data-table titres-legers">
+    <table class="data-table titres-legers liste-croisieres">
         <thead>
             {# Lieu et date réunis par colonne (le lieu, la date dessous), comme
                sur la page de la croisière : deux colonnes de moins, ce qui
@@ -64,7 +87,7 @@
                 onclick="rowLink(event, '/cruises/{{ c.id }}')">
                 {# Capitales par CSS et non par un filtre upper : la casse
                    saisie reste intacte en base et dans les autres écrans. #}
-                <td style="font-weight:700;text-transform:uppercase;white-space:nowrap">
+                <td class="nom-croisiere">
                     {{ c.name or '—' }}
                     {% if current %}<span class="chip-current">en cours</span>{% endif %}
                 </td>

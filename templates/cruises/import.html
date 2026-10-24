@@ -40,15 +40,38 @@
     </section>
     {% endif %}
 
+    {# Import en série : une ligne par croisière — importée, sautée (déjà
+       présente : ses dates chevauchent une croisière du navire) ou en erreur. #}
+    {% if serie %}
+    <section class="import-ok">
+        <strong>{{ serie | selectattr('cruise_id') | list | length }} croisière{{ 's' if (serie | selectattr('cruise_id') | list | length) > 1 }} importée{{ 's' if (serie | selectattr('cruise_id') | list | length) > 1 }}</strong>
+        sur {{ current_ship.name if current_ship else 'le navire' }}, sur {{ serie | length }} dans les fichiers.
+        <ul style="margin-top:6px">
+        {% for c in serie %}
+            <li>
+                {% if c.cruise_id %}<a href="/cruises/{{ c.cruise_id }}">{{ c.nom }}</a> ({{ c.debut.strftime('%d/%m/%Y') }}) :
+                    {{ c.routes }} routes, {{ c.lignes }} lignes, {{ c.escales }} escales.
+                    {% if c.remarques %}<details><summary>{{ c.remarques | length }} remarque{{ 's' if c.remarques | length > 1 }}</summary>
+                    <ul>{% for m in c.remarques %}<li>{{ m }}</li>{% endfor %}</ul></details>{% endif %}
+                {% elif c.saute %}<span style="color:var(--muted)">{{ c.nom }} ({{ c.debut.strftime('%d/%m/%Y') }}) : sautée, {{ c.saute }}.</span>
+                {% else %}<span style="color:#b91c1c">{{ c.nom }} ({{ c.debut.strftime('%d/%m/%Y') }}) : {{ c.erreur }} Rien n'est importé pour elle.</span>{% endif %}
+            </li>
+        {% endfor %}
+        </ul>
+        <div style="margin-top:6px;font-size:13px">Les noms viennent des lieux et de l'année : modifiables sur la page de chaque croisière.</div>
+    </section>
+    {% endif %}
+
     {% if erreur %}<div class="import-error">{{ erreur }} Rien n'a été importé.</div>{% endif %}
 
     <section class="card">
         <h3>1. Exporter la croisière depuis FileMaker</h3>
         <ol>
-            <li>Dans FileMaker, affichez la croisière à importer.</li>
+            <li>Dans FileMaker, affichez la croisière à importer — ou <strong>toutes</strong>
+                (« Afficher tous les enregistrements ») pour les importer d'un coup.</li>
             <li>Exportez <strong>trois fichiers</strong>, un par table, avec « Fichier › Exporter les enregistrements » :
                 <strong>la croisière</strong>, <strong>ses routes</strong> et <strong>ses lignes</strong>
-                (seulement les enregistrements de cette croisière).</li>
+                (les enregistrements affichés).</li>
             <li>Format : <strong>« Valeurs séparées par des virgules (.csv) »</strong>,
                 jeu de caractères <strong>« Unicode (UTF-8) »</strong>.</li>
             <li>Ne cochez pas « Appliquer le format de la rubrique actuelle ».</li>
@@ -84,7 +107,11 @@
         <div style="display:grid;gap:12px;max-width:520px">
             <div>
                 <label>Nom de la croisière dans NautiBook</label>
-                <input type="text" name="nom" value="{{ nom or '' }}" placeholder="Ex. : Tremiti 2025" required>
+                {# Facultatif : sans lui, « Origine-Destination année ». Ignoré
+                   quand les fichiers portent plusieurs croisières. #}
+                <input type="text" name="nom" value="{{ nom or '' }}" placeholder="Ex. : Tremiti 2025 (sinon : lieux et année)">
+                <div class="meta" style="margin-top:4px">Plusieurs croisières dans les fichiers : chacune est importée
+                    et nommée d'après ses lieux et son année ; celles déjà présentes sont sautées.</div>
             </div>
             <div>
                 <label>Les trois fichiers exportés (sélectionnez-les ensemble)</label>
