@@ -69,6 +69,9 @@
        restent près des noms, et l'espace libre va aux boutons, à droite. */
     .equipage-rappel { background: #e0f2fe; color: #075985; border-radius: 8px; padding: 8px 12px;
                        font-size: 14px; margin-bottom: 10px; }
+    .equipage-tete-ligne { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+    .equipage-tete-ligne .equipage-titre { margin: 0; }
+    .equipage-tete-ligne .equipage-choix { width: auto; min-width: 220px; max-width: 320px; }
     .equipage-titre { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
     .equipage-titre span { font-weight: 400; letter-spacing: 0; }
     .equipage-grille { display: grid; grid-template-columns: minmax(0, 400px) 130px 130px 80px 1fr;
@@ -322,7 +325,26 @@
 {# Équipage — cruise_crew. Le rôle est stocké en anglais ('skipper' / 'crew'),
    comme le DEFAULT de la colonne, et traduit seulement à l'affichage. #}
 <div class="card equipage" id="equipage" style="margin-bottom:16px;padding:14px">
-    <h4 class="equipage-titre">Équipage</h4>
+    {# Sur la ligne du titre, à droite : « Embarquer » (bleu foncé, une
+       confirmation du choix) puis le choix de la personne, qui commence vide (« Équipier·ère ») — il faut la choisir.
+       Les deux appartiennent au formulaire caché « embarquer » (attribut
+       form=). Seulement s'il reste quelqu'un à embarquer et que le rang le permet. #}
+    <div class="equipage-tete-ligne">
+        <h4 class="equipage-titre">Équipage</h4>
+        {% if available_crew and peut(request, 'croisieres.modifier') %}
+        <button type="submit" form="embarquer" class="btn btn-primary embarquer" style="margin-left:auto">Embarquer</button>
+        {# Le message du navigateur, quand rien n'est choisi, remplacé par le nôtre. #}
+        <select name="crew_member_id" form="embarquer" required aria-label="Personne à embarquer"
+                class="equipage-choix" {{ 'autofocus' if nouvelle else '' }}
+                oninvalid="this.setCustomValidity('Sélectionnez un·e équipier·ère dans la liste.')"
+                onchange="this.setCustomValidity('')">
+            <option value="" selected disabled>Équipier·ère</option>
+            {% for m in available_crew %}
+            <option value="{{ m.id }}">{{ m.first_name or '' }} {{ (m.last_name or '') | upper }}</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+    </div>
     {# Juste après la création (?nouvelle=1) : un rappel, et le choix d'un
        équipier prêt à servir. #}
     {% if nouvelle %}
@@ -390,25 +412,9 @@
     {% endif %}
 
     {% if available_crew %}
-    <form method="POST" action="/cruises/{{ cruise.id }}/crew" class="equipage-ajout">
-        <div class="equipage-grille" style="align-items:end">
-            <div>
-                {# Le titre de l'encadré sert d'étiquette au menu. #}
-                <label class="equipage-ajout-titre">Embarquer un équipier :</label>
-                <select name="crew_member_id" required aria-label="Personne à embarquer" {{ 'autofocus' if nouvelle else '' }}>
-                    {% for m in available_crew %}
-                    <option value="{{ m.id }}">{{ m.first_name or '' }} {{ (m.last_name or '') | upper }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            {# Ni date d'embarquement ni de débarquement ici : l'équipier embarque
-               à la date du jour (add_cruise_crew), modifiable ensuite sur sa
-               ligne, et on ne fixe pas à l'avance quand il débarquera. #}
-            <div class="actions" style="grid-column: 2 / -1; justify-content: flex-start">
-                <button type="submit" class="btn btn-yellow embarquer">+ Embarquer</button>
-            </div>
-        </div>
-    </form>
+    {# L'équipier embarque à la date du jour (add_cruise_crew), modifiable
+       ensuite sur sa ligne ; on ne fixe pas à l'avance quand il débarquera. #}
+    <form method="POST" action="/cruises/{{ cruise.id }}/crew" id="embarquer" hidden></form>
     {% elif not aboard %}
     <div>
         <a href="/crew/new" class="btn btn-yellow">+ Créer une fiche d'équipier</a>
