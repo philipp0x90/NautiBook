@@ -52,6 +52,12 @@
        avant ce réglage est à supprimer et à recréer. #}
     <link rel="manifest" href="/icons/site.webmanifest?v=2">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    {# Lancée depuis l'écran d'accueil (sans barre de Safari) : la classe
+       app-autonome fait paraître le bouton « ‹ » de retour de la barre du haut. #}
+    <script>
+    if (navigator.standalone || matchMedia('(display-mode: standalone)').matches)
+        document.documentElement.classList.add('app-autonome');
+    </script>
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="NautiBook">
@@ -153,6 +159,9 @@
         nav li:hover > .dropdown-menu, .logo-menu:hover > .dropdown-menu { display: block; }
         /* Menu de l'ancre (accueil) : calé à gauche, l'ancre étant au bord. */
         .logo-menu { position: relative; flex-shrink: 0; }
+        .topbar-retour { display: none; background: none; border: 0; padding: 0 2px 0 6px; cursor: pointer;
+                         font-size: 34px; line-height: 1; color: #08204e; font-weight: 300; }
+        .app-autonome .topbar-retour { display: block; }
         .logo-menu > .dropdown-menu { left: 6px; transform: none; }
         .dropdown-menu a {
             display: block;
@@ -390,6 +399,22 @@
         .recap-gasoil .titre { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase; letter-spacing: 1px; }
         .recap-gasoil .chiffre { font-size: 20px; font-weight: 700; color: #0f3a4a; margin-top: 2px; }
         .recap-gasoil .detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        /* Visionneuse des PDF : plein écran, au-dessus de tout. */
+        #pdf-visionneuse { display: none; position: fixed; inset: 0; z-index: 1000; background: #4a5561;
+                           flex-direction: column; }
+        #pdf-visionneuse.open { display: flex; }
+        .pdf-barre { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #0f3a4a; color: #fff;
+                     padding-top: max(8px, env(safe-area-inset-top)); }
+        .pdf-barre button { background: rgba(255,255,255,.15); color: #fff; border: 0; border-radius: 8px;
+                            padding: 6px 12px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+        .pdf-barre button:hover { background: rgba(255,255,255,.28); }
+        .pdf-barre .pdf-fermer { background: #fff; color: #0f3a4a; }
+        .pdf-titre { flex: 1; text-align: center; font-weight: 600; font-size: 14px;
+                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pdf-compte { font-size: 12px; opacity: .8; white-space: nowrap; }
+        .pdf-pages { flex: 1; overflow: auto; padding: 12px; -webkit-overflow-scrolling: touch; text-align: center; }
+        .pdf-pages canvas { display: block; margin: 0 auto 12px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+        .pdf-erreur { color: #fff; margin-top: 40px; }
         /* Recadrage des photos (script « Recadrage des photos » plus bas). */
         [data-recadrage-zone] { overflow: hidden; }
         [data-recadrage-zone] .consigne { display: none; }
@@ -593,6 +618,9 @@
     {# Ancre (icone-ancre-nautibook.svg), inlined like the other artwork. The link
        carries the label, so the icon itself is hidden from screen readers. #}
     {# L'ancre mène à l'accueil ; son menu, au mode d'emploi (Aide) et à « À propos ». #}
+    {# Retour en arrière, seulement dans l'app lancée depuis l'écran d'accueil :
+       sans barre de Safari, il n'y en a pas d'autre. #}
+    <button type="button" class="topbar-retour" onclick="history.back()" title="Retour" aria-label="Retour">‹</button>
     <div class="logo-menu">
     <a href="/" class="topbar-logo" title="Accueil" aria-label="Accueil — NautiBook">
         <svg viewBox="0 0 64 64" aria-hidden="true">
@@ -732,6 +760,19 @@
 
 {# Agrandissement de photo, disponible sur toutes les pages : une seule boîte
    dans base.html plutôt qu'une par écran qui affiche une vignette. #}
+{# Visionneuse des PDF (script « PDF » plus bas) : barre en haut, pages dessous. #}
+<div id="pdf-visionneuse" role="dialog" aria-label="Document PDF">
+    <div class="pdf-barre">
+        <button type="button" class="pdf-fermer">✕ Fermer</button>
+        <span class="pdf-titre"></span>
+        <span class="pdf-compte"></span>
+        <button type="button" class="pdf-moins" title="Réduire">−</button>
+        <button type="button" class="pdf-plus" title="Agrandir">+</button>
+        <button type="button" class="pdf-partager" title="Partager ou enregistrer">⤓</button>
+    </div>
+    <div class="pdf-pages"></div>
+</div>
+
 <div id="photo-lightbox" onclick="this.classList.remove('open')" title="Fermer">
     <img id="photo-lightbox-img" src="" alt="">
     <button type="button" class="lb-fleche lb-prec" title="Photo précédente (←)" aria-label="Photo précédente"
@@ -931,6 +972,88 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
         form.x.value = x.toFixed(1); form.y.value = y.toFixed(1); form.zoom.value = z.toFixed(3);
     });
 });
+
+// PDF (documents du navire, factures et reçus des comptes…) : dans une
+// visionneuse plein écran, par-dessus la page, avec son propre « ✕ Fermer ».
+// Ni onglet ni fenêtre : sur l'iPad, l'app lancée depuis l'écran d'accueil n'a
+// pas de barre de Safari pour fermer un onglet ou revenir en arrière. PDF.js
+// (vendor/pdfjs, servi par l'app : marche hors ligne) dessine chaque page —
+// sur iPad, un PDF posé dans la page n'en montrerait que la première. Tout lien
+// vers un .pdf, sur toutes les pages, s'ouvre ici ; ⌘-clic : le navigateur.
+(function () {
+    const fond = document.getElementById('pdf-visionneuse');
+    if (!fond) return;
+    const pages = fond.querySelector('.pdf-pages'), titre = fond.querySelector('.pdf-titre'),
+          compte = fond.querySelector('.pdf-compte');
+    let pdfjs = null, doc = null, zoom = 1, url = null, rendu = 0;
+    async function charger() {
+        if (!pdfjs) {
+            pdfjs = await import('/vendor/pdfjs/pdf.min.mjs');
+            pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
+        }
+    }
+    async function dessiner() {
+        const tour = ++rendu;   // un nouveau zoom interrompt le rendu en cours
+        pages.innerHTML = '';
+        const largeur = pages.clientWidth - 24, dpr = window.devicePixelRatio || 1;
+        for (let n = 1; n <= doc.numPages; n++) {
+            const page = await doc.getPage(n);
+            if (tour !== rendu) return;
+            const base = page.getViewport({ scale: 1 });
+            const vue = page.getViewport({ scale: largeur / base.width * zoom });
+            const toile = document.createElement('canvas');
+            toile.width = Math.floor(vue.width * dpr); toile.height = Math.floor(vue.height * dpr);
+            toile.style.width = Math.floor(vue.width) + 'px'; toile.style.height = Math.floor(vue.height) + 'px';
+            pages.appendChild(toile);
+            await page.render({ canvasContext: toile.getContext('2d'), viewport: vue,
+                                transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null }).promise;
+        }
+    }
+    window.ouvrirPdf = async function (adresse, nom) {
+        url = adresse; zoom = 1;
+        titre.textContent = nom || decodeURIComponent(adresse.split('/').pop().replace(/^\d{8}-\d{6}_/, ''));
+        compte.textContent = 'Chargement…';
+        pages.innerHTML = '';
+        fond.classList.add('open');
+        try {
+            await charger();
+            doc = await pdfjs.getDocument({ url: adresse, withCredentials: true }).promise;
+            compte.textContent = doc.numPages + (doc.numPages > 1 ? ' pages' : ' page');
+            await dessiner();
+        } catch (err) {
+            compte.textContent = '';
+            pages.innerHTML = '<div class="pdf-erreur">Impossible d\'afficher ce PDF.</div>';
+        }
+    };
+    function fermer() {
+        fond.classList.remove('open'); rendu++; pages.innerHTML = '';
+        if (doc) { doc.destroy(); doc = null; }
+    }
+    fond.querySelector('.pdf-fermer').addEventListener('click', fermer);
+    fond.querySelector('.pdf-moins').addEventListener('click', () => { if (doc && zoom > 0.5) { zoom = Math.max(0.5, zoom - 0.25); dessiner(); } });
+    fond.querySelector('.pdf-plus').addEventListener('click', () => { if (doc && zoom < 3) { zoom = Math.min(3, zoom + 0.25); dessiner(); } });
+    // Partager (iPad : enregistrer, imprimer, AirDrop…) ; sinon télécharger.
+    fond.querySelector('.pdf-partager').addEventListener('click', async () => {
+        try {
+            const blob = await (await fetch(url, { credentials: 'same-origin' })).blob();
+            const fichier = new File([blob], titre.textContent.replace(/[^\w .-]+/g, '_') || 'document.pdf',
+                                     { type: 'application/pdf' });
+            if (navigator.canShare && navigator.canShare({ files: [fichier] })) {
+                await navigator.share({ files: [fichier] });
+                return;
+            }
+        } catch (e) { if (e && e.name === 'AbortError') return; }
+        const a = document.createElement('a'); a.href = url; a.download = ''; document.body.appendChild(a); a.click(); a.remove();
+    });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && fond.classList.contains('open')) fermer(); });
+    document.addEventListener('click', function (e) {
+        const lien = e.target.closest && e.target.closest('a[href]');
+        if (!lien || !/\.pdf(\?|#|$)/i.test(lien.getAttribute('href'))) return;
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        ouvrirPdf(lien.href);
+    });
+})();
 
 // Garder sa place après un enregistrement. Chaque modification sur place est
 // un formulaire envoyé, puis la page se recharge : elle revenait en haut. On

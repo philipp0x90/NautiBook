@@ -906,6 +906,13 @@ IMG_DIR.mkdir(exist_ok=True)
 ICONS_DIR = Path(__file__).parent / "icons"
 app.mount("/icons", StaticFiles(directory=ICONS_DIR), name="icons")
 
+# Bibliothèques tierces servies par l'app elle-même plutôt que par un CDN, pour
+# marcher sans Internet en mer : PDF.js (vendor/pdfjs, version dans VERSION),
+# la visionneuse des PDF de base.html — sur iPad, un PDF posé dans la page
+# n'affiche que sa première page.
+VENDOR_DIR = Path(__file__).parent / "vendor"
+app.mount("/vendor", StaticFiles(directory=VENDOR_DIR), name="vendor")
+
 
 # Deux fichiers que les navigateurs vont chercher d'eux-mêmes à la racine,
 # sans lire les <link> de la page : /favicon.ico (onglet, historique, favoris)

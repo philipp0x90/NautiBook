@@ -426,7 +426,7 @@
     // Clic sur une ligne de document, hors bouton « Supprimer ».
     function ouvrirDocument(event, url, pdf) {
         if (event.target.closest('button, form')) return;
-        if (pdf) { window.open(url, '_blank', 'noopener'); return; }
+        if (pdf) { ouvrirPdf(url, event.currentTarget.querySelector('td').textContent.trim()); return; }   // visionneuse (base.html)
         const img = new Image();
         img.src = url;
         agrandirPhoto(event, img);
