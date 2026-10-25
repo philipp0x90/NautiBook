@@ -192,6 +192,8 @@
     <input type="hidden" name="name"><input type="hidden" name="contact_id" value="{{ contact.id }}">
 </form>
 <script>
+// Le carnet d'adresses, au retour, se placera sur ce contact.
+try { sessionStorage.setItem('nb-contact-consulte', '{{ contact.id }}'); } catch (e) {}
 // Menu Catégorie : « + Catégorie » demande un nom, crée la catégorie et la
 // donne à ce contact ; un autre choix s'enregistre comme d'habitude.
 function choisirCategorie(select) {

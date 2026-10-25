@@ -6,7 +6,8 @@
     .filtres-contacts label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-weight: 600; }
     .filtres-contacts select { width: auto; min-width: 160px; padding: 4px 8px; }
     /* Cases modifiables sur place : du texte au repos, un cadre au survol. */
-    .ligne-contact td { padding-top: 2px; padding-bottom: 2px; }
+    .ligne-contact td { padding-top: 2px; padding-bottom: 2px; transition: background .6s; }
+    .ligne-contact.retrouvee td { background: #fff6cc; }
     .ligne-contact .case { margin: 0; }
     .ligne-contact .case input, .ligne-contact .case select {
         width: 100%; min-width: 90px; padding: 3px 6px; font: inherit; background: transparent;
@@ -86,7 +87,7 @@
                fiche (update_contact_field, retour=liste). Le pays plutôt que
                l'email et sans le téléphone : on cherche un contact selon où il est,
                ses coordonnées sont sur sa fiche. #}
-            <tr class="ligne-contact" data-categorie="{{ c.category or '' }}" data-pays="{{ c.country or '' }}"
+            <tr class="ligne-contact" data-id="{{ c.id }}" data-categorie="{{ c.category or '' }}" data-pays="{{ c.country or '' }}"
                 style="cursor:pointer" title="Ouvrir ce contact" onclick="rowLink(event, '/ship/contacts/{{ c.id }}')">
                 <td class="lu"><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
                 <td class="lu">{{ c.contact_name or '' }}</td>
@@ -159,6 +160,19 @@
     });
     pays.addEventListener('change', filtrer);
     filtrer();
+
+    // Retour au carnet : on retrouve la ligne du dernier contact consulté (la
+    // fiche le note en s'ouvrant, y compris par Précédent / Suivant), centrée
+    // à l'écran et brièvement mise en évidence, au lieu du haut de la page.
+    let dernier = null;
+    try { dernier = sessionStorage.getItem('nb-contact-consulte'); } catch (e) {}
+    const ligne = dernier && !location.hash && document.querySelector('.ligne-contact[data-id="' + dernier + '"]');
+    if (ligne && !ligne.hidden) {
+        const placer = () => ligne.scrollIntoView({ block: 'center' });
+        placer(); addEventListener('load', placer);
+        ligne.classList.add('retrouvee');
+        setTimeout(() => ligne.classList.remove('retrouvee'), 1800);
+    }
 })();
 // Catégorie d'une ligne : « + Catégorie » la crée et la donne à ce contact,
 // puis le carnet se rouvre ; un autre choix s'enregistre aussitôt.
