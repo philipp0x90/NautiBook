@@ -40,6 +40,8 @@
     .contact-notes::placeholder { color: #b8c4d0; }
     .achats-titre { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 8px 0 6px; }
     .achats-titre span { font-size: 12px; color: var(--muted); }
+    .contact-actions { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 18px; }
+    .contact-actions form { margin: 0; }
 </style>
 {% endblock %}
 
@@ -58,7 +60,7 @@
     </span>
     <span class="valeur" {% if val %}title="{{ val }}"{% endif %}>
         {% if kind == 'categorie' %}
-        <select name="value" onchange="this.form.submit()">
+        <select name="value" onchange="choisirCategorie(this)" data-avant="{{ val or '' }}">
             <option value="">—</option>
             {% for cat in contact_categories %}
             <option value="{{ cat }}" {{ 'selected' if val == cat else '' }}>{{ cat }}</option>
@@ -66,6 +68,9 @@
             {# Une catégorie hors liste reste affichée, sinon le moindre
                changement de sélection la ferait disparaître. #}
             {% if val and val not in contact_categories %}<option value="{{ val }}" selected>{{ val }}</option>{% endif %}
+            {# Une nouvelle catégorie, créée et donnée à ce contact d'un coup. #}
+            <option disabled>──────────</option>
+            <option value="__nouvelle__">+ Catégorie</option>
         </select>
         {% elif kind == 'lieu' %}
         {{ place_select('value', cities if field == 'city' else countries, val, '', true) }}
@@ -83,6 +88,15 @@
     <a href="/ship/contacts" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">← Carnet d'adresses</a>
     <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
     <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Carnet d'adresses</span>
+</div>
+
+{# Contact précédent et suivant, dans l'ordre du carnet ; aux extrémités, le
+   bouton reste en place, grisé, comme sur la fiche d'un équipier. #}
+<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+    {% if prev_id %}<a href="/ship/contacts/{{ prev_id }}" class="btn btn-blue">← Précédent</a>
+    {% else %}<span class="btn btn-blue" style="opacity:.4;pointer-events:none">← Précédent</span>{% endif %}
+    {% if next_id %}<a href="/ship/contacts/{{ next_id }}" class="btn btn-blue">Suivant →</a>
+    {% else %}<span class="btn btn-blue" style="opacity:.4;pointer-events:none">Suivant →</span>{% endif %}
 </div>
 
 <div class="contact-cartes">
@@ -109,6 +123,18 @@
                       onchange="this.form.submit()">{{ contact.notes or '' }}</textarea>
         </form>
     </section>
+</div>
+
+{# Dupliquer (une copie « … - copie » qui s'ouvre aussitôt) et supprimer ce
+   contact ; chacun n'apparaît qu'avec le droit voulu (script des droits). #}
+<div class="contact-actions">
+    <form method="POST" action="/ship/contacts/{{ contact.id }}/duplicate">
+        <button type="submit" class="btn btn-arrivee">Dupliquer</button>
+    </form>
+    <form method="POST" action="/ship/contacts/{{ contact.id }}/delete"
+          onsubmit="return confirm('Supprimer le contact « {{ (contact.company or contact.contact_name or 'sans nom') | replace("'", "’") }} » ?')">
+        <button type="submit" class="btn btn-orange">Supprimer le contact</button>
+    </form>
 </div>
 
 {# Les achats sont des dépenses : rubrique « comptes » de la grille. #}
@@ -162,4 +188,18 @@
 </section>
 {% endif %}
 
+<form method="POST" action="/ship/contacts/categories/new" id="nouvelle-categorie" hidden>
+    <input type="hidden" name="name"><input type="hidden" name="contact_id" value="{{ contact.id }}">
+</form>
+<script>
+// Menu Catégorie : « + Catégorie » demande un nom, crée la catégorie et la
+// donne à ce contact ; un autre choix s'enregistre comme d'habitude.
+function choisirCategorie(select) {
+    if (select.value !== '__nouvelle__') { select.form.submit(); return; }
+    const nom = (prompt('Nouvelle catégorie :') || '').trim();
+    if (!nom) { select.value = select.dataset.avant; return; }
+    const f = document.getElementById('nouvelle-categorie');
+    f.elements.name.value = nom; f.submit();
+}
+</script>
 {% endblock %}

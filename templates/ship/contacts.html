@@ -1,5 +1,24 @@
 {% extends "base.html" %}
 {% block title %}Carnet d'adresses — NautiBook{% endblock %}
+{% block head %}
+<style>
+    .filtres-contacts { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin: 0 0 10px; font-size: 14px; }
+    .filtres-contacts label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-weight: 600; }
+    .filtres-contacts select { width: auto; min-width: 160px; padding: 4px 8px; }
+    /* Cases modifiables sur place : du texte au repos, un cadre au survol. */
+    .ligne-contact td { padding-top: 2px; padding-bottom: 2px; }
+    .ligne-contact .case { margin: 0; }
+    .ligne-contact .case input, .ligne-contact .case select {
+        width: 100%; min-width: 90px; padding: 3px 6px; font: inherit; background: transparent;
+        border: 1px solid transparent; border-radius: 5px;
+    }
+    .ligne-contact .case select { -webkit-appearance: none; appearance: none; cursor: pointer; }
+    .ligne-contact .case input:hover, .ligne-contact .case select:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .ligne-contact .case input:focus, .ligne-contact .case select:focus { border-color: var(--accent); background: #fff; outline: none; }
+    .ligne-contact td.lu { padding-left: 10px; white-space: nowrap; }
+    .filtres-contacts .compte { margin-left: auto; font-size: 13px; color: var(--muted); }
+</style>
+{% endblock %}
 {% block content %}
 
 {# Un bouton de chaque côté, de même largeur, pour que le titre reste centré :
@@ -12,7 +31,48 @@
     <a href="/ship/contacts/new" class="btn btn-yellow" style="min-width:180px;text-align:center;margin:-10px 0">+ Nouveau contact</a>
 </div>
 
+{% from "ship/_place_select.html" import place_select %}
+{% macro case_texte(c, champ) %}
+<form method="POST" action="/ship/contacts/{{ c.id }}/field/{{ champ }}" class="case">
+    <input type="hidden" name="retour" value="liste">
+    <input type="text" name="value" value="{{ c[champ] or '' }}" placeholder="—" onchange="this.form.submit()">
+</form>
+{% endmacro %}
+
 {% if contacts %}
+{# Filtres : catégorie et pays, combinables, sans recharger la page. Toutes
+   les catégories (une catégorie qu'on vient de créer n'a pas encore de
+   contact) ; seuls les pays présents dans le carnet. Mémorisés par appareil
+   (localStorage). « + Catégorie », sous un séparateur, en crée une nouvelle. #}
+{% set pays = contacts | map(attribute='country') | select | unique | sort | list %}
+<div class="filtres-contacts">
+    <label>Catégorie :
+        <select id="filtre-categorie">
+            <option value="">Toutes</option>
+            {% for cat in contact_categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+            {% for cat in contacts | map(attribute='category') | select | unique | sort if cat not in contact_categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+            {% endfor %}
+            {% if peut(request, 'contacts.modifier') %}
+            <option disabled>──────────</option>
+            <option value="__nouvelle__">+ Catégorie</option>
+            {% endif %}
+        </select>
+    </label>
+    <label>Pays :
+        <select id="filtre-pays">
+            <option value="">Tous</option>
+            {% for p in pays %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+    </label>
+    <span class="compte" id="filtre-compte"></span>
+</div>
+<form method="POST" action="/ship/contacts/categories/new" id="nouvelle-categorie" hidden>
+    <input type="hidden" name="name"><input type="hidden" name="contact_id"><input type="hidden" name="retour">
+</form>
+
 <div class="tableau-colle">
     <table class="data-table titres-legers">
         <thead>
@@ -21,25 +81,103 @@
                 <th>Contact</th>
                 <th>Catégorie</th>
                 <th>Téléphone</th>
-                <th>Email</th>
+                <th>Pays</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
             {% for c in contacts %}
-            {# Toute la ligne ouvre la fiche ; rowLink laisse passer le clic sur
-               le lien mailto. #}
-            <tr style="cursor:pointer" title="Ouvrir ce contact"
-                onclick="rowLink(event, '/ship/contacts/{{ c.id }}')">
-                <td><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
-                <td>{{ c.contact_name or '' }}</td>
-                <td>{{ c.category or '' }}</td>
-                <td>{{ c.phone or '' }}</td>
-                <td>{% if c.email %}<a href="mailto:{{ c.email }}" style="color:var(--accent)">{{ c.email }}</a>{% endif %}</td>
+            {# Société et contact se lisent, et un clic sur la ligne ouvre la fiche
+               (rowLink ignore les clics sur les cases) ; catégorie, téléphone et
+               pays se modifient sur place, chacun son formulaire comme sur la
+               fiche (update_contact_field, retour=liste). Le pays plutôt que
+               l'email : on cherche un contact selon où il est. #}
+            <tr class="ligne-contact" data-categorie="{{ c.category or '' }}" data-pays="{{ c.country or '' }}"
+                style="cursor:pointer" title="Ouvrir ce contact" onclick="rowLink(event, '/ship/contacts/{{ c.id }}')">
+                <td class="lu"><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
+                <td class="lu">{{ c.contact_name or '' }}</td>
+                <td>
+                    <form method="POST" action="/ship/contacts/{{ c.id }}/field/category" class="case">
+                        <input type="hidden" name="retour" value="liste">
+                        <select name="value" onchange="choisirCategorie(this, {{ c.id }})" data-avant="{{ c.category or '' }}">
+                            <option value="">—</option>
+                            {% for cat in contact_categories %}
+                            <option value="{{ cat }}" {{ 'selected' if c.category == cat }}>{{ cat }}</option>
+                            {% endfor %}
+                            {% if c.category and c.category not in contact_categories %}<option value="{{ c.category }}" selected>{{ c.category }}</option>{% endif %}
+                            <option disabled>──────────</option>
+                            <option value="__nouvelle__">+ Catégorie</option>
+                        </select>
+                    </form>
+                </td>
+                <td>{{ case_texte(c, 'phone') }}</td>
+                <td>
+                    <form method="POST" action="/ship/contacts/{{ c.id }}/field/country" class="case">
+                        <input type="hidden" name="retour" value="liste">
+                        {{ place_select('value', countries, c.country, '', true) }}
+                    </form>
+                </td>
+                {# Supprimer : seulement pour qui a le droit (le script des droits
+                   masque ce formulaire …/delete aux autres). #}
+                <td style="width:1%;white-space:nowrap">
+                    <form method="POST" action="/ship/contacts/{{ c.id }}/delete" style="display:inline"
+                          onsubmit="return confirm('Supprimer le contact « {{ (c.company or c.contact_name or 'sans nom') | replace("'", "’") }} » ?')">
+                        <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+<script>
+(function () {
+    const cat = document.getElementById('filtre-categorie'), pays = document.getElementById('filtre-pays');
+    const compte = document.getElementById('filtre-compte'), lignes = [...document.querySelectorAll('.ligne-contact')];
+    const CLE = 'nb-filtre-contacts';
+    function choisir(select, valeur) {
+        if (valeur && [...select.options].some(o => o.value === valeur && !o.disabled)) select.value = valeur;
+    }
+    // Ouvert sur une catégorie (?categorie=, juste créée) ; sinon le dernier choix.
+    const demande = new URLSearchParams(location.search).get('categorie');
+    let memo = {};
+    try { memo = JSON.parse(localStorage.getItem(CLE) || '{}'); } catch (e) {}
+    choisir(cat, demande || memo.categorie); choisir(pays, memo.pays);
+    function filtrer() {
+        let n = 0;
+        lignes.forEach(function (tr) {
+            const ok = (!cat.value || tr.dataset.categorie === cat.value) && (!pays.value || tr.dataset.pays === pays.value);
+            tr.hidden = !ok; if (ok) n++;
+        });
+        compte.textContent = (cat.value || pays.value) ? n + ' contact' + (n > 1 ? 's' : '') + ' sur ' + lignes.length : '';
+        try { localStorage.setItem(CLE, JSON.stringify({ categorie: cat.value, pays: pays.value })); } catch (e) {}
+    }
+    let precedente = cat.value;
+    cat.addEventListener('change', function () {
+        if (cat.value === '__nouvelle__') {
+            const nom = (prompt('Nouvelle catégorie :') || '').trim();
+            if (nom) {
+                const f = document.getElementById('nouvelle-categorie');
+                f.elements.name.value = nom; f.submit(); return;
+            }
+            cat.value = precedente;
+        }
+        precedente = cat.value; filtrer();
+    });
+    pays.addEventListener('change', filtrer);
+    filtrer();
+})();
+// Catégorie d'une ligne : « + Catégorie » la crée et la donne à ce contact,
+// puis le carnet se rouvre ; un autre choix s'enregistre aussitôt.
+function choisirCategorie(select, contact) {
+    if (select.value !== '__nouvelle__') { select.form.submit(); return; }
+    const nom = (prompt('Nouvelle catégorie :') || '').trim();
+    if (!nom) { select.value = select.dataset.avant; return; }
+    const f = document.getElementById('nouvelle-categorie');
+    f.elements.name.value = nom; f.elements.contact_id.value = contact; f.elements.retour.value = 'liste';
+    f.submit();
+}
+</script>
 {% else %}
 <div class="stub">
     <div style="font-size:36px;margin-bottom:12px">📒</div>

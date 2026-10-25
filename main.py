@@ -665,8 +665,21 @@ async def init_db():
             )
         """)
 
+        # Catégories de contacts ajoutées depuis le carnet d'adresses
+        # (« + Catégorie »), en plus de CONTACT_CATEGORIES.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS contact_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                created_at DATETIME
+            )
+        """)
+
         await _migrate(db)
         await db.commit()
+        cursor = await db.execute("SELECT name FROM contact_categories ORDER BY name COLLATE NOCASE")
+        for (name,) in await cursor.fetchall():
+            _add_contact_category(name)
 
 
 # « Terminée » se lit sur la date d'arrivée : sans date et heure d'arrivée, une
@@ -2989,12 +3002,14 @@ async def ship_contacts(request: Request):
             "SELECT * FROM contacts WHERE ship_id = ? ORDER BY company, contact_name", (ship_id,)
         )
         contacts = await cursor.fetchall()
+        places = await _contact_places(db, ship_id)
     return templates.TemplateResponse(
         "ship/contacts.html",
         {
             "request": request, "active_section": "ship",
             "current_ship": dict(ship) if ship else None,
             "contacts": [dict(c) for c in contacts],
+            **places,
         },
     )
 
@@ -3305,12 +3320,20 @@ async def contact_detail(request: Request, contact_id: int):
         )
         purchases = await cursor.fetchall()
         places = await _contact_places(db, ship_id)
+        # Précédent / suivant : dans l'ordre de la liste du carnet.
+        cursor = await db.execute(
+            "SELECT id FROM contacts WHERE ship_id = ? ORDER BY company, contact_name, id", (contact["ship_id"],))
+        ids = [r[0] for r in await cursor.fetchall()]
+        k = ids.index(contact_id) if contact_id in ids else -1
+        prev_id = ids[k - 1] if k > 0 else None
+        next_id = ids[k + 1] if 0 <= k < len(ids) - 1 else None
     return templates.TemplateResponse(
         "ship/contacts_detail.html",
         {
             "request": request, "active_section": "ship",
             "current_ship": dict(ship) if ship else None,
             "contact": contact,
+            "prev_id": prev_id, "next_id": next_id,
             "purchases": [dict(p) for p in purchases],
             **places,
         },
@@ -3321,9 +3344,42 @@ async def contact_detail(request: Request, contact_id: int):
 # Valeurs *stockées*, comme EXPENSE_TYPES.
 CONTACT_CATEGORIES = [
     "Gréement / Voiles", "Moteur", "Électronique", "Accastillage", "Chantier naval",
-    "Port / Capitainerie", "Assurance", "Carburant", "Autre",
+    "Port / Capitainerie", "Assurance", "Carburant", "Fixeur", "Autre",
 ]
 templates.env.globals["contact_categories"] = CONTACT_CATEGORIES
+
+
+def _add_contact_category(name: str) -> None:
+    """Ajoute une catégorie à la liste des menus (en mémoire, un seul processus),
+    avant « Autre » qui reste la dernière. Sans effet si elle y est déjà."""
+    if any(c.lower() == name.lower() for c in CONTACT_CATEGORIES):
+        return
+    CONTACT_CATEGORIES.insert(CONTACT_CATEGORIES.index("Autre"), name)
+
+
+@app.post("/ship/contacts/categories/new")
+async def add_contact_category(request: Request, name: Optional[str] = Form(None),
+                               contact_id: Optional[int] = Form(None), retour: Optional[str] = Form(None)):
+    """« + Catégorie », sous un séparateur, dans le filtre du carnet d'adresses
+    et dans le menu Catégorie d'une fiche : une catégorie de plus, gardée en
+    base (contact_categories) et proposée dans tous les menus de catégorie.
+    Depuis une fiche (contact_id), elle lui est aussitôt donnée et la fiche se
+    rouvre ; depuis le carnet, il se rouvre filtré sur elle."""
+    name = " ".join((name or "").split())[:40]
+    if name:
+        async with connect() as db:
+            await db.execute("INSERT OR IGNORE INTO contact_categories (name, created_at) VALUES (?, ?)",
+                             (name, datetime.now()))
+            if contact_id is not None:
+                await db.execute("UPDATE contacts SET category = ? WHERE id = ? AND ship_id = ?",
+                                 (name, contact_id, get_current_ship_id(request)))
+            await db.commit()
+        _add_contact_category(name)
+    if contact_id is not None:
+        return RedirectResponse(url="/ship/contacts" if retour == "liste" else f"/ship/contacts/{contact_id}",
+                                status_code=303)
+    return RedirectResponse(url=f"/ship/contacts?categorie={quote(name)}" if name else "/ship/contacts",
+                            status_code=303)
 
 # Champs de la fiche contact modifiables sur place. Le nom est interpolé dans
 # l'UPDATE : il doit venir de cet ensemble, jamais directement de l'URL — même
@@ -3334,9 +3390,50 @@ EDITABLE_CONTACT_FIELDS = {
 }
 
 
+@app.post("/ship/contacts/{contact_id}/duplicate")
+async def duplicate_contact(request: Request, contact_id: int):
+    """« Dupliquer » sur la fiche : une copie de toutes ses rubriques, nommée
+    « … - copie » (la société, à défaut le contact), qui s'ouvre aussitôt — pour
+    un deuxième interlocuteur de la même société, par exemple."""
+    colonnes = ("company", "contact_name", "category", "phone", "email", "website", "address",
+                "notes", "street", "postal_code", "city", "country")
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM contacts WHERE id = ? AND ship_id = ?",
+                                  (contact_id, get_current_ship_id(request)))
+        c = await cursor.fetchone()
+        if c is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        valeurs = dict(c)
+        if valeurs["company"]:
+            valeurs["company"] += " - copie"
+        else:
+            valeurs["contact_name"] = (valeurs["contact_name"] or "Contact") + " - copie"
+        cursor = await db.execute(
+            f"INSERT INTO contacts (ship_id, {', '.join(colonnes)}) VALUES (?, {', '.join('?' * len(colonnes))})",
+            (c["ship_id"], *(valeurs[k] for k in colonnes)))
+        copie = cursor.lastrowid
+        await db.commit()
+    return RedirectResponse(url=f"/ship/contacts/{copie}", status_code=303)
+
+
+@app.post("/ship/contacts/{contact_id}/delete")
+async def delete_contact(request: Request, contact_id: int):
+    """La croix de la liste du carnet. Droit contacts.supprimer (…/delete). Les
+    dépenses gardent le nom du fournisseur (expenses.supplier est un texte) :
+    l'historique des achats ne perd rien, il n'a simplement plus de fiche."""
+    async with connect() as db:
+        await db.execute("DELETE FROM contacts WHERE id = ? AND ship_id = ?",
+                         (contact_id, get_current_ship_id(request)))
+        await db.commit()
+    return RedirectResponse(url="/ship/contacts", status_code=303)
+
+
 @app.post("/ship/contacts/{contact_id}/field/{field}")
-async def update_contact_field(contact_id: int, field: str, value: Optional[str] = Form(None)):
-    """Modification sur place d'un champ de la fiche contact."""
+async def update_contact_field(contact_id: int, field: str, value: Optional[str] = Form(None),
+                               retour: Optional[str] = Form(None)):
+    """Modification sur place d'un champ de la fiche contact — ou de la liste du
+    carnet (retour=liste), qui se rouvre alors au lieu de la fiche."""
     if field not in EDITABLE_CONTACT_FIELDS:
         raise HTTPException(status_code=404, detail="Field not editable")
     value = (value or "").strip() or None
@@ -3365,6 +3462,8 @@ async def update_contact_field(contact_id: int, field: str, value: Optional[str]
                     (new_name, ship_id, old_name),
                 )
         await db.commit()
+    if retour == "liste":
+        return RedirectResponse(url="/ship/contacts", status_code=303)
     return RedirectResponse(url=f"/ship/contacts/{contact_id}", status_code=303)
 
 
