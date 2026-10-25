@@ -9,7 +9,12 @@
     <div class="section-bar-title">Nouveau contact</div>
 </div>
 
-<form method="POST" action="/ship/contacts/new" style="display:grid;gap:14px;max-width:600px">
+{# Safari donne aux listes déroulantes sa propre hauteur, plus basse que celle
+   des champs texte, et ignore leur padding : une hauteur commune aux deux. #}
+<style>
+    .contact-form input, .contact-form select { height: 36px; }
+</style>
+<form method="POST" action="/ship/contacts/new" class="contact-form" style="display:grid;gap:14px;max-width:600px">
     {# Ouvert depuis « Saisir manuellement » d'une dépense : elle est déjà
        enregistrée, et prendra ce contact pour fournisseur. #}
     {% if expense_id %}

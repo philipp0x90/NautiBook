@@ -399,6 +399,8 @@
         .recap-gasoil .titre { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase; letter-spacing: 1px; }
         .recap-gasoil .chiffre { font-size: 20px; font-weight: 700; color: #0f3a4a; margin-top: 2px; }
         .recap-gasoil .detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        /* Ligne retrouvée au retour d'une fiche (script « Retour à une liste »). */
+        .ligne-retrouvee, .ligne-retrouvee td { background: #fff6cc !important; transition: background .6s; }
         /* Visionneuse des PDF : plein écran, au-dessus de tout. */
         #pdf-visionneuse { display: none; position: fixed; inset: 0; z-index: 1000; background: #4a5561;
                            flex-direction: column; }
@@ -1053,6 +1055,33 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
         e.preventDefault();
         ouvrirPdf(lien.href);
     });
+})();
+
+// Retour à une liste : on retrouve la ligne de la dernière fiche consultée.
+// Chaque page note son adresse en partant ; une liste qui se charge cherche,
+// parmi ses lignes cliquables (rowLink), celle qui mène à la page qu'on vient
+// de quitter — la fiche d'un contact, d'un équipier, une croisière, une
+// dépense… — la centre à l'écran et l'éclaire un instant, au lieu de rouvrir
+// en haut. Par Précédent / Suivant, c'est la dernière fiche vue. Sans effet si
+// la ligne est masquée (filtre) ou si l'adresse porte une ancre.
+(function () {
+    const CLE = 'nb-page-quittee';
+    let quittee = null;
+    try { quittee = sessionStorage.getItem(CLE); } catch (e) {}
+    addEventListener('pagehide', function () {
+        try { sessionStorage.setItem(CLE, location.pathname); } catch (e) {}
+    });
+    if (!quittee || quittee === location.pathname || location.hash) return;
+    const ligne = [...document.querySelectorAll('[onclick*="rowLink("]')].find(function (el) {
+        const m = el.getAttribute('onclick').match(/rowLink\(event,\s*'([^']+)'/);
+        if (!m) return false;
+        try { return new URL(m[1], location.href).pathname === quittee; } catch (e) { return false; }
+    });
+    if (!ligne || ligne.offsetParent === null) return;   // absente, ou masquée par un filtre
+    const placer = () => ligne.scrollIntoView({ block: 'center' });
+    placer(); addEventListener('load', placer);
+    ligne.classList.add('ligne-retrouvee');
+    setTimeout(() => ligne.classList.remove('ligne-retrouvee'), 1800);
 })();
 
 // Garder sa place après un enregistrement. Chaque modification sur place est

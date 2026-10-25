@@ -5,7 +5,7 @@
     /* Fiche contact, sur le modèle de la fiche navire (ship/info.html) : des
        cartes de lignes « libellé … valeur », chaque valeur modifiable sur
        place et lue comme du texte au repos. */
-    .contact-cartes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; margin-bottom: 16px; }
+    .contact-cartes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; margin-bottom: 16px; }  /* deux cartes de même hauteur */
     @media (max-width: 760px) { .contact-cartes { grid-template-columns: 1fr; } }
     .contact-carte { padding: 12px 16px 8px; }
     .contact-carte h3, .contact-titre {
@@ -31,9 +31,33 @@
     .raccourci { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
                  border-radius: 50%; background: #e8f4f9; color: var(--accent); text-decoration: none; font-size: 12px; }
     .raccourci:hover { background: var(--accent); color: #fff; }
+    /* CP, localité et pays sur une seule ligne, chacun son formulaire, le
+       libellé en petit au-dessus de la valeur. Une grille aux colonnes
+       fixées plutôt qu'un flex : Safari donne à un menu la largeur de sa plus
+       longue option et à un champ texte une vingtaine de caractères, ce qui
+       écartait les trois valeurs. Le CP n'a que la place de ses 5 chiffres. */
+    .ligne-groupe { display: grid; grid-template-columns: 62px minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; padding: 4px 0; }
+    .ligne-groupe .part { display: flex; flex-direction: column; align-items: stretch; gap: 0; min-width: 0; margin: 0; }
+    .ligne-groupe .part .libelle { font-size: 11px; color: var(--muted); padding-left: 7px; }
+    .ligne-groupe .part .valeur { min-width: 0; justify-content: flex-start; }
+    .ligne-groupe .part input, .ligne-groupe .part select { width: 100%; min-width: 0; text-align: left; text-align-last: left; }
+    .ligne-groupe .part.cp input { text-overflow: clip; }
+    /* Notes, comme les remarques d'un itinéraire : repliées au repos sur
+       quatre lignes au plus (ce que laisse la carte Coordonnées voisine),
+       « … » au-delà, le texte entier en infobulle ; un clic les déplie en
+       zone de texte qui s'étire avec le texte. */
+    .notes-apercu {
+        padding: 0 8px; margin: 4px 0; line-height: 1.35; border: 1px solid transparent; border-radius: 6px;
+        color: #333; font-size: 14px; cursor: text; white-space: pre-line;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden;
+    }
+    .notes-apercu:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .notes-apercu.vide { color: #b8c4d0; }
+    .notes-apercu[hidden], .contact-notes[hidden] { display: none !important; }
     .contact-notes {
-        width: 100%; min-height: 90px; padding: 6px 8px; color: #333; font: inherit; font-size: 14px;
-        background: transparent; border: 1px solid transparent; border-radius: 6px; resize: vertical;
+        display: block; width: 100%; min-height: 24px; padding: 2px 8px; color: #333; font: inherit; font-size: 14px;
+        line-height: 1.35; background: transparent; border: 1px solid transparent; border-radius: 6px;
+        resize: none; overflow: hidden;
     }
     .contact-notes:hover { border-color: #cfe3ef; background: #f8fbfd; }
     .contact-notes:focus { border-color: var(--accent); background: #fff; outline: none; }
@@ -51,9 +75,9 @@
 {# Une ligne de la fiche : son propre formulaire, enregistré dès qu'on la
    quitte (onchange) — jamais un formulaire commun, sinon deux modifications
    proches s'écraseraient. `lien` : le raccourci affiché à côté du libellé. #}
-{% macro ligne(field, label, kind='text', lien=none, icone='') %}
+{% macro ligne(field, label, kind='text', lien=none, icone='', cls='ligne') %}
 {% set val = contact[field] %}
-<form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}" class="ligne">
+<form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}" class="{{ cls }}">
     <span class="libelle">{{ label }}
         {% if val and lien %}<a href="{{ lien }}" class="raccourci" title="{{ icone }}"
            {% if lien.startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ '✆' if field == 'phone' else ('✉' if field == 'email' else '↗') }}</a>{% endif %}
@@ -114,13 +138,17 @@
     <section class="card contact-carte">
         <h3>Adresse</h3>
         {{ ligne('street', 'Rue et numéro') }}
-        {{ ligne('postal_code', 'Code postal') }}
-        {{ ligne('city', 'Localité', 'lieu') }}
-        {{ ligne('country', 'Pays', 'lieu') }}
+        <div class="ligne ligne-groupe">
+            {{ ligne('postal_code', 'CP', cls='part cp') }}
+            {{ ligne('city', 'Localité', 'lieu', cls='part') }}
+            {{ ligne('country', 'Pays', 'lieu', cls='part') }}
+        </div>
         <form method="POST" action="/ship/contacts/{{ contact.id }}/field/notes" style="margin-top:10px">
             <div class="contact-titre">Notes</div>
-            <textarea name="value" class="contact-notes" rows="3" placeholder="Horaires, services, remarques…"
-                      onchange="this.form.submit()">{{ contact.notes or '' }}</textarea>
+            <div class="notes-apercu{{ ' vide' if not contact.notes }}" title="{{ contact.notes or '' }}"
+                 onclick="deplierNotes(this)">{{ contact.notes or 'Horaires, services, remarques…' }}</div>
+            <textarea name="value" class="contact-notes" rows="1" placeholder="Horaires, services, remarques…" hidden
+                      onchange="this.form.submit()" oninput="ajusterNotes(this)" onblur="replierNotes(this)">{{ contact.notes or '' }}</textarea>
         </form>
     </section>
 </div>
@@ -133,7 +161,7 @@
     </form>
     <form method="POST" action="/ship/contacts/{{ contact.id }}/delete"
           onsubmit="return confirm('Supprimer le contact « {{ (contact.company or contact.contact_name or 'sans nom') | replace("'", "’") }} » ?')">
-        <button type="submit" class="btn btn-orange">Supprimer le contact</button>
+        <button type="submit" class="btn btn-orange">Supprimer la fiche</button>
     </form>
 </div>
 
@@ -192,8 +220,22 @@
     <input type="hidden" name="name"><input type="hidden" name="contact_id" value="{{ contact.id }}">
 </form>
 <script>
-// Le carnet d'adresses, au retour, se placera sur ce contact.
-try { sessionStorage.setItem('nb-contact-consulte', '{{ contact.id }}'); } catch (e) {}
+// Notes : la zone de texte prend la hauteur de son texte ; l'aperçu replié
+// (4 lignes) lui laisse la place le temps de la saisie. Modifiée, elle part à
+// l'enregistrement en la quittant (onchange) ; sinon elle se replie.
+function ajusterNotes(zone) {
+    zone.style.height = 'auto';
+    zone.style.height = zone.scrollHeight + 2 + 'px';
+}
+function deplierNotes(apercu) {
+    const zone = apercu.nextElementSibling;
+    apercu.hidden = true; zone.hidden = false;
+    ajusterNotes(zone); zone.focus();
+}
+function replierNotes(zone) {
+    if (zone.value !== zone.defaultValue) return;
+    zone.hidden = true; zone.previousElementSibling.hidden = false;
+}
 // Menu Catégorie : « + Catégorie » demande un nom, crée la catégorie et la
 // donne à ce contact ; un autre choix s'enregistre comme d'habitude.
 function choisirCategorie(select) {
