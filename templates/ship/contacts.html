@@ -32,12 +32,6 @@
 </div>
 
 {% from "ship/_place_select.html" import place_select %}
-{% macro case_texte(c, champ) %}
-<form method="POST" action="/ship/contacts/{{ c.id }}/field/{{ champ }}" class="case">
-    <input type="hidden" name="retour" value="liste">
-    <input type="text" name="value" value="{{ c[champ] or '' }}" placeholder="—" onchange="this.form.submit()">
-</form>
-{% endmacro %}
 
 {% if contacts %}
 {# Filtres : catégorie et pays, combinables, sans recharger la page. Toutes
@@ -80,7 +74,6 @@
                 <th>Société / Nom</th>
                 <th>Contact</th>
                 <th>Catégorie</th>
-                <th>Téléphone</th>
                 <th>Pays</th>
                 <th></th>
             </tr>
@@ -88,10 +81,11 @@
         <tbody>
             {% for c in contacts %}
             {# Société et contact se lisent, et un clic sur la ligne ouvre la fiche
-               (rowLink ignore les clics sur les cases) ; catégorie, téléphone et
+               (rowLink ignore les clics sur les cases) ; catégorie et
                pays se modifient sur place, chacun son formulaire comme sur la
                fiche (update_contact_field, retour=liste). Le pays plutôt que
-               l'email : on cherche un contact selon où il est. #}
+               l'email et sans le téléphone : on cherche un contact selon où il est,
+               ses coordonnées sont sur sa fiche. #}
             <tr class="ligne-contact" data-categorie="{{ c.category or '' }}" data-pays="{{ c.country or '' }}"
                 style="cursor:pointer" title="Ouvrir ce contact" onclick="rowLink(event, '/ship/contacts/{{ c.id }}')">
                 <td class="lu"><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
@@ -110,7 +104,6 @@
                         </select>
                     </form>
                 </td>
-                <td>{{ case_texte(c, 'phone') }}</td>
                 <td>
                     <form method="POST" action="/ship/contacts/{{ c.id }}/field/country" class="case">
                         <input type="hidden" name="retour" value="liste">

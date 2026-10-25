@@ -3349,12 +3349,26 @@ CONTACT_CATEGORIES = [
 templates.env.globals["contact_categories"] = CONTACT_CATEGORIES
 
 
+def _sort_contact_categories() -> None:
+    """Ordre alphabétique, accents ignorés (« Électronique » parmi les E),
+    « Autre » toujours en dernier. Trie la liste en place : les menus la lisent
+    telle quelle (global Jinja contact_categories)."""
+    def cle(nom):
+        plie = unicodedata.normalize("NFKD", nom).encode("ascii", "ignore").decode().lower()
+        return (nom == "Autre", plie)
+    CONTACT_CATEGORIES.sort(key=cle)
+
+
+_sort_contact_categories()
+
+
 def _add_contact_category(name: str) -> None:
     """Ajoute une catégorie à la liste des menus (en mémoire, un seul processus),
-    avant « Autre » qui reste la dernière. Sans effet si elle y est déjà."""
+    à sa place alphabétique. Sans effet si elle y est déjà."""
     if any(c.lower() == name.lower() for c in CONTACT_CATEGORIES):
         return
-    CONTACT_CATEGORIES.insert(CONTACT_CATEGORIES.index("Autre"), name)
+    CONTACT_CATEGORIES.append(name)
+    _sort_contact_categories()
 
 
 @app.post("/ship/contacts/categories/new")
