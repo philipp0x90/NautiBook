@@ -180,8 +180,9 @@
                 <tr>
                     <th>Date</th>
                     <th>Objet</th>
-                    <th>Type de frais</th>
+                    <th>Catégorie</th>
                     <th style="text-align:right">Payé</th>
+                    <th style="text-align:right">Solde</th>
                     <th>Paiement</th>
                 </tr>
             </thead>
@@ -192,9 +193,17 @@
                 <tr style="cursor:pointer" title="Ouvrir cette dépense"
                     onclick="rowLink(event, '/ship/expenses/{{ p.id }}')">
                     <td style="white-space:nowrap">{{ p.date | datefr if p.date else '' }}</td>
-                    <td>{{ p.designation or '' }}</td>
+                    <td>
+                        {{ p.designation or '' }}
+                        {% if p.first_doc %}
+                        <a href="{{ p.first_doc }}" target="_blank" rel="noopener"
+                           title="{{ 'Ouvrir le premier des ' ~ p.doc_count ~ ' documents' if p.doc_count > 1 else 'Ouvrir le document' }}"
+                           class="trombone"><svg aria-hidden="true"><use href="#icon-trombone"/></svg></a>
+                        {% endif %}
+                    </td>
                     <td>{{ p.expense_type or '' }}</td>
                     <td style="text-align:right;white-space:nowrap">{{ p.paid | euros }}</td>
+                    <td style="text-align:right;white-space:nowrap">{{ p.balance | euros }}</td>
                     <td>{{ p.payment or '' }}</td>
                 </tr>
                 {% endfor %}
@@ -203,6 +212,7 @@
                 <tr>
                     <td colspan="3">Total</td>
                     <td style="text-align:right;white-space:nowrap">{{ ((purchases | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) | euros }}</td>
+                    <td style="text-align:right;white-space:nowrap">{{ ((purchases | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
                     <td></td>
                 </tr>
             </tfoot>

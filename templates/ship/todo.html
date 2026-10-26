@@ -46,6 +46,10 @@
                 {% if item.due_date %}
                 <span style="font-size:12px;color:var(--muted)">Échéance : <strong>{{ item.due_date | datefr }}</strong></span>
                 {% endif %}
+                {% if item.contact_label %}
+                <span style="font-size:12px;color:var(--muted)">Prestataire : <a href="/ship/contacts/{{ item.contact_id }}"
+                      style="color:var(--accent);text-decoration:none;font-weight:600">{{ item.contact_label }}</a></span>
+                {% endif %}
                 {% if item.status == 'En cours' %}
                 <span style="background:#dbeafe;color:#1e40af;border-radius:10px;padding:1px 9px;font-size:11px;font-weight:600">En cours</span>
                 {% endif %}

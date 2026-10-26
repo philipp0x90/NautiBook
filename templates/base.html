@@ -316,6 +316,9 @@
         input.date-vide::-webkit-datetime-edit-ampm-field { color: #a9a9a9; }
         /* Une seule taille de bouton oblong dans toute l'appli (l'ancienne petite,
            celle de la page route). */
+        .trombone { display: inline-block; margin-left: 4px; line-height: 0; vertical-align: -4px; }
+        .trombone svg { width: 19px; height: 19px; }
+        .trombone:hover svg { filter: brightness(.9); }
         .btn { display: inline-block; padding: 5px 12px; border-radius: 20px; border: 0; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none; }
         .btn-blue { background: #3bbfe0; color: #fff; }
         .btn-orange { background: #f47c3c; color: #fff; }
@@ -608,6 +611,13 @@
             <circle cx="32" cy="10" r="6"/><path d="M32 16v41"/><path d="M19 25h26"/>
             <path d="M11 38c2 12 10 19 21 19s19-7 21-19"/>
         </g>
+    </symbol>
+    <!-- Trombone d'un document joint (comptes, historique des achats) : blanc
+         sur un rond du bleu de la barre de titre. -->
+    <symbol id="icon-trombone" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="50" fill="#5bc8e0"/>
+        <path transform="rotate(40 50 50)" fill="none" stroke="#fff" stroke-width="6"
+              d="M55 36V63a5 5 0 0 1-10 0V29a9 9 0 0 1 18 0V69a13 13 0 0 1-26 0V44"/>
     </symbol>
     <symbol id="icon-settings" viewBox="0 0 512 512">
         <path fill="currentColor" stroke="currentColor" stroke-width="22"

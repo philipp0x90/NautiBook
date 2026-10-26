@@ -417,7 +417,8 @@ async def init_db():
                 due_date TEXT,
                 completed_at TEXT,
                 photo_path TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL
             )
         """)
 
@@ -528,6 +529,20 @@ async def init_db():
                 liters REAL,
                 amount REAL,
                 full INTEGER NOT NULL DEFAULT 1,
+                created_at DATETIME
+            )
+        """)
+
+        # Documents d'une dépense (factures, reçus, devis…), listés sur sa
+        # fiche comme ceux du navire, sans dates de validité. Fichiers dans
+        # IMG/Invoices-Receipts/. Remplace expenses.document_path (un seul
+        # document par dépense), repris par _move_expense_documents.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS expense_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+                title TEXT,
+                path TEXT NOT NULL,
                 created_at DATETIME
             )
         """)
@@ -717,6 +732,17 @@ async def _migrate(db):
         await db.execute("ALTER TABLE expenses ADD COLUMN description TEXT")
         print("Migration: expenses.description added")
 
+    # Prestataire d'une tâche : une fiche du carnet d'adresses. Un id et non
+    # un nom (comme expenses.supplier) : renommer le contact suit ; le
+    # supprimer laisse la tâche sans prestataire.
+    cursor = await db.execute("PRAGMA table_info(todo_items)")
+    if "contact_id" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute(
+            "ALTER TABLE todo_items ADD COLUMN contact_id INTEGER "
+            "REFERENCES contacts(id) ON DELETE SET NULL"
+        )
+        print("Migration: todo_items.contact_id added")
+
     cursor = await db.execute("PRAGMA table_info(expenses)")
     if "document_path" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE expenses ADD COLUMN document_path TEXT")
@@ -803,6 +829,7 @@ async def _migrate(db):
     await _move_crew_photos(db)
     await _migrate_gallery_to_carnet(db)
     await _rename_doc_folder(db)
+    await _move_expense_documents(db)
 
     # L'adresse d'un contact, un seul texte libre, devient quatre champs comme
     # celle d'un équipier. Un texte libre ne se redécoupe pas sûrement : il
@@ -1052,6 +1079,34 @@ async def _rename_doc_folder(db):
         "UPDATE expenses SET document_path = ? || substr(document_path, ?) WHERE document_path LIKE ?",
         (new_prefix, len(old_prefix) + 1, old_prefix + "%"),
     )
+    await db.execute(
+        "UPDATE expense_documents SET path = ? || substr(path, ?) WHERE path LIKE ?",
+        (new_prefix, len(old_prefix) + 1, old_prefix + "%"),
+    )
+
+
+async def _move_expense_documents(db):
+    """Le document unique d'une dépense (expenses.document_path) devient une
+    ligne d'expense_documents, titrée du nom de son fichier. Étape de
+    _migrate, rejouée à chaque démarrage : un chemin déjà repris pour cette
+    dépense est sauté. La colonne reste en base, plus rien ne l'écrit."""
+    cursor = await db.execute(
+        """SELECT id, document_path, COALESCE(date, created_at) FROM expenses e
+           WHERE document_path IS NOT NULL AND NOT EXISTS (
+               SELECT 1 FROM expense_documents d WHERE d.expense_id = e.id AND d.path = e.document_path)"""
+    )
+    for expense_id, path, when in await cursor.fetchall():
+        await db.execute(
+            "INSERT INTO expense_documents (expense_id, title, path, created_at) VALUES (?, ?, ?, ?)",
+            (expense_id, _doc_title(path.rsplit("/", 1)[-1]), path, when),
+        )
+        print(f"Migration: document de la dépense {expense_id} → expense_documents")
+
+
+def _doc_title(filename: str) -> str:
+    """Titre par défaut d'un document : le nom du fichier sans extension ni
+    l'horodatage que _save_upload lui a ajouté (20261026-164900_)."""
+    return re.sub(r"^\d{8}-\d{6}[-_]", "", Path(filename).stem)
 
 
 async def _migrate_gallery_to_carnet(db):
@@ -1986,7 +2041,12 @@ async def ship_expenses(request: Request, tri: Optional[str] = None, ordre: Opti
         await db.create_function("fold", 1, _fold_sql, deterministic=True)
         ship = await _fetch_ship(db, ship_id)
         cursor = await db.execute(
-            f"SELECT * FROM expenses WHERE ship_id = ? ORDER BY {order_by}", (ship_id,)
+            # Le trombone de la liste ouvre le premier document de la dépense.
+            f"""SELECT *,
+                   (SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
+                    ORDER BY d.id LIMIT 1) AS first_doc,
+                   (SELECT COUNT(*) FROM expense_documents d WHERE d.expense_id = expenses.id) AS doc_count
+                FROM expenses WHERE ship_id = ? ORDER BY {order_by}""", (ship_id,)
         )
         entries = await cursor.fetchall()
         # Nom du fournisseur → id de sa fiche. expenses.supplier retient un nom,
@@ -2060,6 +2120,12 @@ async def _expense_form(request: Request, entry: Optional[dict]):
             (ship_id,),
         )
         contacts = await cursor.fetchall()
+        documents = []
+        if entry:
+            cursor = await db.execute(
+                "SELECT * FROM expense_documents WHERE expense_id = ? ORDER BY id", (entry["id"],)
+            )
+            documents = [dict(d) for d in await cursor.fetchall()]
     return templates.TemplateResponse(
         "ship/expenses_form.html",
         {
@@ -2071,6 +2137,7 @@ async def _expense_form(request: Request, entry: Optional[dict]):
             "new_contact": NEW_CONTACT,
             # Date du jour préremplie, en heure locale comme le reste du journal.
             "today": datetime.now().strftime("%Y-%m-%d"),
+            "documents": documents,
             "doc_accept": ",".join(sorted(DOC_SUFFIXES)),
             "doc_max_bytes": DOC_MAX_BYTES,
         },
@@ -2093,21 +2160,23 @@ async def create_expense(
     expense_type: Optional[str] = Form(None),
     payment: Optional[str] = Form(None),
     supplier: Optional[str] = Form(None),
+    doc_title: Optional[str] = Form(None),
     document_file: Optional[UploadFile] = File(None),
 ):
     ship_id = get_current_ship_id(request)
     balance, paid = _expense_balance(unit_price, paid)
-    document = await _save_document(document_file)
     async with connect() as db:
         cursor = await db.execute(
-            """INSERT INTO expenses (ship_id, date, designation, description, document_path, unit_price, paid,
+            """INSERT INTO expenses (ship_id, date, designation, description, unit_price, paid,
                                      balance, expense_type, payment, supplier)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (ship_id, date or None, designation or None, description or None, document, unit_price, paid, balance,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (ship_id, date or None, designation or None, description or None, unit_price, paid, balance,
              expense_type or None, payment or None,
              None if supplier == NEW_CONTACT else supplier or None),
         )
         entry_id = cursor.lastrowid
+        # Un premier document peut partir avec la dépense, avant qu'elle existe.
+        await _add_expense_document(db, entry_id, doc_title, document_file)
         await db.commit()
     return _after_expense_save(entry_id, supplier)
 
@@ -2501,24 +2570,62 @@ async def update_expense(
     expense_type: Optional[str] = Form(None),
     payment: Optional[str] = Form(None),
     supplier: Optional[str] = Form(None),
-    document_file: Optional[UploadFile] = File(None),
 ):
     balance, paid = _expense_balance(unit_price, paid)
-    document = await _save_document(document_file)
     async with connect() as db:
-        # COALESCE : enregistrer la fiche sans choisir de fichier garde le
-        # document déjà là, comme la photo d'un équipier.
+        # Les documents ont leurs propres formulaires (expense_documents).
         await db.execute(
             """UPDATE expenses SET date = ?, designation = ?, description = ?,
-                   document_path = COALESCE(?, document_path), unit_price = ?, paid = ?,
+                   unit_price = ?, paid = ?,
                    balance = ?, expense_type = ?, payment = ?, supplier = ?
                WHERE id = ?""",
-            (date or None, designation or None, description or None, document, unit_price, paid, balance,
+            (date or None, designation or None, description or None, unit_price, paid, balance,
              expense_type or None, payment or None,
              None if supplier == NEW_CONTACT else supplier or None, entry_id),
         )
         await db.commit()
     return _after_expense_save(entry_id, supplier)
+
+
+async def _add_expense_document(db, expense_id: int, title: Optional[str],
+                                upload: Optional[UploadFile]) -> bool:
+    """Enregistre le fichier dans IMG/Invoices-Receipts/ et l'ajoute aux
+    documents de la dépense ; sans titre, celui du fichier. Sans fichier,
+    rien."""
+    path = await _save_document(upload)
+    if not path:
+        return False
+    await db.execute(
+        "INSERT INTO expense_documents (expense_id, title, path, created_at) VALUES (?, ?, ?, ?)",
+        (expense_id, (title or "").strip() or _doc_title(upload.filename), path,
+         datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    return True
+
+
+@app.post("/ship/expenses/{entry_id}/documents/new")
+async def add_expense_document(
+    entry_id: int,
+    title: Optional[str] = Form(None),
+    document_file: Optional[UploadFile] = File(None),
+):
+    async with connect() as db:
+        await _add_expense_document(db, entry_id, title, document_file)
+        await db.commit()
+    return RedirectResponse(url=f"/ship/expenses/{entry_id}#documents", status_code=303)
+
+
+@app.post("/ship/expenses/documents/{doc_id}/delete")
+async def delete_expense_document(doc_id: int):
+    """Retire le document de la dépense ; le fichier reste dans IMG/, comme
+    pour les documents du navire."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT expense_id FROM expense_documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        await db.execute("DELETE FROM expense_documents WHERE id = ?", (doc_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/ship/expenses/{row[0]}#documents" if row else "/ship/expenses",
+                            status_code=303)
 
 
 @app.post("/ship/expenses/{entry_id}/delete")
@@ -2535,14 +2642,19 @@ async def ship_todo(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, ship_id)
+        # Du plus récent au plus ancien : les tâches à faire par date de
+        # création (les urgentes d'abord), les terminées par date de
+        # réalisation. id départage : les tâches importées partagent une même
+        # date de création, et l'id suit l'ordre de l'ancienne liste.
         cursor = await db.execute(
-            """SELECT * FROM todo_items WHERE ship_id = ?
+            """SELECT t.*, COALESCE(c.company, c.contact_name) AS contact_label
+               FROM todo_items t LEFT JOIN contacts c ON c.id = t.contact_id
+               WHERE t.ship_id = ?
                ORDER BY
-                 CASE WHEN status = 'Terminé' THEN 1 ELSE 0 END,
-                 urgent DESC,
-                 CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-                 due_date ASC,
-                 created_at DESC""",
+                 CASE WHEN t.status = 'Terminé' THEN 1 ELSE 0 END,
+                 CASE WHEN t.status = 'Terminé' THEN 0 ELSE t.urgent END DESC,
+                 CASE WHEN t.status = 'Terminé' THEN t.completed_at ELSE t.created_at END DESC,
+                 t.id DESC""",
             (ship_id,),
         )
         items = await cursor.fetchall()
@@ -2556,11 +2668,23 @@ async def ship_todo(request: Request):
     )
 
 
+async def _todo_contacts(db, ship_id: int) -> list[dict]:
+    """Les contacts du navire, pour le menu « Prestataire » d'une tâche : la
+    société, à défaut le nom, dans l'ordre alphabétique (accents ignorés)."""
+    cursor = await db.execute(
+        "SELECT id, COALESCE(company, contact_name) AS label FROM contacts WHERE ship_id = ?",
+        (ship_id,),
+    )
+    rows = [{"id": r[0], "label": r[1]} for r in await cursor.fetchall() if r[1]]
+    return sorted(rows, key=lambda r: _fold(r["label"]))
+
+
 @app.get("/ship/todo/new", response_class=HTMLResponse)
 async def new_todo_form(request: Request, next: Optional[str] = None):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
+        contacts = await _todo_contacts(db, get_current_ship_id(request))
     return templates.TemplateResponse(
         "ship/todo_new.html",
         {
@@ -2570,6 +2694,7 @@ async def new_todo_form(request: Request, next: Optional[str] = None):
             # Où renvoie « Annuler » : la page d'où l'on vient (une route),
             # /ship/todo par défaut.
             "next": next,
+            "contacts": contacts,
         },
     )
 
@@ -2583,14 +2708,17 @@ async def create_todo_item(
     due_date: Optional[str] = Form(None),
     photo_path: Optional[str] = Form(None),
     photo_file: Optional[UploadFile] = File(None),
+    contact_id: Optional[str] = Form(None),
     next: Optional[str] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
     photo = await _save_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
-            "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, photo_path) VALUES (?, ?, ?, ?, ?, ?)",
-            (ship_id, title, task or None, 1 if urgent else 0, due_date or None, photo),
+            "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, photo_path, contact_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ship_id, title, task or None, 1 if urgent else 0, due_date or None, photo,
+             int(contact_id) if contact_id else None),
         )
         await db.commit()
     # Retour à la page appelante (une route) quand le formulaire en portait une.
@@ -2604,6 +2732,7 @@ async def edit_todo_form(request: Request, item_id: int, next: Optional[str] = N
         ship = await _fetch_ship(db, get_current_ship_id(request))
         cursor = await db.execute("SELECT * FROM todo_items WHERE id = ?", (item_id,))
         item = await cursor.fetchone()
+        contacts = await _todo_contacts(db, get_current_ship_id(request))
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     return templates.TemplateResponse(
@@ -2614,6 +2743,7 @@ async def edit_todo_form(request: Request, item_id: int, next: Optional[str] = N
             "item": dict(item),
             # Idem : « Annuler » revient à la page appelante.
             "next": next,
+            "contacts": contacts,
         },
     )
 
@@ -2629,11 +2759,16 @@ async def update_todo_item(
     completed_at: Optional[str] = Form(None),
     photo_path: Optional[str] = Form(None),
     photo_file: Optional[UploadFile] = File(None),
+    contact_id: Optional[str] = Form(None),
     next: Optional[str] = Form(None),
 ):
     # A newly chosen file wins over the text field, which still holds the old path.
     photo = await _save_photo(photo_file) or photo_path or None
     status = status or 'A faire'
+    # Une date de réalisation passée ou du jour termine une tâche restée « À
+    # faire » (le formulaire le fait déjà à l'écran, voir _todo_form.html).
+    if status == 'A faire' and completed_at and completed_at <= datetime.now().strftime("%Y-%m-%d"):
+        status = 'Terminé'
     # Le statut commande la date de réalisation, et l'emporte sur la case du
     # formulaire : « À faire » l'efface — une tâche rouverte n'a pas de date de
     # réalisation — et « En cours » la met toujours à aujourd'hui. Seul
@@ -2644,10 +2779,11 @@ async def update_todo_item(
         completed_at = datetime.now().strftime("%Y-%m-%d")
     async with connect() as db:
         await db.execute(
-            """UPDATE todo_items SET title=?, task=?, urgent=?, status=?, due_date=?, completed_at=?, photo_path=?
+            """UPDATE todo_items SET title=?, task=?, urgent=?, status=?, due_date=?, completed_at=?, photo_path=?,
+                      contact_id=?
                WHERE id=?""",
             (title or None, task or None, 1 if urgent else 0, status, due_date or None,
-             completed_at or None, photo, item_id),
+             completed_at or None, photo, int(contact_id) if contact_id else None, item_id),
         )
         await db.commit()
     # Idem : la route d'où l'on vient, /ship/todo sinon.
@@ -3315,7 +3451,12 @@ async def contact_detail(request: Request, contact_id: int):
         contact = dict(contact)
         name_filter = contact.get("company") or contact.get("contact_name") or ""
         cursor = await db.execute(
-            "SELECT * FROM expenses WHERE ship_id = ? AND supplier = ? ORDER BY date DESC",
+            # Le trombone ouvre le premier document de l'achat, comme dans les comptes.
+            """SELECT *,
+                   (SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
+                    ORDER BY d.id LIMIT 1) AS first_doc,
+                   (SELECT COUNT(*) FROM expense_documents d WHERE d.expense_id = expenses.id) AS doc_count
+               FROM expenses WHERE ship_id = ? AND supplier = ? ORDER BY date DESC""",
             (ship_id, name_filter),
         )
         purchases = await cursor.fetchall()

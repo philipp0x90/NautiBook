@@ -17,6 +17,17 @@
     .ligne-contact .case input:focus, .ligne-contact .case select:focus { border-color: var(--accent); background: #fff; outline: none; }
     .ligne-contact td.lu { padding-left: 10px; white-space: nowrap; }
     .filtres-contacts .compte { margin-left: auto; font-size: 13px; color: var(--muted); }
+    /* Les filtres restent collés sous la barre bleue, les titres de colonnes
+       sous eux (--filtres-h, leur hauteur mesurée plus bas) ; fond plein,
+       pour cacher les lignes qui défilent dessous. Sur téléphone, rien n'est
+       collé (voir .tableau-colle dans base.html). */
+    @media (min-width: 701px) {
+        .filtres-contacts {
+            position: sticky; top: calc(14px + var(--barre-h, 0px)); z-index: 145;
+            background: var(--bg); margin: 0; padding: 4px 0 10px;
+        }
+        .tableau-colle thead { top: calc(14px + var(--barre-h, 0px) + var(--filtres-h, 0px)); }
+    }
 </style>
 {% endblock %}
 {% block content %}
@@ -63,6 +74,13 @@
     </label>
     <span class="compte" id="filtre-compte"></span>
 </div>
+<script>
+(function () {
+    const f = document.querySelector('.filtres-contacts');
+    const regler = () => document.documentElement.style.setProperty('--filtres-h', f.offsetHeight + 'px');
+    regler(); addEventListener('resize', regler);
+})();
+</script>
 <form method="POST" action="/ship/contacts/categories/new" id="nouvelle-categorie" hidden>
     <input type="hidden" name="name"><input type="hidden" name="contact_id"><input type="hidden" name="retour">
 </form>

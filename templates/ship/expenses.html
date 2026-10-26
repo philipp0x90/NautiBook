@@ -69,7 +69,7 @@
                     ('date', 'Date', 'left', 'du plus ancien au plus récent', 'du plus récent au plus ancien'),
                     ('montant', 'Montant', 'right', 'du plus petit au plus grand', 'du plus grand au plus petit'),
                     ('objet', 'Objet', 'left', 'de A à Z', 'de Z à A'),
-                    ('type', 'Type de frais', 'left', 'de A à Z', 'de Z à A'),
+                    ('type', 'Catégorie', 'left', 'de A à Z', 'de Z à A'),
                     ('fournisseur', 'Fournisseur', 'left', 'de A à Z', 'de Z à A'),
                 ] %}
                 <th style="text-align:{{ align }};white-space:nowrap">
@@ -86,8 +86,8 @@
                     </span>
                 </th>
                 {% endfor %}
-                <th style="text-align:right">Payé</th>
-                <th>Paiement</th>
+                {# Ni Paiement ni Payé : le mode de paiement et le montant payé
+                   sont sur la fiche ; un solde non nul dit ce qui reste dû. #}
                 <th style="text-align:right">Solde</th>
                 <th></th>
             </tr>
@@ -105,9 +105,10 @@
                    ouvre la fiche. #}
                 <td>
                     {{ e.designation or '' }}
-                    {% if e.document_path %}
-                    <a href="{{ e.document_path }}" target="_blank" rel="noopener" title="Ouvrir la facture"
-                       style="text-decoration:none;margin-left:4px">📎</a>
+                    {% if e.first_doc %}
+                    <a href="{{ e.first_doc }}" target="_blank" rel="noopener"
+                       title="{{ 'Ouvrir le premier des ' ~ e.doc_count ~ ' documents' if e.doc_count > 1 else 'Ouvrir le document' }}"
+                       class="trombone"><svg aria-hidden="true"><use href="#icon-trombone"/></svg></a>
                     {% endif %}
                 </td>
                 <td>{{ e.expense_type or '' }}</td>
@@ -119,8 +120,6 @@
                     {{ e.supplier or '' }}
                     {% endif %}
                 </td>
-                <td style="text-align:right;white-space:nowrap">{{ e.paid | euros }}</td>
-                <td>{{ e.payment or '' }}</td>
                 <td style="text-align:right;white-space:nowrap">{{ e.balance | euros }}</td>
                 <td>
                     <form method="POST" action="/ship/expenses/{{ e.id }}/delete"
@@ -133,13 +132,11 @@
         </tbody>
         <tfoot>
             {# Total général : la somme des montants de toutes les dépenses du
-               navire, avec en regard ce qui en est payé et ce qui reste dû. #}
+               navire, avec en regard ce qui reste dû. #}
             <tr>
                 <td style="white-space:nowrap">Total général</td>
                 <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) | euros }}</td>
                 <td colspan="3"></td>
-                <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) | euros }}</td>
-                <td></td>
                 <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
                 <td></td>
             </tr>
