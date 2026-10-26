@@ -122,7 +122,7 @@
                 <option value="">—</option>
                 {% for c in contacts %}
                 {% set nom = c.company or c.contact_name %}
-                <option value="{{ nom }}" {{ 'selected' if edition and entry.supplier == nom else '' }}>{{ nom }}</option>
+                <option value="{{ nom }}" {{ 'selected' if (entry.supplier if edition else supplier) == nom else '' }}>{{ nom }}</option>
                 {% endfor %}
                 {# Même raison que pour le type de frais : un fournisseur absent
                    du carnet ne doit pas disparaître à l'enregistrement. #}

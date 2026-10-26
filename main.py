@@ -2109,7 +2109,7 @@ def _expense_balance(unit_price, paid):
     return unit_price - paid, paid
 
 
-async def _expense_form(request: Request, entry: Optional[dict]):
+async def _expense_form(request: Request, entry: Optional[dict], supplier: Optional[str] = None):
     """Formulaire des comptes, en création (entry=None) comme en modification."""
     ship_id = get_current_ship_id(request)
     async with connect() as db:
@@ -2138,6 +2138,9 @@ async def _expense_form(request: Request, entry: Optional[dict]):
             # Date du jour préremplie, en heure locale comme le reste du journal.
             "today": datetime.now().strftime("%Y-%m-%d"),
             "documents": documents,
+            # Fournisseur préchoisi d'une nouvelle dépense : ouverte depuis la
+            # fiche d'un contact (« + Nouvelle dépense »).
+            "supplier": supplier,
             "doc_accept": ",".join(sorted(DOC_SUFFIXES)),
             "doc_max_bytes": DOC_MAX_BYTES,
         },
@@ -2145,8 +2148,8 @@ async def _expense_form(request: Request, entry: Optional[dict]):
 
 
 @app.get("/ship/expenses/new", response_class=HTMLResponse)
-async def new_expense_form(request: Request):
-    return await _expense_form(request, None)
+async def new_expense_form(request: Request, fournisseur: Optional[str] = None):
+    return await _expense_form(request, None, fournisseur)
 
 
 @app.post("/ship/expenses/new")

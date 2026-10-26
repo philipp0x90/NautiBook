@@ -111,7 +111,9 @@
 <div class="section-bar section-bar-collee">
     <a href="/ship/contacts" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">← Carnet d'adresses</a>
     <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
-    <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Carnet d'adresses</span>
+    {# Une dépense chez ce fournisseur, préchoisi dans le formulaire. #}
+    <a href="/ship/expenses/new?fournisseur={{ (contact.company or contact.contact_name or '') | urlencode }}"
+       class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ Nouvelle dépense</a>
 </div>
 
 {# Contact précédent et suivant, dans l'ordre du carnet ; aux extrémités, le
