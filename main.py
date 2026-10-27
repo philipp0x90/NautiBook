@@ -2164,7 +2164,7 @@ async def create_expense(
     payment: Optional[str] = Form(None),
     supplier: Optional[str] = Form(None),
     doc_title: Optional[str] = Form(None),
-    document_file: Optional[UploadFile] = File(None),
+    document_file: List[UploadFile] = File([]),
 ):
     ship_id = get_current_ship_id(request)
     balance, paid = _expense_balance(unit_price, paid)
@@ -2179,7 +2179,9 @@ async def create_expense(
         )
         entry_id = cursor.lastrowid
         # Un premier document peut partir avec la dépense, avant qu'elle existe.
-        await _add_expense_document(db, entry_id, doc_title, document_file)
+        files = [f for f in document_file if f.filename]
+        for upload in files:
+            await _add_expense_document(db, entry_id, doc_title if len(files) == 1 else None, upload)
         await db.commit()
     return _after_expense_save(entry_id, supplier)
 
@@ -2610,12 +2612,31 @@ async def _add_expense_document(db, expense_id: int, title: Optional[str],
 async def add_expense_document(
     entry_id: int,
     title: Optional[str] = Form(None),
-    document_file: Optional[UploadFile] = File(None),
+    document_file: List[UploadFile] = File([]),
 ):
+    """Un ou plusieurs fichiers (déposés ensemble sur la section Documents) ;
+    le titre saisi ne vaut que pour un fichier seul, sinon chacun prend le
+    nom du sien."""
+    files = [f for f in document_file if f.filename]
     async with connect() as db:
-        await _add_expense_document(db, entry_id, title, document_file)
+        for upload in files:
+            await _add_expense_document(db, entry_id, title if len(files) == 1 else None, upload)
         await db.commit()
     return RedirectResponse(url=f"/ship/expenses/{entry_id}#documents", status_code=303)
+
+
+@app.post("/ship/expenses/documents/{doc_id}/title")
+async def rename_expense_document(doc_id: int, value: Optional[str] = Form(None)):
+    """Titre d'un document, modifié sur place dans la liste de la dépense ;
+    vidé, il garde l'ancien plutôt que de rester sans nom."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT expense_id FROM expense_documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        if (value or "").strip():
+            await db.execute("UPDATE expense_documents SET title = ? WHERE id = ?", (value.strip(), doc_id))
+            await db.commit()
+    return RedirectResponse(url=f"/ship/expenses/{row[0]}#documents" if row else "/ship/expenses",
+                            status_code=303)
 
 
 @app.post("/ship/expenses/documents/{doc_id}/delete")

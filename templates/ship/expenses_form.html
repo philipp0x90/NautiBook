@@ -7,15 +7,32 @@
 {% block title %}{{ titre }} — NautiBook{% endblock %}
 {% block head %}
 <style>
-    /* Une seule grille de quatre colonnes pour tout le formulaire, et non une
-       grille par rangée : les champs s'alignent d'une rangée à l'autre. Chaque
-       champ déclare sa largeur en colonnes (.span-2, .span-4). */
+    /* Une seule grille pour tout le formulaire : à gauche deux colonnes
+       étroites (dates, montants, catégorie, paiement — dix caractères
+       suffisent), à droite l'objet, le fournisseur et la description, qui
+       prend la hauteur des deux dernières rangées. Chaque champ nomme sa
+       place (grid-area). Sous 700 px, tout passe sur deux colonnes. */
     .expense-form {
-        display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 16px;
-        flex: 1 1 560px; max-width: 820px;
+        display: grid; gap: 14px 16px; max-width: 980px; flex: 1 1 560px;
+        grid-template-columns: 150px 150px minmax(0, 1fr);
+        grid-template-areas:
+            "date      montant   objet"
+            "categorie categorie fournisseur"
+            "paye      solde     description"
+            "mode      mode      description"
+            "actions   actions   actions";
     }
-    .expense-form .span-2 { grid-column: span 2; }
-    .expense-form .span-4 { grid-column: 1 / -1; }
+    @media (max-width: 700px) {
+        .expense-form {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            grid-template-areas:
+                "date montant" "objet objet" "categorie categorie" "fournisseur fournisseur"
+                "paye solde" "mode mode" "description description" "actions actions";
+        }
+    }
+    /* La description remplit sa case jusqu'en bas. */
+    .expense-form [style*="grid-area:description"] { display: flex; flex-direction: column; }
+    .expense-form [style*="grid-area:description"] textarea { flex: 1; min-height: 70px; resize: vertical; font: inherit; font-size: 14px; }
     .expense-form label { margin-bottom: 4px; }
     /* Même hauteur pour tous les champs d'une ligne, comme crew/form.html :
        sans consigne, listes et date prennent 34 px et les champs texte 32. */
@@ -46,12 +63,22 @@
     .expense-page { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
     /* Documents de la dépense, comme ceux de la fiche navire mais sans dates
        de validité : le titre a toute la place. */
-    .expense-docs { max-width: 820px; margin-top: 16px; }
+    .expense-docs { max-width: 980px; margin-top: 16px; }
     .expense-docs h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
     .expense-docs table { margin-bottom: 12px; }
     .doc-type { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
     .doc-type.doc-pdf { background: #c0392b; }
     .doc-type.doc-img { background: #2980b9; }
+    /* Titre d'un document : du texte au repos, un champ au survol. */
+    .doc-titre { margin: 0; }
+    .doc-titre input {
+        width: 100%; height: 28px; padding: 2px 6px; font: inherit; font-weight: 600; background: transparent;
+        border: 1px solid transparent; border-radius: 5px;
+    }
+    .doc-titre input:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .doc-titre input:focus { border-color: var(--accent); background: #fff; outline: none; }
+    /* Fichiers glissés sur la section : un cadre pointillé pendant le survol. */
+    .expense-docs.survol { outline: 2px dashed var(--accent); outline-offset: -6px; background: #e8f4f9; }
     .doc-ajout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .doc-ajout input[type=text] { flex: 3 1 260px; min-width: 0; height: 32px; }
     .doc-ajout input[type=file] { flex: 2 1 200px; min-width: 0; font-size: 13px; }
@@ -73,24 +100,24 @@
 <form method="POST" enctype="multipart/form-data" class="card expense-form" id="expense-form"
       action="{{ '/ship/expenses/' ~ entry.id ~ '/edit' if edition else '/ship/expenses/new' }}">
 
-        <div>
+        <div style="grid-area:date">
             {# Date du jour par défaut à la création ; une fiche existante garde
                la sienne, même vide. #}
             <label>Date</label>
             <input type="date" name="date" value="{{ (entry.date or '')[:10] if edition else today }}">
         </div>
-        <div>
+        <div style="grid-area:montant">
             <label>Montant (€)</label>
             <input type="number" name="unit_price" class="money" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
                    value="{{ '%.2f'|format(entry.unit_price) if edition and entry.unit_price is not none else '' }}">
         </div>
-        <div class="span-2">
+        <div style="grid-area:objet">
             <label>Objet</label>
             <input type="text" name="designation" value="{{ entry.designation or '' if edition else '' }}"
                    placeholder="Remplacement winch tribord" required>
         </div>
 
-        <div class="span-2">
+        <div style="grid-area:categorie">
             <label>Catégorie</label>
             <select name="expense_type">
                 <option value="">—</option>
@@ -109,7 +136,7 @@
                 {% endif %}
             </select>
         </div>
-        <div class="span-2">
+        <div style="grid-area:fournisseur">
             {# « Saisir manuellement » enregistre la dépense telle qu'elle est
                remplie, puis ouvre la création du contact, qui lui sera imputé
                (voir NEW_CONTACT dans main.py). Enregistrer d'abord : rien de
@@ -134,12 +161,12 @@
             </select>
         </div>
 
-        <div>
+        <div style="grid-area:paye">
             <label>Payé (€)</label>
             <input type="number" name="paid" class="money" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
                    value="{{ '%.2f'|format(entry.paid) if edition and entry.paid is not none else '' }}">
         </div>
-        <div>
+        <div style="grid-area:mode">
             <label>Mode de paiement</label>
             <select name="payment">
                 <option value="">—</option>
@@ -153,21 +180,29 @@
                 {% endif %}
             </select>
         </div>
-        <div>
+        <div style="grid-area:solde">
             {# Affiché, pas saisi : le serveur recalcule le solde à chaque
                enregistrement (_expense_balance). Sans name, il n'est pas envoyé. #}
             <label>Solde (€)</label>
             <input type="text" id="solde" class="money" disabled>
         </div>
 
-    <div class="span-4">
+    <div style="grid-area:description">
         <label>Description</label>
         <textarea name="description" rows="4" placeholder="Détails, références, remarques…">{{ entry.description or '' if edition else '' }}</textarea>
     </div>
 
-    <div class="span-4 actions">
+    <div class="actions" style="grid-area:actions">
         <button type="submit" class="btn btn-primary">{{ 'Enregistrer les modifications' if edition else 'Enregistrer' }}</button>
         <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
+        {# La fiche du fournisseur, à droite, quand il est dans le carnet
+           (expenses.supplier retient son nom : société, à défaut contact). #}
+        {% set fiche = contacts | selectattr('company', 'eq', entry.supplier) | list
+                       or contacts | selectattr('contact_name', 'eq', entry.supplier) | list if edition and entry.supplier else [] %}
+        {% if fiche %}
+        <a href="/ship/contacts/{{ fiche[0].id }}" class="btn btn-blue" style="margin-left:auto"
+           title="Ouvrir la fiche de {{ entry.supplier }}">Contact fournisseur</a>
+        {% endif %}
     </div>
 
 </form>
@@ -188,7 +223,15 @@
             {% set pdf = d.path.lower().endswith('.pdf') %}
             <tr style="cursor:pointer" title="Afficher le document"
                 onclick="ouvrirDocument(event, '{{ d.path }}', {{ 'true' if pdf else 'false' }})">
-                <td style="font-weight:600;width:100%">{{ d.title or '—' }}</td>
+                {# Titre modifiable sur place : son propre formulaire,
+                   enregistré en quittant le champ ; un clic dedans ne
+                   rouvre pas le document (ouvrirDocument ignore les formulaires). #}
+                <td style="width:100%">
+                    <form method="POST" action="/ship/expenses/documents/{{ d.id }}/title" class="doc-titre">
+                        <input type="text" name="value" value="{{ d.title or '' }}" placeholder="Titre du document"
+                               title="Modifier le titre" onchange="this.form.submit()">
+                    </form>
+                </td>
                 <td>
                     {% if pdf %}<span class="doc-type doc-pdf">PDF</span>
                     {% else %}<span class="doc-type doc-img">Image</span>{% endif %}
@@ -212,18 +255,18 @@
     <form method="POST" action="/ship/expenses/{{ entry.id }}/documents/new" enctype="multipart/form-data"
           class="doc-ajout" onsubmit="return verifierDocument(this.elements.document_file)">
         <input type="text" name="title" placeholder="Titre du document (sinon, le nom du fichier)">
-        <input type="file" name="document_file" accept="image/*,application/pdf,{{ doc_accept }}" required>
+        <input type="file" name="document_file" accept="image/*,application/pdf,{{ doc_accept }}" multiple required>
         <button type="submit" class="btn btn-yellow">+ Ajouter document</button>
     </form>
     {% else %}
     <div class="doc-ajout">
         <input type="text" name="doc_title" form="expense-form" placeholder="Titre du document (sinon, le nom du fichier)">
         <input type="file" name="document_file" form="expense-form" accept="image/*,application/pdf,{{ doc_accept }}"
-               onchange="verifierDocument(this)">
+               multiple onchange="verifierDocument(this)">
     </div>
     <div class="meta" style="margin-top:4px">Enregistré avec la dépense ; d'autres pourront s'ajouter ensuite.</div>
     {% endif %}
-    <div class="meta" style="margin-top:4px">PDF ou image, max. {{ doc_max_bytes // 1048576 }} Mo</div>
+    <div class="meta" style="margin-top:4px">PDF ou image, max. {{ doc_max_bytes // 1048576 }} Mo — ou glisser les fichiers ici</div>
 </section>
 
 <script>
@@ -251,14 +294,33 @@ function ouvrirDocument(event, url, pdf) {
 // Refus avant l'envoi plutôt qu'une page d'erreur après : un gros fichier
 // prend du temps sur le wifi du bord.
 function verifierDocument(champ) {
-    const f = champ.files[0];
-    if (f && f.size > {{ doc_max_bytes }}) {
-        alert('Fichier trop volumineux (plus de {{ doc_max_bytes // 1048576 }} Mo).');
+    const trop = [...champ.files].find(f => f.size > {{ doc_max_bytes }});
+    if (trop) {
+        alert('« ' + trop.name + ' » est trop volumineux (plus de {{ doc_max_bytes // 1048576 }} Mo).');
         champ.value = '';
         return false;
     }
     return true;
 }
+// Glisser-déposer des fichiers sur la section Documents : ils remplissent le
+// champ fichier. Sur une dépense existante, ils sont ajoutés aussitôt ; à la
+// création, ils partiront avec la dépense, au bouton Enregistrer.
+(function () {
+    const section = document.getElementById('documents');
+    const champ = section.querySelector('input[type=file]');
+    const ok = f => /^(image\/|application\/pdf)/.test(f.type) || /\.(pdf|jpe?g|png|heic|gif|webp)$/i.test(f.name);
+    ['dragenter', 'dragover'].forEach(t => section.addEventListener(t, e => { e.preventDefault(); section.classList.add('survol'); }));
+    section.addEventListener('dragleave', e => { if (!section.contains(e.relatedTarget)) section.classList.remove('survol'); });
+    section.addEventListener('drop', e => {
+        e.preventDefault(); section.classList.remove('survol');
+        const dt = new DataTransfer();
+        [...e.dataTransfer.files].filter(ok).forEach(f => dt.items.add(f));
+        if (!dt.files.length) { alert('Seuls les PDF et les images peuvent être joints.'); return; }
+        champ.files = dt.files;
+        if (!verifierDocument(champ)) return;
+        {% if edition %}champ.form.requestSubmit();{% endif %}
+    });
+})();
 </script>
 
 {% endblock %}
