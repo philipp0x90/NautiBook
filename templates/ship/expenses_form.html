@@ -60,12 +60,12 @@
 
 {% block content %}
 
-{# Le double invisible du badge « ← Comptes », à droite, garde le titre
+{# Le double invisible du bouton « ← Comptes », à droite, garde le titre
    centré dans la barre et non dans l'espace laissé à droite du badge. #}
 <div class="section-bar">
-    <div class="section-bar-left"><a href="/ship/expenses" style="color:#fff;text-decoration:none">← Comptes</a></div>
+    <a href="/ship/expenses" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">← Comptes</a>
     <div class="section-bar-title">{{ titre }}</div>
-    <div class="section-bar-left" style="visibility:hidden" aria-hidden="true">← Comptes</div>
+    <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Comptes</span>
 </div>
 
 {# multipart : le document part avec le reste de la fiche. #}

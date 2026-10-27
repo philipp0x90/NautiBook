@@ -3459,7 +3459,7 @@ async def contact_detail(request: Request, contact_id: int):
                    (SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
                     ORDER BY d.id LIMIT 1) AS first_doc,
                    (SELECT COUNT(*) FROM expense_documents d WHERE d.expense_id = expenses.id) AS doc_count
-               FROM expenses WHERE ship_id = ? AND supplier = ? ORDER BY date DESC""",
+               FROM expenses WHERE ship_id = ? AND supplier = ? ORDER BY date DESC, id DESC""",
             (ship_id, name_filter),
         )
         purchases = await cursor.fetchall()

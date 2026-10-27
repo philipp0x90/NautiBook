@@ -19,7 +19,17 @@
         max-height: calc(100dvh - var(--topbar-h, 70px) - var(--barre-h, 66px) - 84px);
         border-radius: 6px;
     }
-    .comptes-scroll thead th { position: sticky; top: 0; z-index: 2; }
+    /* Tout l'en-tête collé d'un bloc (filtre et titres), et non chaque
+       cellule : deux rangées collées à top: 0 se superposeraient. */
+    .comptes-scroll thead { position: sticky; top: 0; z-index: 2; }
+    /* Filtre : une rangée de l'en-tête, le menu au-dessus de sa colonne,
+       comme sur le carnet d'adresses. */
+    .data-table.titres-legers .filtre-comptes th { padding-top: 0; padding-bottom: 6px; border-bottom: 0;
+                                                   font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .filtre-comptes select { width: 100%; min-width: 0; padding: 4px 8px; font-size: 13px; height: 30px; }
+    /* Pas de liseré bleu au choix d'une option : un filtre n'est pas un champ de saisie. */
+    .filtre-comptes select:focus { outline: none; background: #f8fafc; }
+    .filtre-comptes .compte { font-size: 13px; color: var(--muted); white-space: nowrap; }
 
     /* Flèches de tri : deux petits triangles empilés à droite du titre. */
     .tri-titre { display: inline-flex; align-items: center; gap: 6px; }
@@ -50,7 +60,7 @@
     {# Un bouton de chaque côté, de même largeur, pour que le titre reste
        centré ; l'import à gauche, la saisie à droite comme sur les autres listes.
        Marges verticales négatives : les boutons ne grandissent pas la barre. #}
-    <a href="/ship/expenses/import" class="btn" style="min-width:180px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">⇪ Importer</a>
+    <a href="/ship/expenses/import" class="btn" style="min-width:180px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">⇪ Importer</a>
     <div class="section-bar-title">Comptes</div>
     <a href="/ship/expenses/new" class="btn btn-yellow" style="min-width:180px;text-align:center;margin:-10px 0">+ Nouvelle dépense</a>
 </div>
@@ -59,6 +69,24 @@
 <div class="comptes-scroll">
     <table class="data-table titres-legers">
         <thead>
+            {# Filtre par catégorie, au-dessus de sa colonne, sans recharger la
+               page ; mémorisé par appareil. Les catégories présentes dans les
+               comptes, y compris celles d'avant la liste actuelle (Refit…). #}
+            {% set categories = entries | map(attribute='expense_type') | select | unique | sort(case_sensitive=false) | list %}
+            <tr class="filtre-comptes">
+                <th colspan="3"><span class="compte" id="filtre-compte"></span></th>
+                <th>
+                    <select id="filtre-categorie">
+                        <option value="">Toutes catégories</option>
+                        {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+                        {% if entries | rejectattr('expense_type') | list %}
+                        <option disabled>──────────</option>
+                        <option value="__aucune__">Sans catégorie</option>
+                        {% endif %}
+                    </select>
+                </th>
+                <th colspan="3"></th>
+            </tr>
             <tr>
                 {# Deux triangles à droite du titre : ▲ croissant, ▼ décroissant.
                    Le sens actif est plein, l'autre estompé. Chaque info-bulle dit
@@ -96,7 +124,8 @@
             {% for e in entries %}
             {# Toute la ligne ouvre la fiche ; rowLink laisse passer les clics
                sur le lien du fournisseur et le bouton de suppression. #}
-            <tr style="cursor:pointer" title="Ouvrir cette dépense"
+            <tr style="cursor:pointer" title="Ouvrir cette dépense" class="ligne-depense"
+                data-categorie="{{ e.expense_type or '' }}" data-montant="{{ e.unit_price or 0 }}" data-solde="{{ e.balance or 0 }}"
                 onclick="rowLink(event, '/ship/expenses/{{ e.id }}')">
                 <td style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
                 <td style="text-align:right;white-space:nowrap">{{ e.unit_price | euros }}</td>
@@ -132,17 +161,51 @@
         </tbody>
         <tfoot>
             {# Total général : la somme des montants de toutes les dépenses du
-               navire, avec en regard ce qui reste dû. #}
+               navire, avec en regard ce qui reste dû. Filtré, le total des
+               seules dépenses affichées (recalculé par le script du filtre). #}
             <tr>
-                <td style="white-space:nowrap">Total général</td>
-                <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) | euros }}</td>
+                <td style="white-space:nowrap" id="total-libelle">Total général</td>
+                <td style="text-align:right;white-space:nowrap" id="total-montant">{{ ((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) | euros }}</td>
                 <td colspan="3"></td>
-                <td style="text-align:right;white-space:nowrap">{{ ((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
+                <td style="text-align:right;white-space:nowrap" id="total-solde">{{ ((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
                 <td></td>
             </tr>
         </tfoot>
     </table>
 </div>
+<script>
+(function () {
+    const cat = document.getElementById('filtre-categorie'), compte = document.getElementById('filtre-compte');
+    const lignes = [...document.querySelectorAll('.ligne-depense')];
+    const libelle = document.getElementById('total-libelle'), montant = document.getElementById('total-montant'),
+          solde = document.getElementById('total-solde');
+    const totaux = [libelle.textContent, montant.textContent, solde.textContent];
+    const CLE = 'nb-filtre-comptes';
+    // Même format que le filtre euros : 1.234,56 €.
+    const euros = v => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    let memo = {};
+    try { memo = JSON.parse(localStorage.getItem(CLE) || '{}'); } catch (e) {}
+    if (memo.categorie && [...cat.options].some(o => o.value === memo.categorie)) cat.value = memo.categorie;
+    function filtrer() {
+        let n = 0, m = 0, s = 0;
+        lignes.forEach(function (tr) {
+            const ok = !cat.value || (cat.value === '__aucune__' ? !tr.dataset.categorie : tr.dataset.categorie === cat.value);
+            tr.hidden = !ok;
+            if (ok) { n++; m += parseFloat(tr.dataset.montant); s += parseFloat(tr.dataset.solde); }
+        });
+        if (cat.value) {
+            compte.textContent = n + ' dépense' + (n > 1 ? 's' : '') + ' sur ' + lignes.length;
+            libelle.textContent = 'Total'; montant.textContent = euros(m); solde.textContent = euros(s);
+        } else {
+            compte.textContent = '';
+            [libelle.textContent, montant.textContent, solde.textContent] = totaux;
+        }
+        try { localStorage.setItem(CLE, JSON.stringify({ categorie: cat.value })); } catch (e) {}
+    }
+    cat.addEventListener('change', filtrer);
+    filtrer();
+})();
+</script>
 {% else %}
 <div class="stub">
     <div>Aucune dépense enregistrée.</div>

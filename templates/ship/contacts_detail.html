@@ -105,11 +105,19 @@
 </form>
 {% endmacro %}
 
-{# Un seul retour, vers le carnet d'adresses ; les comptes ont leur lien en
-   bas, au-dessus de l'historique des achats. Marges verticales négatives :
-   les boutons ne grandissent pas la barre. #}
+{# À gauche, les comptes du navire, centrés sur la dernière dépense chez ce
+   fournisseur (?ligne=, script « Retour à une liste ») ; rubrique « comptes »
+   de la grille : sans elle, un double invisible garde le titre centré. Le
+   carnet d'adresses est au milieu, entre Précédent et Suivant. Marges
+   verticales négatives : les boutons ne grandissent pas la barre. #}
 <div class="section-bar section-bar-collee">
-    <a href="/ship/contacts" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#fff;color:#0f3a4a">← Carnet d'adresses</a>
+    {% if peut(request, 'comptes.voir') %}
+    <a href="/ship/expenses{{ '?ligne=/ship/expenses/' ~ purchases[0].id if purchases }}" class="btn"
+       style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff"
+       title="{{ 'Ouvrir les comptes sur la dernière dépense chez ce fournisseur' if purchases else 'Ouvrir les comptes' }}">← Comptes</a>
+    {% else %}
+    <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Comptes</span>
+    {% endif %}
     <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
     {# Une dépense chez ce fournisseur, préchoisi dans le formulaire. #}
     <a href="/ship/expenses/new?fournisseur={{ (contact.company or contact.contact_name or '') | urlencode }}"
@@ -121,6 +129,7 @@
 <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
     {% if prev_id %}<a href="/ship/contacts/{{ prev_id }}" class="btn btn-blue">← Précédent</a>
     {% else %}<span class="btn btn-blue" style="opacity:.4;pointer-events:none">← Précédent</span>{% endif %}
+    <a href="/ship/contacts" class="btn btn-blue">Carnet d'adresses</a>
     {% if next_id %}<a href="/ship/contacts/{{ next_id }}" class="btn btn-blue">Suivant →</a>
     {% else %}<span class="btn btn-blue" style="opacity:.4;pointer-events:none">Suivant →</span>{% endif %}
 </div>

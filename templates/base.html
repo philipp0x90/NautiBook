@@ -1081,11 +1081,21 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
     addEventListener('pagehide', function () {
         try { sessionStorage.setItem(CLE, location.pathname); } catch (e) {}
     });
-    if (!quittee || quittee === location.pathname || location.hash) return;
+    // Un lien peut aussi désigner la ligne à retrouver : ?ligne=/ship/expenses/12
+    // (le bouton « Comptes » d'une fiche contact, vers sa dernière dépense).
+    // Le paramètre est retiré de l'adresse, pour qu'un rechargement n'y revienne pas.
+    const params = new URLSearchParams(location.search);
+    const voulue = params.get('ligne');
+    if (voulue) {
+        params.delete('ligne');
+        history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
+    }
+    const cible = voulue || quittee;
+    if (!cible || (!voulue && quittee === location.pathname) || location.hash) return;
     const ligne = [...document.querySelectorAll('[onclick*="rowLink("]')].find(function (el) {
         const m = el.getAttribute('onclick').match(/rowLink\(event,\s*'([^']+)'/);
         if (!m) return false;
-        try { return new URL(m[1], location.href).pathname === quittee; } catch (e) { return false; }
+        try { return new URL(m[1], location.href).pathname === cible; } catch (e) { return false; }
     });
     if (!ligne || ligne.offsetParent === null) return;   // absente, ou masquée par un filtre
     const placer = () => ligne.scrollIntoView({ block: 'center' });
