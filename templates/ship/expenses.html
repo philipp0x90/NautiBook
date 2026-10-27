@@ -26,14 +26,22 @@
        comme sur le carnet d'adresses. */
     .data-table.titres-legers .filtre-comptes th { padding-top: 0; padding-bottom: 6px; border-bottom: 0;
                                                    font-weight: 400; text-transform: none; letter-spacing: 0; }
-    .filtre-comptes select { width: 100%; min-width: 0; padding: 4px 8px; font-size: 13px; height: 30px; }
+    .filtre-comptes select { width: 100%; min-width: 150px; padding: 4px 8px; font-size: 13px; height: 30px; }
     /* Pas de liseré bleu au choix d'une option : un filtre n'est pas un champ de saisie. */
     .filtre-comptes select:focus { outline: none; background: #f8fafc; }
     .filtre-comptes .compte { font-size: 13px; color: var(--muted); white-space: nowrap; }
 
     /* Flèches de tri : deux petits triangles empilés à droite du titre. */
     .tri-titre { display: inline-flex; align-items: center; gap: 6px; }
-    .tri-titre.tri-droite { justify-content: flex-end; }
+    /* Colonne alignée à droite : la dernière lettre du titre tombe au-dessus
+       du « € » des montants, les flèches à sa droite débordant dans la marge
+       de la cellule et la colonne voisine (celle, vide, des trombones). */
+    .tri-titre.tri-droite { position: relative; }
+    .tri-titre.tri-droite .tri { position: absolute; left: 100%; margin-left: 4px; }
+    /* Trombone d'un document joint : sa propre colonne, étroite, entre le
+       montant et l'objet. */
+    .data-table .col-trombone { width: 1%; padding-left: 0; padding-right: 0; text-align: center; }
+    .col-trombone .trombone { margin-left: 0; }
     .tri { display: inline-flex; flex-direction: column; line-height: 1; }
     /* Zone de toucher agrandie par la marge intérieure : sur iPad, un
        triangle de 11 px seul serait difficile à viser. */
@@ -74,7 +82,7 @@
                comptes, y compris celles d'avant la liste actuelle (Refit…). #}
             {% set categories = entries | map(attribute='expense_type') | select | unique | sort(case_sensitive=false) | list %}
             <tr class="filtre-comptes">
-                <th colspan="3"><span class="compte" id="filtre-compte"></span></th>
+                <th colspan="4"><span class="compte" id="filtre-compte"></span></th>
                 <th>
                     <select id="filtre-categorie">
                         <option value="">Toutes catégories</option>
@@ -94,7 +102,7 @@
                    colonne est au-dessus du for : un commentaire ne peut pas se
                    glisser à l'intérieur de la balise. #}
                 {% for key, label, align, asc_tip, desc_tip in [
-                    ('date', 'Date', 'left', 'du plus ancien au plus récent', 'du plus récent au plus ancien'),
+                    ('date', 'Date', 'center', 'du plus ancien au plus récent', 'du plus récent au plus ancien'),
                     ('montant', 'Montant', 'right', 'du plus petit au plus grand', 'du plus grand au plus petit'),
                     ('objet', 'Objet', 'left', 'de A à Z', 'de Z à A'),
                     ('type', 'Catégorie', 'left', 'de A à Z', 'de Z à A'),
@@ -113,6 +121,8 @@
                         </span>
                     </span>
                 </th>
+                {# Après le montant, la colonne des trombones, sans titre. #}
+                {% if key == 'montant' %}<th class="col-trombone"></th>{% endif %}
                 {% endfor %}
                 {# Ni Paiement ni Payé : le mode de paiement et le montant payé
                    sont sur la fiche ; un solde non nul dit ce qui reste dû. #}
@@ -132,14 +142,14 @@
                 {# Le trombone signale une facture et l'ouvre dans un nouvel
                    onglet ; rowLink laisse passer ce clic, le reste de la ligne
                    ouvre la fiche. #}
-                <td>
-                    {{ e.designation or '' }}
+                <td class="col-trombone">
                     {% if e.first_doc %}
                     <a href="{{ e.first_doc }}" target="_blank" rel="noopener"
                        title="{{ 'Ouvrir le premier des ' ~ e.doc_count ~ ' documents' if e.doc_count > 1 else 'Ouvrir le document' }}"
                        class="trombone"><svg aria-hidden="true"><use href="#icon-trombone"/></svg></a>
                     {% endif %}
                 </td>
+                <td>{{ e.designation or '' }}</td>
                 <td>{{ e.expense_type or '' }}</td>
                 <td>
                     {% if e.supplier in supplier_ids %}
@@ -166,7 +176,7 @@
             <tr>
                 <td style="white-space:nowrap" id="total-libelle">Total général</td>
                 <td style="text-align:right;white-space:nowrap" id="total-montant">{{ ((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) | euros }}</td>
-                <td colspan="3"></td>
+                <td colspan="4"></td>
                 <td style="text-align:right;white-space:nowrap" id="total-solde">{{ ((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
                 <td></td>
             </tr>
