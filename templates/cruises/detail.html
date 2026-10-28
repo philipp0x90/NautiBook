@@ -195,12 +195,17 @@
 {# Ni suppression ni création de croisière sur cette page : elles se font
    depuis la liste des croisières. #}
 <div class="cruise-header">
-    <form style="grid-area:nom;min-width:0;text-align:center" method="POST" action="/cruises/{{ cruise.id }}/set-name">
-        <input type="text" name="name" class="cruise-name" value="{{ cruise.name or '' }}"
-               placeholder="Croisière sans nom"
-               title="Modifier le nom de la croisière (Entrée pour enregistrer)"
-               onchange="this.form.submit()">
-    </form>
+    {# ‹ › : croisières précédente et suivante, de part et d'autre du nom. #}
+    <div class="fiche-nav" style="grid-area:nom;min-width:0">
+        {% if prev_cruise_id %}<a href="/cruises/{{ prev_cruise_id }}" title="Croisière précédente">‹</a>{% else %}<span class="eteint">‹</span>{% endif %}
+        <form style="min-width:0;flex:1;text-align:center" method="POST" action="/cruises/{{ cruise.id }}/set-name">
+            <input type="text" name="name" class="cruise-name" value="{{ cruise.name or '' }}"
+                   placeholder="Croisière sans nom"
+                   title="Modifier le nom de la croisière (Entrée pour enregistrer)"
+                   onchange="this.form.submit()">
+        </form>
+        {% if next_cruise_id %}<a href="/cruises/{{ next_cruise_id }}" title="Croisière suivante">›</a>{% else %}<span class="eteint">›</span>{% endif %}
+    </div>
     {# Position among this ship's cruises, not the id — same %03d as the list. #}
     {% if cruise.number %}
     <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700"># {{ '%03d'|format(cruise.number) }}</div>
@@ -229,26 +234,14 @@
     </div>
 </div>
 
-{# Au-dessus des routes : croisière précédente et suivante aux deux bouts, et
-   au milieu le lien vers l'itinéraire, s'il en a un. Plus de « + Itinéraire »
-   ici : un itinéraire se crée depuis la page Itinéraire. #}
-<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin:-4px 0 10px">
-    <div>
-        {% if prev_cruise_id %}
-        <a href="/cruises/{{ prev_cruise_id }}" class="btn btn-blue">← Croisière Préc.</a>
-        {% endif %}
-    </div>
-    <div style="font-size:13px">
-        {% if itinerary_id %}
-        <a href="/cruises/itinerary/{{ itinerary_id }}" style="color:var(--accent);font-weight:600">Itinéraire →</a>
-        {% endif %}
-    </div>
-    <div style="justify-self:end">
-        {% if next_cruise_id %}
-        <a href="/cruises/{{ next_cruise_id }}" class="btn btn-blue">Croisière Suiv. →</a>
-        {% endif %}
-    </div>
+{# Au-dessus des routes, le lien vers l'itinéraire, s'il en a un (les
+   croisières précédente et suivante sont les ‹ › du bandeau). Plus de
+   « + Itinéraire » ici : un itinéraire se crée depuis la page Itinéraire. #}
+{% if itinerary_id %}
+<div style="text-align:center;font-size:13px;margin:-4px 0 10px">
+    <a href="/cruises/itinerary/{{ itinerary_id }}" style="color:var(--accent);font-weight:600">Itinéraire →</a>
 </div>
+{% endif %}
 
 {# Titres de colonnes légers, comme la page Escales. #}
 {% if routes %}

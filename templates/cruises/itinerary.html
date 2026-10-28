@@ -109,6 +109,7 @@
     .itin-tete .nom input { font: inherit; border: 1px solid transparent; border-radius: 5px; background: transparent; padding: 1px 6px; }
     .itin-tete .nom input:hover { border-color: #cfe3ef; background: #f8fbfd; }
     .itin-tete .nom input { font-size: 17px; font-weight: 700; color: #0f3a4a; text-align: center; width: auto; max-width: 340px; }
+    .fleches-itin { font-size: 17px; font-weight: 700; }
     .itin-lien { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     /* Le choix affiché centré dans le menu (text-align-last : Chrome et Safari). */
     .itin-lien select { width: auto; padding: 2px 6px; font-size: 13px; text-align: center; text-align-last: center; }
@@ -152,20 +153,25 @@
 <div class="itin-entete" id="itin-entete">
 {# ← → : les itinéraires du navire, dans l'ordre des dates de départ. #}
 <div class="itin-tete">
-    <div>{% if prev_id %}<a href="/cruises/itinerary/{{ prev_id }}" class="btn btn-blue">← Itinéraire Préc.</a>{% endif %}</div>
+    <div></div>
     {# Le nom — modifiable sur place, sa case à la largeur du texte —, les
        totaux dessous. La mention (projet / en cours) est sous le titre de la barre. #}
     <div class="nom">
+        {# ‹ › : itinéraires précédent et suivant, de part et d'autre du nom, en bleu. #}
+        <div class="fleches-bleues fleches-itin">
+        {% if prev_id %}<a href="/cruises/itinerary/{{ prev_id }}" title="Itinéraire précédent">‹</a>{% else %}<span class="eteint">‹</span>{% endif %}
         <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/field/name" style="margin:0">
             {% set libelle = itinerary.name or 'Itinéraire sans nom' %}
             <input type="text" name="value" value="{{ itinerary.name or '' }}" placeholder="Itinéraire sans nom"
                    size="{{ [libelle | length, 8] | max }}" onchange="this.form.submit()" title="Nom de l'itinéraire">
         </form>
+        {% if next_id %}<a href="/cruises/itinerary/{{ next_id }}" title="Itinéraire suivant">›</a>{% else %}<span class="eteint">›</span>{% endif %}
+        </div>
         {% if stages %}
         <div class="totaux">{{ total_nights }} nuit{{ 's' if total_nights > 1 }} - {{ total_distance | dec(0, 1) }} milles</div>
         {% endif %}
     </div>
-    <div style="justify-self:end">{% if next_id %}<a href="/cruises/itinerary/{{ next_id }}" class="btn btn-blue">Itinéraire Suiv. →</a>{% endif %}</div>
+    <div></div>
 </div>
 
 <div class="itin-reglages">

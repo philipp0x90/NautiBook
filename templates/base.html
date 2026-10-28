@@ -318,6 +318,35 @@
         input.date-vide::-webkit-datetime-edit-ampm-field { color: #a9a9a9; }
         /* Une seule taille de bouton oblong dans toute l'appli (l'ancienne petite,
            celle de la page route). */
+        /* Fiche précédente / suivante : ‹ › de part et d'autre d'un nom.
+           .fiche-nav dans une barre bleue (flèches blanches) ; .fleches-bleues
+           ailleurs, les flèches en bleu, à la taille du nom qu'elles encadrent.
+           Aux extrémités, la flèche reste en place, estompée (.eteint).
+           Les flèches sont dessinées (deux bords d'un carré tourné) et non
+           écrites : le caractère « ‹ » n'est pas assis à la même hauteur dans
+           la police de Safari et dans celle de Chrome, et ne se centrait sur
+           le nom que dans l'un des deux. Le texte reste dans la page, caché,
+           pour la lecture d'écran. Première flèche ‹, dernière › (:last-child). */
+        .fiche-nav { display: flex; align-items: center; justify-content: center; gap: 14px; }
+        .fleches-bleues { display: inline-flex; align-items: center; justify-content: center; gap: 12px; }
+        .fiche-nav > a, .fiche-nav > .eteint { color: #fff; font-size: 26px; }
+        .fleches-bleues > a, .fleches-bleues > .eteint { color: var(--accent); }
+        .fiche-nav > a, .fiche-nav > .eteint, .fleches-bleues > a, .fleches-bleues > .eteint {
+            position: relative; display: inline-block; flex: 0 0 auto; width: .7em; height: 1em;
+            overflow: hidden; text-indent: -9999px; text-decoration: none;
+        }
+        .fiche-nav > :is(a, .eteint)::before, .fleches-bleues > :is(a, .eteint)::before {
+            content: ""; position: absolute; left: 50%; top: 50%; width: .38em; height: .38em;
+            border-left: .11em solid currentColor; border-bottom: .11em solid currentColor;
+            transform: translate(-30%, -50%) rotate(45deg);
+        }
+        .fiche-nav > :is(a, .eteint):last-child::before, .fleches-bleues > :is(a, .eteint):last-child::before {
+            transform: translate(-70%, -50%) rotate(-135deg);
+        }
+        /* En bleu, à la taille du nom : un trait plus épais, comme le gras. */
+        .fleches-bleues > :is(a, .eteint)::before { width: .42em; height: .42em; border-width: 0 0 .16em .16em; }
+        .fiche-nav > .eteint, .fleches-bleues > .eteint { opacity: .3; }
+        .fiche-nav > a:hover, .fleches-bleues > a:hover { opacity: .7; }
         .trombone { display: inline-block; margin-left: 4px; line-height: 0; vertical-align: -4px; }
         .trombone svg { width: 19px; height: 19px; }
         .trombone:hover svg { filter: brightness(.9); }

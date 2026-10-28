@@ -111,7 +111,7 @@
 {# À gauche, les comptes du navire, centrés sur la dernière dépense chez ce
    fournisseur (?ligne=, script « Retour à une liste ») ; rubrique « comptes »
    de la grille : sans elle, un double invisible garde le titre centré. Le
-   carnet d'adresses est au milieu, entre Précédent et Suivant. Marges
+   carnet d'adresses est en bas, entre Dupliquer et Supprimer. Marges
    verticales négatives : les boutons ne grandissent pas la barre. #}
 <div class="section-bar section-bar-collee">
     {% if peut(request, 'comptes.voir') %}
@@ -121,21 +121,17 @@
     {% else %}
     <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Comptes</span>
     {% endif %}
-    <div class="section-bar-title">{{ contact.company or contact.contact_name or 'Contact' }}</div>
+    {# Contact précédent et suivant, dans l'ordre du carnet : ‹ › autour du nom. #}
+    <div class="section-bar-title fiche-nav">
+        {% if prev_id %}<a href="/ship/contacts/{{ prev_id }}" title="Contact précédent">‹</a>{% else %}<span class="eteint">‹</span>{% endif %}
+        <span>{{ contact.company or contact.contact_name or 'Contact' }}</span>
+        {% if next_id %}<a href="/ship/contacts/{{ next_id }}" title="Contact suivant">›</a>{% else %}<span class="eteint">›</span>{% endif %}
+    </div>
     {# Une dépense chez ce fournisseur, préchoisi dans le formulaire. #}
     <a href="/ship/expenses/new?fournisseur={{ (contact.company or contact.contact_name or '') | urlencode }}"
        class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ Nouvelle dépense</a>
 </div>
 
-{# Contact précédent et suivant, dans l'ordre du carnet ; aux extrémités, le
-   bouton reste en place, grisé, comme sur la fiche d'un équipier. #}
-<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
-    {% if prev_id %}<a href="/ship/contacts/{{ prev_id }}" class="btn btn-blue">← Précédent</a>
-    {% else %}<span class="btn btn-blue" style="opacity:.4;pointer-events:none">← Précédent</span>{% endif %}
-    <a href="/ship/contacts" class="btn btn-blue">Carnet d'adresses</a>
-    {% if next_id %}<a href="/ship/contacts/{{ next_id }}" class="btn btn-blue">Suivant →</a>
-    {% else %}<span class="btn btn-blue" style="opacity:.4;pointer-events:none">Suivant →</span>{% endif %}
-</div>
 
 <div class="contact-cartes">
     <section class="card contact-carte">
@@ -170,12 +166,14 @@
     </section>
 </div>
 
-{# Dupliquer (une copie « … - copie » qui s'ouvre aussitôt) et supprimer ce
-   contact ; chacun n'apparaît qu'avec le droit voulu (script des droits). #}
+{# Dupliquer (une copie « … - copie » qui s'ouvre aussitôt), le retour au
+   carnet d'adresses au milieu, et supprimer ce contact ; chacun n'apparaît
+   qu'avec le droit voulu (script des droits). #}
 <div class="contact-actions">
     <form method="POST" action="/ship/contacts/{{ contact.id }}/duplicate">
         <button type="submit" class="btn btn-arrivee">Dupliquer</button>
     </form>
+    <a href="/ship/contacts" class="btn btn-blue">Carnet d'adresses</a>
     <form method="POST" action="/ship/contacts/{{ contact.id }}/delete"
           onsubmit="return confirm('Supprimer le contact « {{ (contact.company or contact.contact_name or 'sans nom') | replace("'", "’") }} » ?')">
         <button type="submit" class="btn btn-orange">Supprimer la fiche</button>
