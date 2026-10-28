@@ -74,13 +74,16 @@
     .equipage-tete-ligne .equipage-choix { width: auto; min-width: 220px; max-width: 320px; }
     .equipage-titre { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
     .equipage-titre span { font-weight: 400; letter-spacing: 0; }
-    .equipage-grille { display: grid; grid-template-columns: minmax(0, 400px) 130px 130px 80px 1fr;
+    /* Colonnes : équipier (prend l'espace libre ; le badge Skipper à côté du
+       nom), « Nommer skipper », embarquement, débarquement, nuits, ✕. Le nom
+       absorbe la largeur en trop : plus de vide entre les nuits et le ✕. */
+    .equipage-grille { display: grid; grid-template-columns: minmax(0, 1fr) 128px 130px 130px 76px 28px;
                        gap: 10px; align-items: center; }
+    .equipage-role { display: flex; justify-content: center; }
     .equipage-grille .actions { display: flex; gap: 6px; justify-content: flex-end; }
     .equipage-tete { font-size: 11px; font-weight: 700; color: var(--muted); padding: 0 0 4px;
                      border-bottom: 1px solid #edf2f7; }
-    .equipage-tete > span:nth-child(2), .equipage-tete > span:nth-child(3) { padding-left: 11px; }
-    .equipage-tete > span:nth-child(4) { padding-left: 0; }
+    .equipage-tete > span:nth-child(3), .equipage-tete > span:nth-child(4) { padding-left: 11px; }
     .equipage-ligne { font-size: 14px; padding: 7px 0; border-bottom: 1px solid #edf2f7; }
     .equipage-ligne:hover { background: #f7fbfd; }
     .equipage-qui { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -90,8 +93,8 @@
     .equipage-nom { color: inherit; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .equipage-nom strong { text-transform: uppercase; }
     .equipage-nom:hover { color: var(--accent); }
-    .badge-skipper { background: var(--accent); color: #fff; border-radius: 10px; padding: 1px 9px;
-                     font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .badge-skipper { background: var(--accent); color: #fff; border-radius: 12px; padding: 2px 11px;
+                     font-size: 13px; font-weight: 700; flex-shrink: 0; }
     .equipage-nuits { font-size: 13px; color: var(--muted); }
     /* Champs date : Safari leur donne une largeur minimale et une hauteur à
        lui (différente selon qu'ils sont vides ou remplis), qui débordaient
@@ -349,7 +352,7 @@
 
     {% if aboard %}
     <div class="equipage-grille equipage-tete">
-        <span></span><span>Embarquement</span><span>Débarquement</span><span>À bord</span><span></span>
+        <span></span><span></span><span>Embarquement</span><span>Débarquement</span><span>À bord</span><span></span>
     </div>
     {% for m in aboard %}
     <div class="equipage-grille equipage-ligne">
@@ -363,6 +366,16 @@
                 {{ m.first_name or '' }} <strong>{{ m.last_name or '' }}</strong>
             </a>
             {% if m.role == 'skipper' %}<span class="badge-skipper">Skipper</span>{% endif %}
+        </div>
+        {# « Nommer skipper », dans sa colonne juste avant les dates ; le badge
+           du skipper est à côté de son nom. #}
+        <div class="equipage-role">
+            {% if m.role != 'skipper' %}
+            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/skipper">
+                <button type="submit" class="btn-nommer"
+                        title="Désigner {{ m.gender | equipier('cet') }} comme skipper">Nommer skipper</button>
+            </form>
+            {% endif %}
         </div>
 
         {# Dates modifiables sur place : un formulaire par champ, jamais un
@@ -385,12 +398,6 @@
         <div class="equipage-nuits">{% if m.nights is not none %}{{ m.nights }} nuit{{ 's' if m.nights > 1 else '' }}{% else %}—{% endif %}</div>
 
         <div class="actions">
-            {% if m.role != 'skipper' %}
-            <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/skipper">
-                <button type="submit" class="btn-nommer"
-                        title="Désigner {{ m.gender | equipier('cet') }} comme skipper">Nommer skipper</button>
-            </form>
-            {% endif %}
             {# Débarquer ne touche pas la fiche de la personne, seulement son
                embarquement sur cette croisière. #}
             <form method="POST" action="/cruises/{{ cruise.id }}/crew/{{ m.id }}/delete"

@@ -4177,7 +4177,8 @@ async def _cruise_crew(db, cruise_id: int):
     """Who is aboard this cruise, and who could still be added.
 
     Both cruise-page handlers need this, so it lives here rather than in each.
-    The skipper sorts first. `available` excludes people already aboard, which
+    The skipper sorts first, then by rank (Amiral, Capitaine, Matelot,
+    Mousse), then by name. `available` excludes people already aboard, which
     is what keeps duplicates out — cruise_crew has no UNIQUE(cruise_id,
     crew_member_id), so nothing else would.
     """
@@ -4188,8 +4189,12 @@ async def _cruise_crew(db, cruise_id: int):
                   m.id AS member_id, m.first_name, m.last_name, m.gender, m.photo_path, m.photo_crop
            FROM cruise_crew cc
            JOIN crew_members m ON cc.crew_member_id = m.id
+           LEFT JOIN users u ON u.crew_member_id = m.id
            WHERE cc.cruise_id = ?
+           -- Le skipper d'abord, puis par rang dans l'app : Amiral, Capitaine,
+           -- Matelot, Mousse (sans compte) ; à rang égal, par nom.
            ORDER BY CASE WHEN cc.role = 'skipper' THEN 0 ELSE 1 END,
+                    CASE u.rank WHEN 'amiral' THEN 0 WHEN 'capitaine' THEN 1 WHEN 'matelot' THEN 2 ELSE 3 END,
                     m.last_name COLLATE NOCASE, m.first_name COLLATE NOCASE""",
         (cruise_id,),
     )
