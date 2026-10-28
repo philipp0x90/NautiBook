@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Itinéraire{% if itinerary %} — {{ itinerary.name or 'sans nom' }}{% endif %} — NautiBook{% endblock %}
 {% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
     /* Une étape par ligne, chaque case modifiable sur place (son propre
        formulaire, envoyé au changement) ; jour, date et temps se calculent.
@@ -115,6 +117,21 @@
     .itin-lien select { width: auto; padding: 2px 6px; font-size: 13px; text-align: center; text-align-last: center; }
     .itin-reglages #vitesse { width: 52px; padding: 2px 4px; font: inherit; font-weight: 700; text-align: center;
                            color: #0f3a4a; border: 1px solid #cfe3ef; border-radius: 5px; }
+    /* Carte de l'itinéraire, sous le tableau. */
+    .itin-carte-bloc { margin-top: 16px; }
+    .itin-carte-bloc h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    /* isolation : les couches de Leaflet (z-index 400 et plus) restent dans
+       la carte, sous l'en-tête collé qui passe par-dessus au défilement. */
+    #itin-carte { height: 420px; border-radius: 8px; border: 1px solid #dde5ee; isolation: isolate; }
+    .itin-carte-etat { font-size: 13px; color: var(--muted); margin-top: 6px; }
+    .itin-manquants { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 13px; }
+    .itin-manquants button { font-size: 12px; }
+    .itin-manquants button.actif { background: var(--accent); color: #fff; }
+    /* Numéro d'une étape sur la carte. */
+    .itin-num { background: #0f3a4a; color: #fff; border: 2px solid #fff; border-radius: 50%; width: 24px; height: 24px;
+                display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700;
+                box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+    .itin-num.manuel { background: var(--accent); }
 </style>
 {% endblock %}
 {% block content %}
@@ -308,6 +325,83 @@
     {% endif %}
     </div>
 </div>
+
+{# Carte : les lieux de l'itinéraire, numérotés dans l'ordre, reliés en
+   pointillés (une vue d'ensemble, pas une route : les traits passent sur la
+   terre au besoin, et aucune distance n'en est tirée). Positions : journal
+   de bord, OpenStreetMap, ou placées à la main — voir itinerary_map_data.
+   Un point se déplace en le faisant glisser ; un lieu introuvable se place
+   d'un clic sur la carte. #}
+{% if stages %}
+<section class="card itin-carte-bloc" id="carte">
+    <h3>Carte</h3>
+    <div id="itin-carte"></div>
+    <div class="itin-carte-etat" id="itin-carte-etat">Recherche des positions…</div>
+    <div class="itin-manquants" id="itin-manquants" hidden></div>
+    <form method="POST" action="/cruises/itinerary/{{ itinerary.id }}/place" id="placer-lieu" hidden>
+        <input type="hidden" name="name"><input type="hidden" name="lat"><input type="hidden" name="lon">
+    </form>
+</section>
+<script>
+(function () {
+    const peutModifier = {{ 'true' if peut_modifier else 'false' }};
+    const carte = L.map('itin-carte', { scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 18
+    }).addTo(carte);
+    L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>', maxZoom: 18, opacity: 0.9
+    }).addTo(carte);
+    carte.setView([43, 12], 5);
+    const form = document.getElementById('placer-lieu');
+    const etat = document.getElementById('itin-carte-etat');
+    function placer(nom, latlng) {
+        form.elements.name.value = nom;
+        form.elements.lat.value = latlng.lat.toFixed(6);
+        form.elements.lon.value = latlng.lng.toFixed(6);
+        form.submit();
+    }
+    fetch('/api/itinerary/{{ itinerary.id }}/map-data').then(r => r.json()).then(function (d) {
+        const pts = d.points;
+        pts.forEach(function (p, i) {
+            const icone = L.divIcon({ className: '', iconSize: [24, 24], iconAnchor: [12, 12],
+                html: '<div class="itin-num' + (p.source === 'manuel' ? ' manuel' : '') + '">' + (i + 1) + '</div>' });
+            const m = L.marker([p.lat, p.lon], { icon: icone, draggable: peutModifier, title: p.name }).addTo(carte);
+            const origine = { journal: 'position du journal de bord', osm: 'position trouvée sur OpenStreetMap',
+                              manuel: 'position placée à la main' }[p.source] || '';
+            m.bindTooltip('<b>' + (i + 1) + '. ' + p.name + '</b><br><small>' + origine +
+                          (peutModifier ? ' — glisser pour corriger' : '') + '</small>');
+            m.on('dragend', () => placer(p.name, m.getLatLng()));
+        });
+        if (pts.length > 1) {
+            L.polyline(pts.map(p => [p.lat, p.lon]), { color: '#2a7fb8', weight: 2.5, dashArray: '6 8' }).addTo(carte);
+        }
+        if (pts.length) carte.fitBounds(pts.map(p => [p.lat, p.lon]), { padding: [30, 30], maxZoom: 11 });
+        etat.textContent = pts.length ? '' : "Aucun lieu n'a pu être situé.";
+        etat.hidden = !pts.length ? false : true;
+        // Lieux introuvables : à placer d'un clic sur la carte.
+        if (d.missing.length) {
+            const zone = document.getElementById('itin-manquants');
+            zone.hidden = false;
+            zone.append(Object.assign(document.createElement('span'),
+                { textContent: peutModifier ? 'Non situés — choisir puis cliquer sur la carte :' : 'Non situés :' }));
+            let choisi = null;
+            d.missing.forEach(function (nom) {
+                const b = Object.assign(document.createElement('button'), { type: 'button', className: 'btn', textContent: nom });
+                if (peutModifier) b.onclick = function () {
+                    zone.querySelectorAll('button').forEach(x => x.classList.remove('actif'));
+                    choisi = choisi === nom ? null : nom;
+                    if (choisi) b.classList.add('actif');
+                    carte.getContainer().style.cursor = choisi ? 'crosshair' : '';
+                };
+                zone.append(b);
+            });
+            carte.on('click', e => { if (choisi) placer(choisi, e.latlng); });
+        }
+    }).catch(function () { etat.textContent = 'Carte indisponible (pas de réseau ?).'; });
+})();
+</script>
+{% endif %}
 
 {# Qui l'a créé, qui l'a modifié en dernier, et quand (_touch_itinerary).
    Un itinéraire créé avant ce suivi n'a pas d'auteur : la date seule. #}

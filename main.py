@@ -547,6 +547,21 @@ async def init_db():
             )
         """)
 
+        # Position des lieux nommés dans les itinéraires, pour leur carte :
+        # trouvée dans le journal de bord, chez OpenStreetMap, ou placée à la
+        # main ; retenue ici pour ne pas la chercher à chaque affichage. Clé :
+        # le nom plié (_fold). Tous navires : un port est où il est.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS place_positions (
+                name_key TEXT PRIMARY KEY,
+                name TEXT,
+                lat REAL,
+                lon REAL,
+                source TEXT,
+                updated_at DATETIME
+            )
+        """)
+
         # Reçus et documents d'une escale (reçu du port en PDF, photo prise sur
         # place), comme ceux d'une dépense. Fichiers dans IMG/Escales/.
         await db.execute("""
@@ -1376,7 +1391,7 @@ SECTION_RULES = [
     (r"^/routes/\d+/(new-line|quick-line)$", "journal"),
     (r"^/logbook(/|$)", "journal"),
     (r"^/(cruises|routes|stopovers)(/|$)", "croisieres"),
-    (r"^/api/(routes|cruises|all-cruises)/", "croisieres"),
+    (r"^/api/(routes|cruises|all-cruises|itinerary)/", "croisieres"),
     (r"^/(carnet|gallery)(/|$)", "carnet"),
     (r"^/tools(/|$)", "outils"),
     (r"^/settings(/|$)", "parametres"),
@@ -4587,6 +4602,140 @@ async def itinerary_page(request: Request, itinerary_id: int):
          "total_nights": sum(max(s["nights"] or 0, 0) for s in stages),
          "prev_id": prev_id, "next_id": next_id, "is_current": is_current, "cruising_speed": speed},
     )
+
+
+# ── Carte d'un itinéraire ──
+# Les étapes ne portent que des noms de lieux. Leur position vient, dans
+# l'ordre : d'une position placée à la main (place_positions, source
+# « manuel ») ; du journal de bord (la dernière ligne d'une route arrivée là,
+# ou la première d'une route partie de là) ; d'une recherche OpenStreetMap
+# (Nominatim), retenue une fois trouvée. Un lieu introuvable est listé sous la
+# carte, à placer d'un clic.
+
+NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_SEARCH_HEADERS = {"User-Agent": "NautiBook/1.0 (carnet de bord, carte des itineraires)"}
+PLACE_TYPES = {"city", "town", "village", "hamlet", "suburb", "neighbourhood", "isolated_dwelling",
+               "marina", "harbour", "bay", "island", "islet", "locality", "port"}
+
+
+def _itinerary_places(stages: list) -> list:
+    """Les lieux successifs d'un itinéraire : le départ de la première étape,
+    puis chaque arrivée (un départ qui ne reprend pas l'arrivée précédente
+    compte aussi)."""
+    names = []
+    for s in stages:
+        for name in (s.get("departure"), s.get("arrival")):
+            name = (name or "").strip()
+            if name and (not names or _fold(names[-1]) != _fold(name)):
+                names.append(name)
+    return names
+
+
+async def _journal_positions(db) -> dict:
+    """Nom de lieu plié → (lat, lon), d'après le journal de bord : où le
+    bateau était en arrivant (dernière ligne de la route) ou en partant
+    (première ligne)."""
+    cursor = await db.execute(
+        """SELECT r.departure_location, r.destination_location,
+                  (SELECT position_lat || ',' || position_lon FROM logbook_lines l
+                   WHERE l.route_id = r.id AND l.position_lat IS NOT NULL ORDER BY l.timestamp LIMIT 1),
+                  (SELECT position_lat || ',' || position_lon FROM logbook_lines l
+                   WHERE l.route_id = r.id AND l.position_lat IS NOT NULL ORDER BY l.timestamp DESC LIMIT 1)
+           FROM routes r ORDER BY r.id"""
+    )
+    found = {}
+    for dep, dest, first, last in await cursor.fetchall():
+        for name, pos in ((dep, first), (dest, last)):
+            if name and pos:
+                lat, lon = (float(x) for x in pos.split(","))
+                found[_fold(name.strip())] = (lat, lon)
+    return found
+
+
+def _nominatim(name: str):
+    """Recherche OpenStreetMap ; (lat, lon), None si introuvable. Lève une
+    exception sans réseau. « Komiza/Vis », « Cala Tonda (Tremiti) » : le
+    nom entier d'abord, puis sa première partie."""
+    tries = [name]
+    short = re.split(r"[/(,]", name)[0].strip()
+    if short and short != name:
+        tries.append(short)
+    for i, q in enumerate(tries):
+        if i:
+            time.sleep(1)   # règle d'usage de Nominatim : une requête par seconde
+        r = requests.get(NOMINATIM_SEARCH_URL, params={"q": q, "format": "jsonv2", "limit": 5},
+                         headers=NOMINATIM_SEARCH_HEADERS, timeout=6)
+        r.raise_for_status()
+        hits = r.json()
+        if hits:
+            # Une ville, un port ou une marina plutôt qu'une province : pour
+            # « Ravenna », la province tombait à 20 km dans les terres.
+            near = [h for h in hits if h.get("addresstype") in PLACE_TYPES or h.get("type") in PLACE_TYPES]
+            best = (near or hits)[0]
+            return float(best["lat"]), float(best["lon"])
+    return None
+
+
+@app.get("/api/itinerary/{itinerary_id}/map-data")
+async def itinerary_map_data(itinerary_id: int):
+    async with connect() as db:
+        cursor = await db.execute(
+            "SELECT departure, arrival FROM itinerary_stages WHERE itinerary_id = ? ORDER BY position, id",
+            (itinerary_id,))
+        stages = [{"departure": d, "arrival": a} for d, a in await cursor.fetchall()]
+        names = _itinerary_places(stages)
+        cursor = await db.execute("SELECT name_key, lat, lon, source FROM place_positions")
+        cache = {k: (lat, lon, src) for k, lat, lon, src in await cursor.fetchall()}
+        journal = await _journal_positions(db)
+        points, missing, searched = [], [], False
+        for name in names:
+            key = _fold(name)
+            hit = cache.get(key)
+            if hit and hit[2] == "manuel":
+                pos, source = hit[:2], "manuel"
+            elif key in journal:
+                pos, source = journal[key], "journal"
+            elif hit and hit[2] == "osm":
+                pos, source = hit[:2], "osm"
+            elif hit and hit[2] == "introuvable":
+                pos, source = None, None
+            else:
+                try:
+                    if searched:
+                        await asyncio.sleep(1)
+                    searched = True
+                    pos = await asyncio.to_thread(_nominatim, name)
+                except Exception as exc:   # pas de réseau : on réessaiera plus tard
+                    print(f"Carte d'itinéraire : recherche de « {name} » impossible ({exc})")
+                    pos, source = None, None
+                else:
+                    source = "osm" if pos else "introuvable"
+                    await db.execute(
+                        "INSERT OR REPLACE INTO place_positions (name_key, name, lat, lon, source, updated_at)"
+                        " VALUES (?, ?, ?, ?, ?, ?)",
+                        (key, name, pos[0] if pos else None, pos[1] if pos else None, source, datetime.now()))
+                    await db.commit()
+                    if not pos:
+                        source = None
+            if pos and pos[0] is not None:
+                points.append({"name": name, "lat": pos[0], "lon": pos[1], "source": source})
+            else:
+                missing.append(name)
+    return {"points": points, "missing": missing}
+
+
+@app.post("/cruises/itinerary/{itinerary_id}/place")
+async def place_itinerary_point(itinerary_id: int, name: str = Form(...),
+                                lat: float = Form(...), lon: float = Form(...)):
+    """Position d'un lieu placée (ou déplacée) à la main sur la carte de
+    l'itinéraire ; elle l'emporte ensuite sur toute autre source."""
+    async with connect() as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO place_positions (name_key, name, lat, lon, source, updated_at)"
+            " VALUES (?, ?, ?, ?, 'manuel', ?)",
+            (_fold(name.strip()), name.strip(), lat, lon, datetime.now()))
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}#carte", status_code=303)
 
 
 @app.post("/cruises/itinerary/{itinerary_id}/field/{field}")
