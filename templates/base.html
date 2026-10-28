@@ -1098,6 +1098,38 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
     });
 })();
 
+// Champs courts : tout leur contenu est sélectionné quand on y entre, pour le
+// retaper d'un coup (un montant, des heures, un CP…). Courts = les nombres
+// (type number, inputmode decimal ou numeric), les téléphones, et les champs
+// texte étroits (170 px au plus). Jamais les zones de texte ni les champs
+// larges (noms, adresses, objets) : on y corrige souvent un seul mot. Un
+// champ peut s'y soustraire (data-sans-selection) ou s'y ajouter
+// (data-selection-totale). Un clic dans un champ déjà actif place le curseur
+// normalement : seule l'entrée dans le champ sélectionne.
+(function () {
+    function court(el) {
+        if (!(el instanceof HTMLInputElement) || el.readOnly || el.disabled) return false;
+        if (el.hasAttribute('data-sans-selection')) return false;
+        if (el.hasAttribute('data-selection-totale')) return true;
+        const t = el.type, im = el.inputMode;
+        if (t === 'number' || t === 'tel' || im === 'decimal' || im === 'numeric') return true;
+        return t === 'text' && el.offsetWidth > 0 && el.offsetWidth <= 170;
+    }
+    let garder = null;
+    document.addEventListener('focusin', function (e) {
+        const el = e.target;
+        if (!court(el) || !el.value) return;
+        el.select();
+        // Safari (Mac et iPad) défait la sélection au relâcher du clic qui a
+        // donné le focus : ce relâcher-là est ignoré.
+        garder = el;
+        setTimeout(() => { garder = null; }, 500);
+    });
+    document.addEventListener('mouseup', function (e) {
+        if (garder && e.target === garder) { e.preventDefault(); garder = null; }
+    }, true);
+})();
+
 // Retour à une liste : on retrouve la ligne de la dernière fiche consultée.
 // Chaque page note son adresse en partant ; une liste qui se charge cherche,
 // parmi ses lignes cliquables (rowLink), celle qui mène à la page qu'on vient
