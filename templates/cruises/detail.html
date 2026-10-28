@@ -103,7 +103,11 @@
     .equipage-grille > * { min-width: 0; }
     .equipage-grille input[type=date] {
         display: block; width: 100%; min-width: 0; height: 34px; box-sizing: border-box;
-        -webkit-appearance: none; appearance: none; line-height: normal;
+        -webkit-appearance: none; appearance: none;
+        /* Hauteur de ligne = hauteur intérieure : sans elle, Safari (Mac et
+           iPad) pose la date en haut de sa case, plus haut que les nuits et
+           les boutons de la même ligne. */
+        padding-top: 0; padding-bottom: 0; line-height: 32px;
     }
     .equipage-grille input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
     /* Case de date vide : rien d'écrit tant qu'on n'y touche pas. Safari y
