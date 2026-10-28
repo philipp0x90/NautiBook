@@ -547,6 +547,18 @@ async def init_db():
             )
         """)
 
+        # Remarques des nuits supplémentaires d'une étape (les lignes grises de
+        # l'itinéraire, calculées et non stockées) : une par étape et par nuit
+        # (night = 1 pour la 2e nuit sur place, 2 pour la 3e…).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS itinerary_rest_remarks (
+                stage_id INTEGER NOT NULL REFERENCES itinerary_stages(id) ON DELETE CASCADE,
+                night INTEGER NOT NULL,
+                remarks TEXT,
+                PRIMARY KEY (stage_id, night)
+            )
+        """)
+
         # Position des lieux nommés dans les itinéraires, pour leur carte :
         # trouvée dans le journal de bord, chez OpenStreetMap, ou placée à la
         # main ; retenue ici pour ne pas la chercher à chaque affichage. Clé :
@@ -4412,7 +4424,7 @@ async def _default_cruise_id(db, ship_id: int) -> Optional[int]:
 # l'y rattache (une croisière, un itinéraire), ou on crée la croisière depuis
 # lui. Ses étapes (itinerary_stages) : départ, distance, arrivée, nuits sur
 # place, type, remarques, statut de réservation. Une ligne = une étape. Les
-# jours et les dates se calculent, jamais stockés : le jour 0 est la date de
+# jours et les dates se calculent, jamais stockés : le jour 1 est la date de
 # départ de la croisière rattachée, à défaut la date prévue de l'itinéraire
 # (la croisière l'emporte : c'est le réel), et chaque étape commence autant de
 # jours après la précédente que celle-ci compte de nuits. Les nuits au-delà de
@@ -4433,7 +4445,7 @@ templates.env.globals["itinerary_statuses"] = ITINERARY_STATUSES
 ITINERARY_START = "COALESCE(NULLIF(substr(c.start_time, 1, 10), ''), i.start_date)"
 
 
-def _itinerary_rows(stages: list, start) -> list:
+def _itinerary_rows(stages: list, start, rest_remarks: Optional[dict] = None) -> list:
     """Les lignes du tableau : chaque étape avec son jour et sa date, suivie
     d'une ligne grise par nuit supplémentaire passée à son arrivée."""
     try:
@@ -4444,11 +4456,14 @@ def _itinerary_rows(stages: list, start) -> list:
     for stage in stages:
         nights = max(stage["nights"] or 0, 0)
         when = (day0 + timedelta(days=day)).isoformat() if day0 else None
-        rows.append({"kind": "stage", "day": day, "date": when, **stage})
+        # Jours numérotés à partir de 1 : le jour 1 est la date de départ.
+        rows.append({"kind": "stage", "day": day + 1, "date": when, **stage})
         for extra in range(1, nights):
             when = (day0 + timedelta(days=day + extra)).isoformat() if day0 else None
-            rows.append({"kind": "rest", "day": day + extra, "date": when,
-                         "place": stage["arrival"] or stage["departure"]})
+            rows.append({"kind": "rest", "day": day + extra + 1, "date": when,
+                         "place": stage["arrival"] or stage["departure"],
+                         "stage_id": stage["id"], "night": extra,
+                         "remarks": (rest_remarks or {}).get((stage["id"], extra))})
         day += nights   # 0 nuit : escale de jour, l'étape suivante part le même jour
     return rows
 
@@ -4581,6 +4596,10 @@ async def itinerary_page(request: Request, itinerary_id: int):
         cursor = await db.execute(
             "SELECT * FROM itinerary_stages WHERE itinerary_id = ? ORDER BY position, id", (itinerary_id,))
         stages = [dict(r) for r in await cursor.fetchall()]
+        cursor = await db.execute(
+            """SELECT r.stage_id, r.night, r.remarks FROM itinerary_rest_remarks r
+               JOIN itinerary_stages s ON s.id = r.stage_id WHERE s.itinerary_id = ?""", (itinerary_id,))
+        rest_remarks = {(sid, n): txt for sid, n, txt in await cursor.fetchall()}
         prev_id, next_id = await _itinerary_neighbours(db, itinerary["ship_id"], itinerary_id)
         is_current = (itinerary["cruise_id"] is not None and
                       await _current_cruise_id(db, itinerary["ship_id"]) == itinerary["cruise_id"])
@@ -4597,7 +4616,7 @@ async def itinerary_page(request: Request, itinerary_id: int):
     return templates.TemplateResponse(
         "cruises/itinerary.html",
         {"request": request, "active_section": "cruises", "itinerary": dict(itinerary),
-         "rows": _itinerary_rows(stages, itinerary["start"]), "stages": stages, "cruises": cruises,
+         "rows": _itinerary_rows(stages, itinerary["start"], rest_remarks), "stages": stages, "cruises": cruises,
          "total_distance": sum(s["distance"] or 0 for s in stages),
          "total_nights": sum(max(s["nights"] or 0, 0) for s in stages),
          "prev_id": prev_id, "next_id": next_id, "is_current": is_current, "cruising_speed": speed},
@@ -4783,13 +4802,21 @@ async def duplicate_itinerary(request: Request, itinerary_id: int):
              itinerary["start"], datetime.now(), _who(request)),
         )
         copy_id = cursor.lastrowid
-        await db.execute(
-            """INSERT INTO itinerary_stages (itinerary_id, position, departure, distance, arrival, nights,
-                                             type, remarks, status, created_at)
-               SELECT ?, position, departure, distance, arrival, nights, type, remarks, status, ?
-               FROM itinerary_stages WHERE itinerary_id = ? ORDER BY position, id""",
-            (copy_id, datetime.now(), itinerary_id),
-        )
+        # Étape par étape, pour reporter aussi les remarques des nuits
+        # supplémentaires sur la copie de chacune.
+        cursor = await db.execute(
+            "SELECT * FROM itinerary_stages WHERE itinerary_id = ? ORDER BY position, id", (itinerary_id,))
+        for st in await cursor.fetchall():
+            new = await db.execute(
+                """INSERT INTO itinerary_stages (itinerary_id, position, departure, distance, arrival, nights,
+                                                 type, remarks, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (copy_id, st["position"], st["departure"], st["distance"], st["arrival"], st["nights"],
+                 st["type"], st["remarks"], st["status"], datetime.now()))
+            await db.execute(
+                """INSERT INTO itinerary_rest_remarks (stage_id, night, remarks)
+                   SELECT ?, night, remarks FROM itinerary_rest_remarks WHERE stage_id = ?""",
+                (new.lastrowid, st["id"]))
         await db.commit()
     return RedirectResponse(url=f"/cruises/itinerary/{copy_id}", status_code=303)
 
@@ -4822,14 +4849,39 @@ async def create_itinerary_stage(request: Request, itinerary_id: int):
             " ORDER BY position DESC, id DESC LIMIT 1", (itinerary_id,))
         last = await cursor.fetchone()
         departure = last["arrival"] if last else itinerary["from_location"]
-        await db.execute(
+        cursor = await db.execute(
             "INSERT INTO itinerary_stages (itinerary_id, position, departure, nights, created_at)"
             " VALUES (?, ?, ?, 1, ?)",
             (itinerary_id, (last["position"] + 1) if last else 0, departure, datetime.now()),
         )
+        stage_id = cursor.lastrowid
         await _touch_itinerary(db, itinerary_id, request)
         await db.commit()
-    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}#fin", status_code=303)
+    # ?saisir= : la page s'ouvre sur l'arrivée de la nouvelle étape, prête à
+    # être tapée (script en bas de itinerary.html), et non sur une ancre.
+    return RedirectResponse(url=f"/cruises/itinerary/{itinerary_id}?saisir={stage_id}", status_code=303)
+
+
+@app.post("/cruises/itinerary/stage/{stage_id}/rest/{night}/remarks")
+async def update_rest_remarks(request: Request, stage_id: int, night: int, value: Optional[str] = Form(None)):
+    """Remarques d'une nuit supplémentaire (ligne grise) ; vidées, la ligne
+    n'en a plus."""
+    value = (value or "").strip() or None
+    async with connect() as db:
+        cursor = await db.execute("SELECT itinerary_id FROM itinerary_stages WHERE id = ?", (stage_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Étape introuvable")
+        if value:
+            await db.execute(
+                "INSERT OR REPLACE INTO itinerary_rest_remarks (stage_id, night, remarks) VALUES (?, ?, ?)",
+                (stage_id, night, value))
+        else:
+            await db.execute("DELETE FROM itinerary_rest_remarks WHERE stage_id = ? AND night = ?",
+                             (stage_id, night))
+        await _touch_itinerary(db, row[0], request)
+        await db.commit()
+    return RedirectResponse(url=f"/cruises/itinerary/{row[0]}", status_code=303)
 
 
 @app.post("/cruises/itinerary/stage/{stage_id}/field/{field}")

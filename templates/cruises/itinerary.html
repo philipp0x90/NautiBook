@@ -73,6 +73,8 @@
     }
     .itin tr.repos td { color: #9aa8b6; font-style: italic; background: #fafcfd; }
     .itin tr.repos td.jour { font-style: normal; }
+    /* « relâche à … » au milieu de la place laissée par les cases vides. */
+    .itin tr.repos td.relache { text-align: center; }
     /* Signature en bas de page : petite, grise, photos rondes de 18 px. */
     .itin-signature { margin-top: 22px; text-align: center; font-size: 12px; color: var(--muted); }
     .itin-signature b { color: #445; font-weight: 600; }
@@ -84,7 +86,7 @@
        lui. Plus bas que 701 px, rien ne se colle, comme ailleurs. */
     @media (min-width: 701px) {
         .itin-entete { position: sticky; top: calc(14px + var(--barre-h, 0px)); z-index: 145;
-                       background: var(--bg); margin: 0 -18px; padding: 0 18px; }
+                       background: var(--bg); margin: 0 -18px; padding: 0 18px 8px; }   /* 8 px d'air avant ce qui défile dessous */
         .tableau-colle.itin-page thead { top: calc(14px + var(--barre-h, 0px) + var(--entete-h, 0px)); }
     }
     /* En-tête : ← croisière préc., le nom au centre, croisière suiv. → */
@@ -192,7 +194,7 @@
 </div>
 
 <div class="itin-reglages">
-    {# Le jour 0 : la date de départ de la croisière rattachée, qui l'emporte
+    {# Le jour 1 : la date de départ de la croisière rattachée, qui l'emporte
        (c'est le réel) ; sans elle, la date prévue de l'itinéraire. #}
     <div class="champ-date"><span class="etiquette">Date de départ :</span>
         {% if itinerary.cruise_id and itinerary.cruise_start %}
@@ -288,16 +290,27 @@
                 </td>
             </tr>
             {% else %}
+            {# Nuit supplémentaire : calculée, mais ses remarques se saisissent
+               comme celles d'une étape (itinerary_rest_remarks). #}
             <tr class="repos">
                 <td class="jour">{{ row.day }}</td>
                 <td class="date">{{ row.date | jourmois if row.date else '—' }}</td>
-                <td class="lieu" colspan="9">à {{ row.place or '…' }}</td>
+                <td class="lieu relache" colspan="6">relâche à {{ row.place or '…' }}</td>
+                <td class="remarques">
+                    <form method="POST" action="/cruises/itinerary/stage/{{ row.stage_id }}/rest/{{ row.night }}/remarks">
+                        <div class="remarque-apercu{{ ' vide' if not row.remarks }}" title="{{ row.remarks or '' }}"
+                             onclick="deplierRemarque(this)">{{ row.remarks or '—' }}</div>
+                        <textarea name="value" rows="1" placeholder="—" hidden onchange="this.form.submit()"
+                                  oninput="ajusterRemarque(this)" onblur="replierRemarque(this)">{{ row.remarks or '' }}</textarea>
+                    </form>
+                </td>
+                <td colspan="2"></td>
             </tr>
             {% endif %}
             {% else %}
-            {# Pas encore d'étape : la ligne du jour 0, à commencer. #}
+            {# Pas encore d'étape : la ligne du jour 1, à commencer. #}
             <tr>
-                <td class="jour">0</td>
+                <td class="jour">1</td>
                 <td class="date">{{ itinerary.start | jourmois if itinerary.start else '—' }}</td>
                 <td class="lieu" colspan="9" style="color:var(--muted)">
                     {% if peut_modifier %}<i>ajoutez la première étape avec « + Étape »</i>{% endif %}</td>
@@ -345,7 +358,7 @@
 <script>
 (function () {
     const peutModifier = {{ 'true' if peut_modifier else 'false' }};
-    const carte = L.map('itin-carte', { scrollWheelZoom: false });
+    const carte = L.map('itin-carte');   // zoom à la molette ou au pincement, comme Outils › Carte
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 18
     }).addTo(carte);
@@ -441,6 +454,20 @@ tempsEtapes();
     const regler = () => document.documentElement.style.setProperty('--entete-h', entete.offsetHeight + 'px');
     regler();
     addEventListener('resize', regler);
+})();
+// Après « + Étape » (?saisir=<étape>) : l'arrivée de la nouvelle étape a le
+// curseur, au milieu de l'écran ; il ne reste qu'à la taper. Le paramètre est
+// retiré de l'adresse, pour qu'un rechargement n'y revienne pas.
+(function () {
+    const params = new URLSearchParams(location.search);
+    const id = params.get('saisir');
+    if (!id) return;
+    params.delete('saisir');
+    history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : ''));
+    const champ = document.querySelector('form[action$="/stage/' + id + '/field/arrival"] input[name=value]');
+    if (!champ) return;
+    const viser = () => { champ.scrollIntoView({ block: 'center' }); champ.focus({ preventScroll: true }); };
+    viser(); addEventListener('load', viser);
 })();
 // Remarques : la zone de texte prend la hauteur de son texte ; l'aperçu
 // replié (2 lignes) laisse la place à la zone le temps de la saisie.
