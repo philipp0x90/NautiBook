@@ -4,13 +4,30 @@
    que celui qu'on voit.
    autosubmit : la fiche contact enregistre chaque champ dès qu'on le quitte ;
    le formulaire de création, lui, attend son bouton. #}
-{% macro place_select(name, options, current=none, cls='', autosubmit=false) %}
+{# groups : [(pays, [localités]), …] — le menu des localités les range par
+   pays (un pays None : « Pays non renseigné », en dernier). « Autre… » a
+   toujours son propre groupe, intitulé `nouveau` : sur iPad, Safari trace un
+   trait entre les groupes, alors qu'une option désactivée en guise de
+   séparateur s'y affichait comme une fausse ligne. #}
+{% macro place_select(name, options, current=none, cls='', autosubmit=false, groups=none, nouveau='Nouvelle valeur') %}
 <select name="{{ name }}" class="{{ cls }}" onchange="choixAutre(this){{ '; if (this.name) this.form.submit()' if autosubmit else '' }}">
     <option value="">—</option>
+    {% if groups %}
+    {% for pays, villes in groups %}
+    <optgroup label="{{ pays or 'Pays non renseigné' }}">
+        {% for opt in villes %}
+        <option value="{{ opt }}" {{ 'selected' if current == opt else '' }}>{{ opt }}</option>
+        {% endfor %}
+    </optgroup>
+    {% endfor %}
+    {% else %}
     {% for opt in options %}
     <option value="{{ opt }}" {{ 'selected' if current == opt else '' }}>{{ opt }}</option>
     {% endfor %}
-    <option value="__autre__">Autre…</option>
+    {% endif %}
+    <optgroup label="{{ nouveau }}">
+        <option value="__autre__">Autre…</option>
+    </optgroup>
 </select>
 {# L'attribut en {% if %} et non en {{ '…' if … }} : une chaîne passée par
    {{ }} est échappée, ses guillemets deviennent &#34; et le navigateur ne lit

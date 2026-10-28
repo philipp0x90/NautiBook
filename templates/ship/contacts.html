@@ -64,8 +64,9 @@
                         <option value="{{ cat }}">{{ cat }}</option>
                         {% endfor %}
                         {% if peut(request, 'contacts.modifier') %}
-                        <option disabled>──────────</option>
-                        <option value="__nouvelle__">+ Catégorie</option>
+                        <optgroup label="Nouvelle catégorie">
+                            <option value="__nouvelle__">+ Catégorie</option>
+                        </optgroup>
                         {% endif %}
                     </select>
                 </th>
@@ -106,15 +107,16 @@
                             <option value="{{ cat }}" {{ 'selected' if c.category == cat }}>{{ cat }}</option>
                             {% endfor %}
                             {% if c.category and c.category not in contact_categories %}<option value="{{ c.category }}" selected>{{ c.category }}</option>{% endif %}
-                            <option disabled>──────────</option>
-                            <option value="__nouvelle__">+ Catégorie</option>
+                            <optgroup label="Nouvelle catégorie">
+                                <option value="__nouvelle__">+ Catégorie</option>
+                            </optgroup>
                         </select>
                     </form>
                 </td>
                 <td>
                     <form method="POST" action="/ship/contacts/{{ c.id }}/field/country" class="case">
                         <input type="hidden" name="retour" value="liste">
-                        {{ place_select('value', countries, c.country, '', true) }}
+                        {{ place_select('value', countries, c.country, '', true, nouveau='Nouveau pays') }}
                     </form>
                 </td>
                 {# Supprimer : seulement pour qui a le droit (le script des droits

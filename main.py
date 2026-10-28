@@ -547,6 +547,18 @@ async def init_db():
             )
         """)
 
+        # Reçus et documents d'une escale (reçu du port en PDF, photo prise sur
+        # place), comme ceux d'une dépense. Fichiers dans IMG/Escales/.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS stopover_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stopover_id INTEGER NOT NULL REFERENCES stopovers(id) ON DELETE CASCADE,
+                title TEXT,
+                path TEXT NOT NULL,
+                created_at DATETIME
+            )
+        """)
+
         # Documents du navire (papiers, manuels…), listés sur sa fiche. Le
         # fichier est dans IMG/Documents/ ; path est son URL, comme photo_path.
         await db.execute("""
@@ -1006,6 +1018,11 @@ SHIP_DOC_SUBDIR = "Documents"
 SHIP_DOC_MAX_BYTES = 50 * 1024 * 1024
 (IMG_DIR / SHIP_DOC_SUBDIR).mkdir(exist_ok=True)
 
+# Reçus des escales (reçu du port, photo prise sur place), depuis la fiche de
+# l'escale. Protégés par la rubrique croisieres, comme les escales.
+STOPOVER_DOC_SUBDIR = "Escales"
+(IMG_DIR / STOPOVER_DOC_SUBDIR).mkdir(exist_ok=True)
+
 
 async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str = "",
                        max_bytes: Optional[int] = None) -> Optional[str]:
@@ -1177,6 +1194,11 @@ async def _move_crew_photos(db):
 async def _save_ship_document(upload: Optional[UploadFile]) -> Optional[str]:
     """Document du navire (image ou PDF), dans IMG/Documents/."""
     return await _save_upload(upload, DOC_SUFFIXES, SHIP_DOC_SUBDIR, SHIP_DOC_MAX_BYTES)
+
+
+async def _save_stopover_document(upload: Optional[UploadFile]) -> Optional[str]:
+    """Reçu ou document d'une escale (image ou PDF), dans IMG/Escales/."""
+    return await _save_upload(upload, DOC_SUFFIXES, STOPOVER_DOC_SUBDIR, DOC_MAX_BYTES)
 
 
 async def _save_document(upload: Optional[UploadFile]) -> Optional[str]:
@@ -1502,7 +1524,7 @@ async def require_login_to_write(request: Request, call_next):
 # que les dossiers d'IMG_OPEN_FOLDERS (photos du carnet et des équipiers) — ailleurs, les
 # pages qu'il consulte montrent les initiales ou un cadenas (fichier_visible).
 IMG_FOLDER_SECTIONS = {"Invoices-Receipts": "comptes", "Documents": "navire", "SailingCrew": "equipiers",
-                       "Carnet": "carnet", "Navire": "navire"}
+                       "Carnet": "carnet", "Navire": "navire", "Escales": "croisieres"}
 # Dossiers visibles sans connexion : les photos du carnet de voyage et celles
 # des équipiers, que le Mousse peut regarder (choix de l'utilisateur,
 # 02/10/2026). Factures et documents du navire restent réservés aux comptes.
@@ -3186,6 +3208,24 @@ async def _contact_places(db, ship_id: int) -> dict:
             (ship_id,),
         )
         places[key] = [row[0] for row in await cursor.fetchall()]
+    # Les localités groupées par pays, pour le menu des localités : chaque
+    # localité sous le pays le plus fréquent parmi ses contacts ; les pays
+    # par ordre alphabétique, les localités sans pays connu en dernier.
+    cursor = await db.execute(
+        "SELECT city, country, COUNT(*) FROM contacts WHERE ship_id = ? AND city IS NOT NULL "
+        "GROUP BY city, country ORDER BY COUNT(*) DESC",
+        (ship_id,),
+    )
+    country_of = {}
+    for city, country, _ in await cursor.fetchall():
+        if country and not country_of.get(city):
+            country_of[city] = country
+        country_of.setdefault(city, None)
+    groups = {}
+    for city in places["cities"]:
+        groups.setdefault(country_of.get(city), []).append(city)
+    places["city_groups"] = sorted(
+        groups.items(), key=lambda g: (g[0] is None, _fold(g[0] or "")))
     return places
 
 
@@ -3770,13 +3810,21 @@ templates.env.globals["dial_codes"] = DIAL_CODES
 async def crew_list(request: Request):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
+        # Les croisières de chacun sur le navire courant (un voilier par
+        # croisière, à côté du nom) ; la liste elle-même reste tous navires.
+        ship = await _fetch_ship(db, get_current_ship_id(request))
         cursor = await db.execute(
-            "SELECT * FROM crew_members ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE"
+            """SELECT m.*, (SELECT COUNT(DISTINCT cc.cruise_id) FROM cruise_crew cc
+                            JOIN cruises c ON c.id = cc.cruise_id
+                            WHERE cc.crew_member_id = m.id AND c.ship_id = ?) AS nb_cruises
+               FROM crew_members m ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE""",
+            (ship["id"] if ship else 0,),
         )
         crew = await cursor.fetchall()
     return templates.TemplateResponse(
         "crew/list.html",
-        {"request": request, "active_section": "crew", "crew": [dict(m) for m in crew]},
+        {"request": request, "active_section": "crew", "crew": [dict(m) for m in crew],
+         "current_ship": dict(ship) if ship else None},
     )
 
 
@@ -4903,7 +4951,10 @@ async def all_stopovers(request: Request):
                       {ROUTE_NUMBER} AS route_number,
                       c.name AS cruise_name, c.id AS cruise_id,
                       c.start_time AS cruise_start, c.end_time AS cruise_end,
-                      {CRUISE_NUMBER} AS cruise_number
+                      {CRUISE_NUMBER} AS cruise_number,
+                      (SELECT path FROM stopover_documents d WHERE d.stopover_id = s.id
+                       ORDER BY d.id LIMIT 1) AS first_doc,
+                      (SELECT COUNT(*) FROM stopover_documents d WHERE d.stopover_id = s.id) AS doc_count
                FROM stopovers s
                JOIN routes r ON s.route_id = r.id
                JOIN cruises c ON r.cruise_id = c.id
@@ -5160,7 +5211,8 @@ async def new_stopover_form(request: Request, route_id: int):
     }
     return templates.TemplateResponse(
         "routes/stopover_form.html",
-        {"request": request, "active_section": "routes", "stopover": stopover, "nouveau": True},
+        {"request": request, "active_section": "routes", "stopover": stopover, "nouveau": True,
+         "documents": [], "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
     )
 
 
@@ -5175,6 +5227,8 @@ async def create_stopover(
     cost_per_night: Optional[float] = Form(None),
     cost: Optional[float] = Form(None),
     notes: Optional[str] = Form(None),
+    doc_title: Optional[str] = Form(None),
+    document_file: List[UploadFile] = File([]),
 ):
     # Auto-calculate total if only nightly cost and dates are given
     if cost is None and cost_per_night is not None and arrival_date and departure_date:
@@ -5186,13 +5240,17 @@ async def create_stopover(
         except ValueError:
             pass
     async with connect() as db:
-        await db.execute(
+        cursor = await db.execute(
             """INSERT INTO stopovers (route_id, locality, name, type, arrival_date, departure_date, cost_per_night, cost, notes)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (route_id, locality or None, name or None, type or None,
              arrival_date or None, departure_date or None,
              cost_per_night, cost if cost is not None else 0, notes or None),
         )
+        # Un reçu peut partir avec l'escale, avant qu'elle existe.
+        files = [f for f in document_file if f.filename]
+        for upload in files:
+            await _add_stopover_document(db, cursor.lastrowid, doc_title if len(files) == 1 else None, upload)
         await db.commit()
     return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
 
@@ -5211,11 +5269,15 @@ async def edit_stopover_form(request: Request, stopover_id: int):
             (stopover_id,),
         )
         stopover = await cursor.fetchone()
+        cursor = await db.execute(
+            "SELECT * FROM stopover_documents WHERE stopover_id = ? ORDER BY id", (stopover_id,))
+        documents = [dict(d) for d in await cursor.fetchall()]
     if stopover is None:
         raise HTTPException(status_code=404, detail="Stopover not found")
     return templates.TemplateResponse(
         "routes/stopover_form.html",
-        {"request": request, "active_section": "cruises", "stopover": dict(stopover), "nouveau": False},
+        {"request": request, "active_section": "cruises", "stopover": dict(stopover), "nouveau": False,
+         "documents": documents, "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
     )
 
 
@@ -5253,6 +5315,58 @@ async def update_stopover(
         await db.commit()
     # Retour à la liste des escales, d'où que l'on vienne.
     return RedirectResponse(url="/cruises/stopovers", status_code=303)
+
+
+async def _add_stopover_document(db, stopover_id: int, title: Optional[str],
+                                 upload: Optional[UploadFile]) -> bool:
+    """Comme _add_expense_document, pour une escale (IMG/Escales/)."""
+    path = await _save_stopover_document(upload)
+    if not path:
+        return False
+    await db.execute(
+        "INSERT INTO stopover_documents (stopover_id, title, path, created_at) VALUES (?, ?, ?, ?)",
+        (stopover_id, (title or "").strip() or _doc_title(upload.filename), path,
+         datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    return True
+
+
+@app.post("/stopovers/{stopover_id}/documents/new")
+async def add_stopover_document(
+    stopover_id: int,
+    title: Optional[str] = Form(None),
+    document_file: List[UploadFile] = File([]),
+):
+    files = [f for f in document_file if f.filename]
+    async with connect() as db:
+        for upload in files:
+            await _add_stopover_document(db, stopover_id, title if len(files) == 1 else None, upload)
+        await db.commit()
+    return RedirectResponse(url=f"/stopovers/{stopover_id}/edit#documents", status_code=303)
+
+
+@app.post("/stopovers/documents/{doc_id}/title")
+async def rename_stopover_document(doc_id: int, value: Optional[str] = Form(None)):
+    async with connect() as db:
+        cursor = await db.execute("SELECT stopover_id FROM stopover_documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        if (value or "").strip():
+            await db.execute("UPDATE stopover_documents SET title = ? WHERE id = ?", (value.strip(), doc_id))
+            await db.commit()
+    return RedirectResponse(url=f"/stopovers/{row[0]}/edit#documents" if row else "/cruises/stopovers",
+                            status_code=303)
+
+
+@app.post("/stopovers/documents/{doc_id}/delete")
+async def delete_stopover_document(doc_id: int):
+    """Retire le document de l'escale ; le fichier reste dans IMG/."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT stopover_id FROM stopover_documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        await db.execute("DELETE FROM stopover_documents WHERE id = ?", (doc_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/stopovers/{row[0]}/edit#documents" if row else "/cruises/stopovers",
+                            status_code=303)
 
 
 @app.post("/stopovers/{stopover_id}/delete")

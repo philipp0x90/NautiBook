@@ -26,6 +26,7 @@
        comme sur le carnet d'adresses. */
     .data-table.titres-legers .filtre-comptes th { padding-top: 0; padding-bottom: 6px; border-bottom: 0;
                                                    font-weight: 400; text-transform: none; letter-spacing: 0; }
+    .filtre-comptes select.annee { min-width: 90px; }
     .filtre-comptes select { width: 100%; min-width: 150px; padding: 4px 8px; font-size: 13px; height: 30px; }
     /* Pas de liseré bleu au choix d'une option : un filtre n'est pas un champ de saisie. */
     .filtre-comptes select:focus { outline: none; background: #f8fafc; }
@@ -81,19 +82,29 @@
 <div class="comptes-scroll">
     <table class="data-table titres-legers">
         <thead>
-            {# Filtre par catégorie, au-dessus de sa colonne, sans recharger la
-               page ; mémorisé par appareil. Les catégories présentes dans les
+            {# Filtres par année et par catégorie, chacun au-dessus de sa
+               colonne, combinables, sans recharger la page ; mémorisés par
+               appareil. Les catégories présentes dans les
                comptes, y compris celles d'avant la liste actuelle (Refit…). #}
             {% set categories = entries | map(attribute='expense_type') | select | unique | sort(case_sensitive=false) | list %}
+            {# Années : celles des dates des dépenses, la plus récente d'abord. #}
+            {% set annees = entries | map(attribute='date') | select | map('truncate', 4, true, '') | unique | sort(reverse=true) | list %}
             <tr class="filtre-comptes">
-                <th colspan="4"><span class="compte" id="filtre-compte"></span></th>
+                <th>
+                    <select id="filtre-annee" class="annee">
+                        <option value="">Tout</option>
+                        {% for a in annees %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
+                    </select>
+                </th>
+                <th colspan="3"><span class="compte" id="filtre-compte"></span></th>
                 <th>
                     <select id="filtre-categorie">
                         <option value="">Toutes catégories</option>
                         {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
                         {% if entries | rejectattr('expense_type') | list %}
-                        <option disabled>──────────</option>
-                        <option value="__aucune__">Sans catégorie</option>
+                        <optgroup label="Autres">
+                            <option value="__aucune__">Sans catégorie</option>
+                        </optgroup>
                         {% endif %}
                     </select>
                 </th>
@@ -139,7 +150,7 @@
             {# Toute la ligne ouvre la fiche ; rowLink laisse passer les clics
                sur le lien du fournisseur et le bouton de suppression. #}
             <tr style="cursor:pointer" title="Ouvrir cette dépense" class="ligne-depense"
-                data-categorie="{{ e.expense_type or '' }}" data-montant="{{ e.unit_price or 0 }}" data-solde="{{ e.balance or 0 }}"
+                data-categorie="{{ e.expense_type or '' }}" data-annee="{{ (e.date or '')[:4] }}" data-montant="{{ e.unit_price or 0 }}" data-solde="{{ e.balance or 0 }}"
                 onclick="rowLink(event, '/ship/expenses/{{ e.id }}')">
                 <td style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
                 <td style="text-align:right;white-space:nowrap">{{ e.unit_price | euros }}</td>
@@ -190,6 +201,7 @@
 <script>
 (function () {
     const cat = document.getElementById('filtre-categorie'), compte = document.getElementById('filtre-compte');
+    const annee = document.getElementById('filtre-annee');
     const lignes = [...document.querySelectorAll('.ligne-depense')];
     const libelle = document.getElementById('total-libelle'), montant = document.getElementById('total-montant'),
           solde = document.getElementById('total-solde');
@@ -200,23 +212,26 @@
     let memo = {};
     try { memo = JSON.parse(localStorage.getItem(CLE) || '{}'); } catch (e) {}
     if (memo.categorie && [...cat.options].some(o => o.value === memo.categorie)) cat.value = memo.categorie;
+    if (memo.annee && [...annee.options].some(o => o.value === memo.annee)) annee.value = memo.annee;
     function filtrer() {
         let n = 0, m = 0, s = 0;
         lignes.forEach(function (tr) {
-            const ok = !cat.value || (cat.value === '__aucune__' ? !tr.dataset.categorie : tr.dataset.categorie === cat.value);
+            const ok = (!cat.value || (cat.value === '__aucune__' ? !tr.dataset.categorie : tr.dataset.categorie === cat.value))
+                && (!annee.value || tr.dataset.annee === annee.value);
             tr.hidden = !ok;
             if (ok) { n++; m += parseFloat(tr.dataset.montant); s += parseFloat(tr.dataset.solde); }
         });
-        if (cat.value) {
+        if (cat.value || annee.value) {
             compte.textContent = n + ' dépense' + (n > 1 ? 's' : '') + ' sur ' + lignes.length;
             libelle.textContent = 'Total'; montant.textContent = euros(m); solde.textContent = euros(s);
         } else {
             compte.textContent = '';
             [libelle.textContent, montant.textContent, solde.textContent] = totaux;
         }
-        try { localStorage.setItem(CLE, JSON.stringify({ categorie: cat.value })); } catch (e) {}
+        try { localStorage.setItem(CLE, JSON.stringify({ categorie: cat.value, annee: annee.value })); } catch (e) {}
     }
     cat.addEventListener('change', filtrer);
+    annee.addEventListener('change', filtrer);
     filtrer();
 })();
 </script>

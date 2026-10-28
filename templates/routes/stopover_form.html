@@ -38,19 +38,21 @@
        l'afficher lui-même). */
     .escale-jour { font-weight: 600; color: #0f3a4a; }
     .escale-boutons { display: flex; gap: 10px; justify-content: flex-end; }
+    .escale-docs { max-width: 640px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
     @media (max-width: 560px) {
         .escale-deux { grid-template-columns: 1fr; }
     }
 </style>
 {% endblock %}
 
+{% from "_documents.html" import section_documents %}
 {% block content %}
 
 <div class="section-bar">
     <div class="section-bar-title">{{ titre }}</div>
 </div>
 
-<form method="POST" action="{{ action }}" class="card escale-carte">
+<form method="POST" action="{{ action }}" class="card escale-carte" id="escale-form" enctype="multipart/form-data">
 
     {% if stopover.cruise_name or stopover.route_id %}
     <div class="escale-contexte">
@@ -128,6 +130,11 @@
     </div>
 
 </form>
+
+{# Reçu du port et autres documents de l'escale (stopover_documents, fichiers
+   dans IMG/Escales/) : PDF, ou photo prise sur place depuis l'iPad. #}
+{{ section_documents(documents, '/stopovers', none if nouveau else stopover.id, 'escale-form',
+                     "de l'escale", doc_max_bytes, doc_accept, titre='Reçus et documents', classe='escale-docs') }}
 
 <script>
 (function () {

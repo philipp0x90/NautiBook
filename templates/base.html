@@ -14,6 +14,8 @@
     <script>
     (function () {
         if (!matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 700) return;
+        // html.tablette : ce qu'une page veut montrer ou cacher sur l'iPad seulement.
+        document.documentElement.classList.add('tablette');
         var meta = document.querySelector('meta[name=viewport]');
         // L'échelle est fixée, et le dézoom bloqué en dessous : sans cela,
         // Safari peut afficher la page moins agrandie, donc plus large que

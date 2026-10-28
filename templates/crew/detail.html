@@ -36,17 +36,20 @@
     .photo-actions button { font: inherit; font-size: 12px; line-height: 1.4; margin: 0; padding: 0; }
     .photo-recadrer { background: none; border: 0; cursor: pointer; color: var(--accent); }
     .photo-recadrer:hover { text-decoration: underline; }
-    /* La barre de recadrage, dans la colonne de 160 px : sur deux lignes. */
+    /* La barre de recadrage, dans la colonne de 130 px : sur deux lignes. */
     .colonne-photo .cadrage-barre { justify-content: center; }
-    .colonne-photo .cadrage-barre input[type=range] { width: 100px; }
+    .colonne-photo .cadrage-barre input[type=range] { width: 90px; }
     /* Colonne photo et rang d'accès. */
-    .colonne-photo { width: 160px; display: grid; gap: 10px; align-content: start; }
+    .colonne-photo { width: 130px; display: grid; gap: 8px; align-content: start; }
     .acces { display: grid; gap: 6px; }
     /* hidden doit gagner : sans cela, display de .btn ou de .acces-compte
        l'emporte, et « Appliquer » s'affiche alors qu'il n'y a rien à appliquer. */
     .acces [hidden] { display: none !important; }
     .acces-form { display: grid; gap: 6px; }
     .acces-form select, .acces-form input, .acces-reset input, .acces-premier input { height: 30px; font-size: 13px; }
+    /* Le menu du rang : un peu plus haut, sans marge verticale — à 30 px,
+       Safari sur iPad coupait le jambage du « p » de « Capitaine ». */
+    .acces-form select { height: 32px; padding-top: 0; padding-bottom: 0; line-height: normal; }
     .acces-compte { display: grid; gap: 6px; }
     .acces-badge { text-align: center; font-weight: 700; border-radius: 12px; padding: 4px 8px; font-size: 13px; }
     .rang-amiral { background: #0f3a4a; color: #fff; }
@@ -60,6 +63,28 @@
     .acces-msg { border-radius: 6px; padding: 6px 8px; font-size: 12px; }
     .acces-msg.erreur { background: #fee2e2; color: #991b1b; }
     .acces-msg.info { background: #e0f2fe; color: #075985; }
+    /* Fiche serrée pour un écran d'iPad (880 × ~550 points) : précédent /
+       suivant dans la barre, groupes de champs sans titre (les libellés
+       suffisent) séparés d'un filet, identité sur une rangée, police des
+       champs réduite ; les embarquements suivent, tous, la page défile. */
+    .fiche-nav { display: flex; align-items: center; justify-content: center; gap: 14px; }
+    .fiche-nav a, .fiche-nav .eteint { color: #fff; text-decoration: none; font-size: 26px; line-height: 1; padding: 0 6px; }
+    .fiche-nav .eteint { opacity: .35; }
+    .fiche-nav a:hover { opacity: .75; }
+    .groupes-equipier { display: grid; gap: 7px; }
+    .groupes-equipier > section + section { border-top: 1px solid #e3eaf1; padding-top: 7px; }
+    .groupes-equipier .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+    .groupes-equipier .champ-equipier input, .groupes-equipier .champ-equipier select {
+        height: 28px; padding-top: 3px; padding-bottom: 3px; font-size: 13px;
+    }
+    .groupes-equipier .champ-lecture { padding: 4px 10px; font-size: 13px; }
+    /* Safari (iPad) dessine le champ date en contrôle natif, plus haut que ses
+       voisins et la date centrée : sans l'apparence native, il se plie aux
+       28 px, la date à gauche. */
+    .groupes-equipier .champ-equipier input[type=date] { -webkit-appearance: none; appearance: none; line-height: 22px; }
+    .groupes-equipier .champ-equipier input[type=date]::-webkit-date-and-time-value { margin: 0; text-align: left; color: #222; }
+    .embarquements .data-table th, .embarquements .data-table td { padding-top: 4px; padding-bottom: 4px; }
+    /* Tous les embarquements, sans cadre qui défile : la page défile. */
 </style>
 {% endblock %}
 
@@ -69,31 +94,22 @@
    pour que le nom reste centré. Marges verticales négatives : les boutons ne
    grandissent pas la barre, qui garde la hauteur des autres. Plus de bouton
    « Supprimer la fiche » : la croix de la liste des équipiers s'en charge. #}
-<div class="section-bar">
+<div class="section-bar" style="margin-bottom:12px">
     <a href="/crew" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">← Liste des équipiers</a>
-    <div class="section-bar-title">
-        {{ member.first_name or '' }} <span style="text-transform:uppercase">{{ member.last_name or '' }}</span>
+    {# Précédent et suivant de part et d'autre du nom, dans la barre : une
+       rangée de boutons de moins, pour que la fiche tienne sur un écran
+       d'iPad. Aux extrémités de la liste, la flèche reste en place, estompée. #}
+    <div class="section-bar-title fiche-nav">
+        {% if prev_id %}<a href="/crew/{{ prev_id }}" title="Équipier précédent">‹</a>{% else %}<span class="eteint">‹</span>{% endif %}
+        <span>{{ member.first_name or '' }} <span style="text-transform:uppercase">{{ member.last_name or '' }}</span></span>
+        {% if next_id %}<a href="/crew/{{ next_id }}" title="Équipier suivant">›</a>{% else %}<span class="eteint">›</span>{% endif %}
     </div>
     <a href="/crew/new" class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ Nouvel équipier</a>
 </div>
 
 {# Plus de bouton « Modifier » : chaque champ se modifie sur place. La page
-   /crew/{id}/edit existe toujours. Précédent tout à gauche, Suivant tout à
-   droite ; aux extrémités de la liste, le bouton reste en place, grisé. #}
-<div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
-    {% if prev_id %}
-    <a href="/crew/{{ prev_id }}" class="btn btn-blue">← Précédent</a>
-    {% else %}
-    <span class="btn btn-blue" style="opacity:.4;pointer-events:none">← Précédent</span>
-    {% endif %}
-    {% if next_id %}
-    <a href="/crew/{{ next_id }}" class="btn btn-blue">Suivant →</a>
-    {% else %}
-    <span class="btn btn-blue" style="opacity:.4;pointer-events:none">Suivant →</span>
-    {% endif %}
-</div>
-
-<div class="card" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start">
+   /crew/{id}/edit existe toujours. #}
+<div class="card" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start;padding:14px 16px">
     {# Colonne de gauche : la photo, puis le rang d'accès dans l'app. #}
     <div class="colonne-photo">
         {# Un clic sur la photo ouvre le choix d'un fichier ; le choisir l'envoie
@@ -109,10 +125,10 @@
                    Mousse voit les initiales, comme pour une fiche sans photo. #}
                 {% if photo_ok %}
                 <img src="{{ member.photo_path }}" alt="Photo de {{ member.first_name or '' }} {{ member.last_name or '' }}"
-                     style="width:160px;height:160px;display:block;{{ member.photo_crop | cadrage_equipier }}">
+                     style="width:130px;height:130px;display:block;{{ member.photo_crop | cadrage_equipier }}">
                 <span class="consigne">Glisser pour cadrer</span>
                 {% else %}
-                <div style="width:160px;height:160px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
+                <div style="width:130px;height:130px;border-radius:8px;background:#dde5ee;display:flex;align-items:center;justify-content:center;color:#7d8fa3;font-size:44px;font-weight:700">
                     {{ (member.first_name or member.last_name or '?')[0] | upper }}
                 </div>
                 {% endif %}
@@ -172,7 +188,7 @@
             {% endif %}
 
             {% if account %}
-            <div class="meta" style="text-align:center">Identifiant « {{ account.username }} »</div>
+            <div class="meta" style="text-align:center">Identifiant <strong>{{ account.username }}</strong></div>
             {# Changer un identifiant : l'Amiral seul, quelle que soit la grille. #}
             {% if utilisateur(request) and utilisateur(request).rank == 'amiral' %}
             <details class="acces-reset">
@@ -220,7 +236,7 @@
         </div>
     </div>
 
-    <div style="display:grid;gap:16px">
+    <div class="groupes-equipier">
         {# Chaque champ est son propre formulaire, enregistré dès qu'on le quitte
            — jamais un formulaire commun, sinon deux modifications proches
            s'écraseraient. Les champs permis et leur type sont dans CREW_FIELDS
@@ -252,8 +268,7 @@
         </form>
         {% endmacro %}
 
-        <section style="display:grid;gap:12px">
-            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">{{ member.gender | equipier | capitalize }}</h3>
+        <section>
             <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
                 {{ champ('first_name', 'Prénom') }}
                 {{ champ('last_name', 'Nom', 'nom') }}
@@ -265,8 +280,7 @@
             </div>
         </section>
 
-        <section style="display:grid;gap:12px">
-            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Contact</h3>
+        <section>
             <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
                 {# Indicatif et numéro dans une même case, deux champs d'un même
                    formulaire : _join_phone les recompose, comme à la saisie. #}
@@ -295,8 +309,7 @@
         {# Adresse et identité : rubrique « identite » de la grille des droits,
            cachée au Mousse (voir ACCESS_GRID). #}
         {% if peut(request, 'identite.voir') %}
-        <section style="display:grid;gap:12px">
-            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Adresse</h3>
+        <section>
             <div class="grid" style="grid-template-columns:2fr 1fr 2fr 1.5fr;gap:12px">
                 {{ champ('street', 'Rue et numéro') }}
                 {{ champ('postal_code', 'Code postal') }}
@@ -305,15 +318,12 @@
             </div>
         </section>
 
-        <section style="display:grid;gap:12px">
-            <h3 style="margin:0;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Identité</h3>
-            <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
-                {{ champ('birth_date', 'Date de naissance') }}
+        <section>
+            <div class="grid" style="grid-template-columns:repeat(3, minmax(0, 1fr));gap:10px">
+                {{ champ('birth_date', 'Naissance') }}
                 {{ champ('birth_place', 'Lieu de naissance') }}
-            </div>
-            <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px">
                 {{ champ('nationality', 'Nationalité') }}
-                {{ champ('id_type', "Type de pièce d'identité") }}
+                {{ champ('id_type', "Pièce d'identité") }}
                 {{ champ('id_number', 'Numéro') }}
             </div>
         </section>
@@ -324,9 +334,10 @@
 {# Ses croisières — l'autre versant de cruise_crew. Tous navires confondus,
    puisqu'un équipier n'est rattaché à aucun navire. Les embarquements se
    modifient depuis la page de la croisière, pas d'ici. #}
-<div class="card" style="margin-top:16px;padding:14px">
-    <h4 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;text-align:center">Embarquements</h4>
+<div class="card embarquements" style="margin-top:10px;padding:8px 14px">
+    <h4 style="margin:0 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;text-align:center">Embarquements</h4>
     {% if cruises %}
+    <div class="embarquements-defile">
     <table class="data-table">
         <thead>
             <tr>
@@ -364,6 +375,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
     <div class="meta">{{ member.gender | equipier('cet') | capitalize }} n'a embarqué sur aucune croisière.</div>
     {% endif %}

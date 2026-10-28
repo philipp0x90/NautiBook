@@ -1,0 +1,129 @@
+{# Section « Documents » d'une fiche : la liste des fichiers joints (titre
+   modifiable sur place, type, ✕ Supprimer), l'ajout d'un ou plusieurs
+   fichiers, et le glisser-déposer sur toute la section. Partagée par les
+   dépenses (/ship/expenses, expense_documents) et les escales (/stopovers,
+   stopover_documents), dont les routes suivent le même modèle :
+     {base}/{id}/documents/new, {base}/documents/{doc}/title,
+     {base}/documents/{doc}/delete.
+   owner_id vaut none à la création : les fichiers partent alors avec le
+   formulaire principal (form_id, attribut form=), champs doc_title et
+   document_file. `de` : « de la dépense », « de l'escale ». #}
+{% macro section_documents(documents, base, owner_id, form_id, de, doc_max_bytes, doc_accept, titre='Documents', classe='') %}
+<style>
+    .docs-section { margin-top: 16px; }
+    .docs-section h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .docs-section table { margin-bottom: 12px; }
+    .doc-type { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
+    .doc-type.doc-pdf { background: #c0392b; }
+    .doc-type.doc-img { background: #2980b9; }
+    /* Titre d'un document : du texte au repos, un champ au survol. */
+    .doc-titre { margin: 0; }
+    .doc-titre input {
+        width: 100%; height: 28px; padding: 2px 6px; font: inherit; font-weight: 600; background: transparent;
+        border: 1px solid transparent; border-radius: 5px;
+    }
+    .doc-titre input:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .doc-titre input:focus { border-color: var(--accent); background: #fff; outline: none; }
+    /* Fichiers glissés sur la section : un cadre pointillé pendant le survol. */
+    .docs-section.survol { outline: 2px dashed var(--accent); outline-offset: -6px; background: #e8f4f9; }
+    .doc-ajout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .doc-ajout input[type=text] { flex: 3 1 260px; min-width: 0; height: 32px; }
+    .doc-ajout input[type=file] { flex: 2 1 200px; min-width: 0; font-size: 13px; }
+</style>
+<section class="card docs-section {{ classe }}" id="documents">
+    <h3>{{ titre }}</h3>
+    {% if documents %}
+    <table class="data-table">
+        <thead><tr><th>Titre</th><th>Type</th><th></th></tr></thead>
+        <tbody>
+            {% for d in documents %}
+            {% set pdf = d.path.lower().endswith('.pdf') %}
+            <tr style="cursor:pointer" title="Afficher le document"
+                onclick="ouvrirDocument(event, '{{ d.path }}', {{ 'true' if pdf else 'false' }})">
+                {# Titre modifiable sur place : son propre formulaire,
+                   enregistré en quittant le champ ; un clic dedans ne
+                   rouvre pas le document (ouvrirDocument ignore les formulaires). #}
+                <td style="width:100%">
+                    <form method="POST" action="{{ base }}/documents/{{ d.id }}/title" class="doc-titre">
+                        <input type="text" name="value" value="{{ d.title or '' }}" placeholder="Titre du document"
+                               title="Modifier le titre" onchange="this.form.submit()">
+                    </form>
+                </td>
+                <td>
+                    {% if pdf %}<span class="doc-type doc-pdf">PDF</span>
+                    {% else %}<span class="doc-type doc-img">Image</span>{% endif %}
+                </td>
+                <td style="text-align:right">
+                    <form method="POST" action="{{ base }}/documents/{{ d.id }}/delete" style="margin:0"
+                          onsubmit="return confirm('Retirer « {{ (d.title or 'ce document') | replace("'", "’") }} » {{ de }} ?')">
+                        <button type="submit" class="btn" title="Retirer ce document {{ de }}"
+                                style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px;white-space:nowrap">✕ Supprimer</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% elif owner_id %}
+    <div class="meta" style="margin-bottom:12px">Aucun document.</div>
+    {% endif %}
+
+    {% if owner_id %}
+    <form method="POST" action="{{ base }}/{{ owner_id }}/documents/new" enctype="multipart/form-data"
+          class="doc-ajout" onsubmit="return verifierDocument(this.elements.document_file)">
+        <input type="text" name="title" placeholder="Titre du document (sinon, le nom du fichier)">
+        <input type="file" name="document_file" accept="image/*,application/pdf,{{ doc_accept }}" multiple required>
+        <button type="submit" class="btn btn-yellow">+ Ajouter document</button>
+    </form>
+    {% else %}
+    <div class="doc-ajout">
+        <input type="text" name="doc_title" form="{{ form_id }}" placeholder="Titre du document (sinon, le nom du fichier)">
+        <input type="file" name="document_file" form="{{ form_id }}" accept="image/*,application/pdf,{{ doc_accept }}"
+               multiple onchange="verifierDocument(this)">
+    </div>
+    <div class="meta" style="margin-top:4px">Enregistré avec la fiche ; d'autres pourront s'ajouter ensuite.</div>
+    {% endif %}
+    <div class="meta" style="margin-top:4px">PDF ou image (ou photo prise sur place), max. {{ doc_max_bytes // 1048576 }} Mo — ou glisser les fichiers ici</div>
+</section>
+<script>
+// Clic sur une ligne, hors bouton « Supprimer » : un PDF dans la visionneuse
+// (base.html), une image en plein écran comme les photos.
+function ouvrirDocument(event, url, pdf) {
+    if (event.target.closest('button, form')) return;
+    if (pdf) { ouvrirPdf(url, event.currentTarget.querySelector('input').value.trim()); return; }
+    const img = new Image();
+    img.src = url;
+    agrandirPhoto(event, img);
+}
+// Refus avant l'envoi plutôt qu'une page d'erreur après : un gros fichier
+// prend du temps sur le wifi du bord.
+function verifierDocument(champ) {
+    const trop = [...champ.files].find(f => f.size > {{ doc_max_bytes }});
+    if (trop) {
+        alert('« ' + trop.name + ' » est trop volumineux (plus de {{ doc_max_bytes // 1048576 }} Mo).');
+        champ.value = '';
+        return false;
+    }
+    return true;
+}
+// Glisser-déposer des fichiers sur la section : ils remplissent le champ
+// fichier. Sur une fiche existante, ils sont ajoutés aussitôt ; à la
+// création, ils partiront avec la fiche, au bouton Enregistrer.
+(function () {
+    const section = document.getElementById('documents');
+    const champ = section.querySelector('input[type=file]');
+    const ok = f => /^(image\/|application\/pdf)/.test(f.type) || /\.(pdf|jpe?g|png|heic|gif|webp)$/i.test(f.name);
+    ['dragenter', 'dragover'].forEach(t => section.addEventListener(t, e => { e.preventDefault(); section.classList.add('survol'); }));
+    section.addEventListener('dragleave', e => { if (!section.contains(e.relatedTarget)) section.classList.remove('survol'); });
+    section.addEventListener('drop', e => {
+        e.preventDefault(); section.classList.remove('survol');
+        const dt = new DataTransfer();
+        [...e.dataTransfer.files].filter(ok).forEach(f => dt.items.add(f));
+        if (!dt.files.length) { alert('Seuls les PDF et les images peuvent être joints.'); return; }
+        champ.files = dt.files;
+        if (!verifierDocument(champ)) return;
+        {% if owner_id %}champ.form.requestSubmit();{% endif %}
+    });
+})();
+</script>
+{% endmacro %}

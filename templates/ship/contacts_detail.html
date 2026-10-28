@@ -37,6 +37,7 @@
        longue option et à un champ texte une vingtaine de caractères, ce qui
        écartait les trois valeurs. Le CP n'a que la place de ses 5 chiffres. */
     .ligne-groupe { display: grid; grid-template-columns: 62px minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; padding: 4px 0; }
+    .ligne-groupe.seule { grid-template-columns: minmax(0, 1fr); }
     .ligne-groupe .part { display: flex; flex-direction: column; align-items: stretch; gap: 0; min-width: 0; margin: 0; }
     .ligne-groupe .part .libelle { font-size: 11px; color: var(--muted); padding-left: 7px; }
     .ligne-groupe .part .valeur { min-width: 0; justify-content: flex-start; }
@@ -93,11 +94,13 @@
                changement de sélection la ferait disparaître. #}
             {% if val and val not in contact_categories %}<option value="{{ val }}" selected>{{ val }}</option>{% endif %}
             {# Une nouvelle catégorie, créée et donnée à ce contact d'un coup. #}
-            <option disabled>──────────</option>
-            <option value="__nouvelle__">+ Catégorie</option>
+            <optgroup label="Nouvelle catégorie">
+                <option value="__nouvelle__">+ Catégorie</option>
+            </optgroup>
         </select>
         {% elif kind == 'lieu' %}
-        {{ place_select('value', cities if field == 'city' else countries, val, '', true) }}
+        {{ place_select('value', cities if field == 'city' else countries, val, '', true, city_groups if field == 'city' else none,
+                         'Nouvelle localité' if field == 'city' else 'Nouveau pays') }}
         {% else %}
         <input type="{{ kind }}" name="value" value="{{ val or '' }}" placeholder="—" onchange="this.form.submit()">
         {% endif %}
@@ -148,7 +151,10 @@
 
     <section class="card contact-carte">
         <h3>Adresse</h3>
-        {{ ligne('street', 'Rue et numéro') }}
+        {# Libellé en petit au-dessus, comme CP, localité et pays dessous. #}
+        <div class="ligne ligne-groupe seule">
+            {{ ligne('street', 'Rue et numéro', cls='part') }}
+        </div>
         <div class="ligne ligne-groupe">
             {{ ligne('postal_code', 'CP', cls='part cp') }}
             {{ ligne('city', 'Localité', 'lieu', cls='part') }}

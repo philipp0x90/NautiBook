@@ -70,11 +70,11 @@
         </div>
         <div>
             <label>Localité</label>
-            {{ place_select('city', cities) }}
+            {{ place_select('city', cities, groups=city_groups, nouveau='Nouvelle localité') }}
         </div>
         <div>
             <label>Pays</label>
-            {{ place_select('country', countries) }}
+            {{ place_select('country', countries, nouveau='Nouveau pays') }}
         </div>
     </div>
 

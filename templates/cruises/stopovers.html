@@ -77,7 +77,10 @@
             <tr style="cursor:pointer" title="Modifier cette escale"
                 onclick="rowLink(event, '/stopovers/{{ s.id }}/edit')">
                 <td>
-                    <div class="lieu">{{ s.locality or '—' }}</div>
+                    {# Trombone : un reçu est joint à l'escale ; il ouvre le premier. #}
+                    <div class="lieu">{{ s.locality or '—' }}{% if s.first_doc %}<a href="{{ s.first_doc }}" target="_blank" rel="noopener"
+                        title="{{ 'Ouvrir le premier des ' ~ s.doc_count ~ ' documents' if s.doc_count > 1 else 'Ouvrir le reçu' }}"
+                        class="trombone"><svg aria-hidden="true"><use href="#icon-trombone"/></svg></a>{% endif %}</div>
                     {% if s.name %}<div class="marina">{{ s.name }}</div>{% endif %}
                 </td>
                 <td>{% if s.type %}<span class="type type-{{ s.type }}">{{ s.type }}</span>{% endif %}</td>
