@@ -6,6 +6,9 @@ claude_todo.md
 config.yaml
 *.pdf
 logbook.db.backup-*
+# Copies faites par copy_db.sh (l’ancienne base du Mac, ou une base du Pi à part)
+*.db
+*.db.avant-copie-*
 # Écrit par deploy.sh sur le Pi quand un commit refuse de démarrer
 .deploy-failed
 
