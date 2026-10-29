@@ -865,7 +865,8 @@ async def _migrate(db):
                 await db.execute(f"UPDATE ship_info SET {column} = ? WHERE id = ?", (number, ship_id))
                 print(f"Migration: {column} « {value} » → {number}")
 
-    await _move_crew_photos(db)
+    await _move_photos(db, "crew_members", CREW_SUBDIR, "photo d'équipier")
+    await _move_photos(db, "todo_items", TODO_SUBDIR, "photo de tâche")
     await _migrate_gallery_to_carnet(db)
     await _rename_doc_folder(db)
     await _move_expense_documents(db)
@@ -1028,9 +1029,13 @@ DOC_MAX_BYTES = 20 * 1024 * 1024
 
 # Photos des équipiers : leur propre sous-dossier d'IMG/, pour la même raison
 # que les factures (sauvegarde et montage /IMG sans rien changer). Celles
-# enregistrées avant sont déplacées au démarrage par _move_crew_photos.
+# enregistrées avant sont déplacées au démarrage par _move_photos.
 CREW_SUBDIR = "SailingCrew"
 (IMG_DIR / CREW_SUBDIR).mkdir(exist_ok=True)
+# Photos des tâches, protégées par la rubrique « todo ». Jusqu'au 29/10/2026
+# elles allaient à la racine d'IMG/ ; _move_photos les y reprend.
+TODO_SUBDIR = "To-Do"
+(IMG_DIR / TODO_SUBDIR).mkdir(exist_ok=True)
 SHIP_PHOTO_SUBDIR = "Navire"
 (IMG_DIR / SHIP_PHOTO_SUBDIR).mkdir(exist_ok=True)
 
@@ -1080,9 +1085,9 @@ async def _save_upload(upload: Optional[UploadFile], suffixes: set, subdir: str 
     return f"{IMG_URL}/{subdir + '/' if subdir else ''}{name}"
 
 
-async def _save_photo(upload: Optional[UploadFile]) -> Optional[str]:
-    """Store an uploaded image in IMG/ and return the URL to use as photo_path."""
-    return await _save_upload(upload, IMG_SUFFIXES)
+async def _save_todo_photo(upload: Optional[UploadFile]) -> Optional[str]:
+    """Photo d'une tâche, dans IMG/To-Do/."""
+    return await _save_upload(upload, IMG_SUFFIXES, TODO_SUBDIR)
 
 
 async def _save_ship_photo(upload: Optional[UploadFile]) -> Optional[str]:
@@ -1187,9 +1192,9 @@ async def _migrate_gallery_to_carnet(db):
     print(f"Migration: {len(rows)} photo(s) de la galerie reprise(s) dans le carnet de voyage")
 
 
-async def _move_crew_photos(db):
-    """Range dans IMG/SailingCrew/ les photos d'équipiers restées à la racine
-    d'IMG/, et met leur chemin à jour dans la base.
+async def _move_photos(db, table: str, subdir: str, label: str):
+    """Range dans IMG/<subdir>/ les photos de la table (crew_members ou
+    todo_items) restées à la racine d'IMG/, et met leur chemin à jour.
 
     Étape de _migrate, donc rejouée à chaque démarrage : une photo déjà rangée
     n'est plus concernée. Le fichier est déplacé avant que la base soit
@@ -1197,25 +1202,25 @@ async def _move_crew_photos(db):
     fichier déjà à destination et ne fait que corriger le chemin. Une photo
     introuvable, ou une URL externe, est laissée telle quelle.
 
-    Seules les photos qu'une fiche désigne sont déplacées : un ancien fichier
+    Seules les photos qu'une ligne désigne sont déplacées : un ancien fichier
     qu'aucune ne désigne plus reste où il est, au cas où une sauvegarde
     ancienne de la base y renverrait encore."""
     cursor = await db.execute(
-        "SELECT id, photo_path FROM crew_members WHERE photo_path LIKE ?", (IMG_URL + "/%",)
+        f"SELECT id, photo_path FROM {table} WHERE photo_path LIKE ?", (IMG_URL + "/%",)
     )
-    for crew_id, path in await cursor.fetchall():
+    for row_id, path in await cursor.fetchall():
         name = path[len(IMG_URL) + 1:]
         if "/" in name:
             continue   # déjà dans un sous-dossier
-        src, dst = IMG_DIR / name, IMG_DIR / CREW_SUBDIR / name
+        src, dst = IMG_DIR / name, IMG_DIR / subdir / name
         if src.exists() and not dst.exists():
             src.rename(dst)
         if dst.exists():
             await db.execute(
-                "UPDATE crew_members SET photo_path = ? WHERE id = ?",
-                (f"{IMG_URL}/{CREW_SUBDIR}/{name}", crew_id),
+                f"UPDATE {table} SET photo_path = ? WHERE id = ?",
+                (f"{IMG_URL}/{subdir}/{name}", row_id),
             )
-            print(f"Migration: photo d'équipier rangée dans {CREW_SUBDIR}/ : {name}")
+            print(f"Migration: {label} rangée dans {subdir}/ : {name}")
 
 
 async def _save_ship_document(upload: Optional[UploadFile]) -> Optional[str]:
@@ -1546,12 +1551,13 @@ async def require_login_to_write(request: Request, call_next):
 
 
 # Fichiers d'IMG/ : il faut être connecté, et avoir le droit « voir » de la
-# rubrique dont relève le dossier. Un fichier à la racine d'IMG/ (photos des
-# tâches) demande seulement d'être connecté. Le Mousse, sans compte, ne voit
+# rubrique dont relève le dossier. Un fichier à la racine d'IMG/ (les photos
+# des tâches avant To-Do/) demande seulement d'être connecté. Le Mousse, sans compte, ne voit
 # que les dossiers d'IMG_OPEN_FOLDERS (photos du carnet et des équipiers) — ailleurs, les
 # pages qu'il consulte montrent les initiales ou un cadenas (fichier_visible).
 IMG_FOLDER_SECTIONS = {"Invoices-Receipts": "comptes", "Documents": "navire", "SailingCrew": "equipiers",
-                       "Carnet": "carnet", "Navire": "navire", "Escales": "croisieres"}
+                       "Carnet": "carnet", "Navire": "navire", "Escales": "croisieres",
+                       "To-Do": "todo"}
 # Dossiers visibles sans connexion : les photos du carnet de voyage et celles
 # des équipiers, que le Mousse peut regarder (choix de l'utilisateur,
 # 02/10/2026). Factures et documents du navire restent réservés aux comptes.
@@ -2785,7 +2791,7 @@ async def create_todo_item(
     next: Optional[str] = Form(None),
 ):
     ship_id = get_current_ship_id(request)
-    photo = await _save_photo(photo_file) or photo_path or None
+    photo = await _save_todo_photo(photo_file) or photo_path or None
     async with connect() as db:
         await db.execute(
             "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, photo_path, contact_id)"
@@ -2836,7 +2842,7 @@ async def update_todo_item(
     next: Optional[str] = Form(None),
 ):
     # A newly chosen file wins over the text field, which still holds the old path.
-    photo = await _save_photo(photo_file) or photo_path or None
+    photo = await _save_todo_photo(photo_file) or photo_path or None
     status = status or 'A faire'
     # Une date de réalisation passée ou du jour termine une tâche restée « À
     # faire » (le formulaire le fait déjà à l'écran, voir _todo_form.html).

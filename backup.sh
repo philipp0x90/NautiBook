@@ -59,7 +59,7 @@ fi
 CIBLE_DB="$DEST/logbook.db.backup-$HORODATAGE"
 # Deux lancements dans la même seconde donneraient le même nom, et le second
 # écraserait le premier sans rien dire. On suffixe -1, -2… comme le fait
-# _save_photo dans main.py pour les photos homonymes.
+# _save_upload dans main.py pour les photos homonymes.
 n=1
 while [ -e "$CIBLE_DB" ]; do
     CIBLE_DB="$DEST/logbook.db.backup-$HORODATAGE-$n"
@@ -85,7 +85,7 @@ echo "  base   : $(basename "$CIBLE_DB") ($POIDS, $LIGNES lignes de journal) —
 # ── Les photos ──────────────────────────────────────────────────────────────
 
 # Un miroir unique et cumulatif, pas un instantané par sauvegarde : les noms
-# de fichiers produits par _save_photo sont horodatés donc jamais réutilisés,
+# de fichiers produits par _save_upload sont horodatés donc jamais réutilisés,
 # et rien dans l'app ne supprime un fichier d'IMG/. Les photos ne changent donc
 # jamais, seules de nouvelles s'ajoutent — rsync ne recopie que celles-là.
 #
