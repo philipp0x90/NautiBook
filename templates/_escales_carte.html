@@ -12,13 +12,9 @@ function texteEscale(v) {
 
 function marquesEscales(map, escales) {
     (escales || []).forEach(s => {
-        const lignes = ['<strong>⚓ ' + texteEscale(s.name) + '</strong>'];
+        const lignes = ['<strong>' + texteEscale(s.name) + '</strong>'];
         if (s.locality) lignes.push(texteEscale(s.locality));
         if (s.arrival || s.departure) lignes.push((s.arrival || '?') + ' → ' + (s.departure || '?'));
-        const details = [];
-        if (s.nights != null) details.push(s.nights + (s.nights > 1 ? ' nuits' : ' nuit'));
-        if (s.cost) details.push(texteEscale(s.cost));
-        if (details.length) lignes.push(details.join(' · '));
         if (ESCALE_LIEN) lignes.push('<a href="/stopovers/' + s.id + '/edit">Fiche de l\'escale</a>');
         L.marker([s.lat, s.lon], {icon: ICONE_ESCALE, title: s.name, zIndexOffset: 500})
             .addTo(map)

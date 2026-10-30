@@ -6216,7 +6216,7 @@ CRUISE_COLORS = ["#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#2b79c6
 # l'autre, pas de marque.
 async def _stopover_markers(db, where: str, params: tuple) -> list:
     cursor = await db.execute(
-        f"""SELECT s.id, s.name, s.locality, s.arrival_date, s.departure_date, s.cost,
+        f"""SELECT s.id, s.name, s.locality, s.arrival_date, s.departure_date,
                   COALESCE(
                       (SELECT t.lat FROM track_points t WHERE t.route_id = s.route_id ORDER BY t.id DESC LIMIT 1),
                       (SELECT l.position_lat FROM logbook_lines l WHERE l.route_id = s.route_id
@@ -6238,21 +6238,12 @@ async def _stopover_markers(db, where: str, params: tuple) -> list:
     for s in await cursor.fetchall():
         if s["lat"] is None or s["lon"] is None:
             continue
-        nights = None
-        if s["arrival_date"] and s["departure_date"]:
-            try:
-                nights = (date.fromisoformat(s["departure_date"][:10])
-                          - date.fromisoformat(s["arrival_date"][:10])).days
-            except ValueError:
-                pass
         marks.append({
             "id": s["id"], "lat": s["lat"], "lon": s["lon"],
             "name": s["name"] or s["locality"] or "Escale",
             "locality": s["locality"] if s["name"] and s["locality"] != s["name"] else None,
             "arrival": _datefr(s["arrival_date"]) if s["arrival_date"] else None,
             "departure": _datefr(s["departure_date"]) if s["departure_date"] else None,
-            "nights": nights,
-            "cost": _euros(s["cost"]) if s["cost"] else None,
         })
     return marks
 

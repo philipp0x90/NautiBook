@@ -330,12 +330,21 @@
 <script>
 let mapReady = false;
 
+// Une seule clé pour la carte de la route et celle de la croisière : affichée
+// sur l'une, elle l'est aussi en ouvrant l'autre, ou une autre route.
+document.addEventListener('DOMContentLoaded', () => {
+    let affichee = false;
+    try { affichee = localStorage.getItem('nb-carte-affichee') === '1'; } catch (e) {}
+    if (affichee) toggleMap();
+});
+
 function toggleMap() {
     const wrap  = document.getElementById('map-wrap');
     const label = document.getElementById('map-toggle-label');
     const show  = wrap.style.display === 'none';
     wrap.style.display = show ? 'block' : 'none';
     label.textContent  = show ? 'Masquer ▲' : 'Afficher ▼';
+    try { localStorage.setItem('nb-carte-affichee', show ? '1' : '0'); } catch (e) {}
     if (show && !mapReady) { buildMap(); mapReady = true; }
 }
 
