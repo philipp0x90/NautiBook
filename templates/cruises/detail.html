@@ -337,6 +337,7 @@
     </div>
 </div>
 
+{% include "_escales_carte.html" %}
 <script>
 let cruiseMapReady = false;
 
@@ -388,6 +389,8 @@ function buildCruiseMap() {
                     legendItems.push({color: route.color, name: route.name});
                 }
             });
+
+            marquesEscales(map, data.stopovers);
 
             if (allCoords.length > 0) {
                 map.fitBounds(allCoords, {padding: [30, 30]});

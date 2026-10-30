@@ -1,0 +1,28 @@
+{# Marques d'escale (ancre) sur une carte Leaflet : carte de la croisière et
+   carte nautique. Les escales viennent de l'API map-data (_stopover_markers). #}
+<script>
+const ICONE_ESCALE = L.icon({iconUrl: '/icons/escale.png', iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -11]});
+const ESCALE_LIEN = {{ 'true' if peut(request, 'croisieres.modifier') else 'false' }};
+
+function texteEscale(v) {
+    const d = document.createElement('div');
+    d.textContent = v;
+    return d.innerHTML;
+}
+
+function marquesEscales(map, escales) {
+    (escales || []).forEach(s => {
+        const lignes = ['<strong>⚓ ' + texteEscale(s.name) + '</strong>'];
+        if (s.locality) lignes.push(texteEscale(s.locality));
+        if (s.arrival || s.departure) lignes.push((s.arrival || '?') + ' → ' + (s.departure || '?'));
+        const details = [];
+        if (s.nights != null) details.push(s.nights + (s.nights > 1 ? ' nuits' : ' nuit'));
+        if (s.cost) details.push(texteEscale(s.cost));
+        if (details.length) lignes.push(details.join(' · '));
+        if (ESCALE_LIEN) lignes.push('<a href="/stopovers/' + s.id + '/edit">Fiche de l\'escale</a>');
+        L.marker([s.lat, s.lon], {icon: ICONE_ESCALE, title: s.name, zIndexOffset: 500})
+            .addTo(map)
+            .bindPopup(lignes.join('<br>'));
+    });
+}
+</script>

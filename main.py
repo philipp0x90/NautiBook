@@ -5830,6 +5830,16 @@ async def delete_route(route_id: int):
     return RedirectResponse(url="/cruises/current", status_code=303)
 
 
+# …/remove et non …/delete : effacer une trace relève de croisieres.modifier,
+# comme l'import GPX qui la remplace (required_permission).
+@app.post("/routes/{route_id}/track/remove")
+async def remove_route_track(route_id: int):
+    async with connect() as db:
+        await db.execute("DELETE FROM track_points WHERE route_id = ?", (route_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/routes/{route_id}#carte", status_code=303)
+
+
 @app.get("/routes", response_class=HTMLResponse)
 async def routes_index(request: Request):
     ship_id = get_current_ship_id(request)
@@ -5990,6 +6000,9 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             await _current_cruise_id(db, route["cruise_ship_id"]) == route["cruise_id"]
         )
 
+        cursor = await db.execute("SELECT COUNT(*) FROM track_points WHERE route_id = ?", (route_id,))
+        track_count = (await cursor.fetchone())[0]
+
         ship_id = get_current_ship_id(request)
         cursor = await db.execute(
             "SELECT * FROM todo_items WHERE ship_id = ? AND status != 'Terminé' ORDER BY urgent DESC, id ASC",
@@ -6014,6 +6027,7 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "consumption": consumption,
             "fuel_price": price, "fuel_price_date": price_date,
             "duration_min": _minutes_between(route["start_time"], route["end_time"]),
+            "track_count": track_count,
         },
     )
 
@@ -6197,6 +6211,52 @@ ROUTE_COLORS  = ["#2b79c6", "#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085
 CRUISE_COLORS = ["#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#2b79c6", "#c0392b", "#f39c12"]
 
 
+# Une escale n'a pas de coordonnées : elle est là où finit sa route — le dernier
+# point de la trace, sinon la dernière position notée au journal. Sans l'une ni
+# l'autre, pas de marque.
+async def _stopover_markers(db, where: str, params: tuple) -> list:
+    cursor = await db.execute(
+        f"""SELECT s.id, s.name, s.locality, s.arrival_date, s.departure_date, s.cost,
+                  COALESCE(
+                      (SELECT t.lat FROM track_points t WHERE t.route_id = s.route_id ORDER BY t.id DESC LIMIT 1),
+                      (SELECT l.position_lat FROM logbook_lines l WHERE l.route_id = s.route_id
+                         AND l.position_lat IS NOT NULL AND l.position_lon IS NOT NULL
+                       ORDER BY l.timestamp DESC, l.id DESC LIMIT 1)) AS lat,
+                  COALESCE(
+                      (SELECT t.lon FROM track_points t WHERE t.route_id = s.route_id ORDER BY t.id DESC LIMIT 1),
+                      (SELECT l.position_lon FROM logbook_lines l WHERE l.route_id = s.route_id
+                         AND l.position_lat IS NOT NULL AND l.position_lon IS NOT NULL
+                       ORDER BY l.timestamp DESC, l.id DESC LIMIT 1)) AS lon
+           FROM stopovers s
+           JOIN routes r ON s.route_id = r.id
+           JOIN cruises c ON r.cruise_id = c.id
+           WHERE {where}
+           ORDER BY s.arrival_date, s.id""",
+        params,
+    )
+    marks = []
+    for s in await cursor.fetchall():
+        if s["lat"] is None or s["lon"] is None:
+            continue
+        nights = None
+        if s["arrival_date"] and s["departure_date"]:
+            try:
+                nights = (date.fromisoformat(s["departure_date"][:10])
+                          - date.fromisoformat(s["arrival_date"][:10])).days
+            except ValueError:
+                pass
+        marks.append({
+            "id": s["id"], "lat": s["lat"], "lon": s["lon"],
+            "name": s["name"] or s["locality"] or "Escale",
+            "locality": s["locality"] if s["name"] and s["locality"] != s["name"] else None,
+            "arrival": _datefr(s["arrival_date"]) if s["arrival_date"] else None,
+            "departure": _datefr(s["departure_date"]) if s["departure_date"] else None,
+            "nights": nights,
+            "cost": _euros(s["cost"]) if s["cost"] else None,
+        })
+    return marks
+
+
 @app.get("/api/all-cruises/map-data")
 async def all_cruises_map_data(request: Request):
     from fastapi.responses import JSONResponse
@@ -6241,7 +6301,9 @@ async def all_cruises_map_data(request: Request):
                 "logbook_points": log_pts,
             })
 
-    return JSONResponse({"cruises": cruises})
+        stopovers = await _stopover_markers(db, "c.ship_id = ?", (ship_id,))
+
+    return JSONResponse({"cruises": cruises, "stopovers": stopovers})
 
 
 @app.get("/api/cruises/{cruise_id}/map-data")
@@ -6288,7 +6350,9 @@ async def cruise_map_data(cruise_id: int):
                 "logbook_points": log_pts,
             })
 
-    return JSONResponse({"routes": routes})
+        stopovers = await _stopover_markers(db, "c.id = ?", (cruise_id,))
+
+    return JSONResponse({"routes": routes, "stopovers": stopovers})
 
 
 @app.get("/api/routes/{route_id}/map-data")
