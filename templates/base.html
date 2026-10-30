@@ -435,6 +435,9 @@
         .recap-gasoil .detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
         /* Ligne retrouvée au retour d'une fiche (script « Retour à une liste »). */
         .ligne-retrouvee, .ligne-retrouvee td { background: #fff6cc !important; transition: background .6s; }
+        /* Toutes les cartes : les couches de Leaflet (z-index 400 à 1000)
+           restent dans la carte, sous le menu déroulant et les en-têtes collés. */
+        .leaflet-container { isolation: isolate; }
         /* Visionneuse des PDF : plein écran, au-dessus de tout. */
         #pdf-visionneuse { display: none; position: fixed; inset: 0; z-index: 1000; background: #4a5561;
                            flex-direction: column; }

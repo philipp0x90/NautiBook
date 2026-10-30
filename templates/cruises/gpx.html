@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Traces GPX — {{ cruise.name or 'Croisière' }} — NautiBook{% endblock %}
+
+{% block head %}
+<style>
+    .gpx-steps { display: grid; gap: 16px; max-width: 900px; margin: 0 auto; }
+    .gpx-steps h3 { margin: 0 0 8px; font-size: 15px; }
+    .gpx-steps ul { margin: 6px 0 0; padding-left: 22px; font-size: 14px; }
+    .gpx-steps li { margin: 4px 0; }
+    .gpx-error { background: #fee2e2; color: #991b1b; border-radius: 8px; padding: 10px 14px; }
+    .gpx-ok { background: #dcfce7; color: #166534; border-radius: 8px; padding: 10px 14px; }
+    .gpx-traces select { width: 100%; }
+    .gpx-traces .doublon td { color: var(--muted); }
+    .gpx-traces .remplace { font-size: 12px; color: #b45309; margin-top: 2px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left"><a href="/cruises/{{ cruise.id }}" style="color:#fff;text-decoration:none">← {{ cruise.name or 'Croisière' }}</a></div>
+    <div class="section-bar-title">Importer des traces GPX</div>
+    <div class="section-bar-left" style="visibility:hidden" aria-hidden="true">← {{ cruise.name or 'Croisière' }}</div>
+</div>
+
+<div class="gpx-steps">
+
+    {% if resultat %}
+    <section class="gpx-ok">
+        <strong>{{ resultat.points }} point{{ 's' if resultat.points > 1 }} de trace importé{{ 's' if resultat.points > 1 }}</strong>
+        sur {{ resultat.routes }} route{{ 's' if resultat.routes > 1 }}.
+        <div style="margin-top:10px">
+            <a href="/cruises/{{ cruise.id }}" class="btn btn-blue">Ouvrir la croisière</a>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if erreur %}<div class="gpx-error">{{ erreur }} Rien n'a été importé.</div>{% endif %}
+
+    {% if traces %}
+    {# Écran de vérification : une ligne par trace du fichier, la route
+       proposée (même jour) déjà choisie, à corriger ou ignorer. #}
+    <form method="POST" action="/cruises/{{ cruise.id }}/gpx/confirm" class="card gpx-traces">
+        <h3>Vérifier les traces{% if nb_fichiers > 1 %} ({{ nb_fichiers }} fichiers){% endif %}</h3>
+        <p style="font-size:14px;margin:0 0 10px">Chaque trace est proposée pour la route partie le même jour.
+            Corrigez ou ignorez si besoin, puis importez. Heures à l'heure du bord.</p>
+        <input type="hidden" name="jeton" value="{{ jeton }}">
+        <table class="data-table titres-legers">
+            <thead><tr><th>Trace</th><th>Date</th><th>Heures</th><th>Points</th><th style="width:45%">Route</th></tr></thead>
+            <tbody>
+            {% for t in traces %}
+                <tr{% if t.doublon_de is not none %} class="doublon"{% endif %}>
+                    <td>{{ t.nom }}{% if nb_fichiers > 1 and t.fichier != t.nom ~ '.gpx' %}<div style="font-size:12px;color:var(--muted)">{{ t.fichier }}</div>{% endif %}{% if t.doublon_de is not none %}<div style="font-size:12px">doublon de la trace {{ t.doublon_de + 1 }}</div>{% endif %}</td>
+                    <td>{{ t.debut | jourmois if t.debut else '—' }}</td>
+                    <td>{% if t.debut %}{{ t.debut[11:16] }}–{{ t.fin[11:16] }}{% else %}—{% endif %}</td>
+                    <td>{{ t.nb }}</td>
+                    <td>
+                        <select name="route_{{ loop.index0 }}">
+                            <option value="">— ignorer —</option>
+                            {% for r in routes %}
+                            <option value="{{ r.id }}"{% if r.id == t.route_id %} selected{% endif %}>
+                                {{ '%02d' % r.number }} · {{ r.start_time | jourmois }} · {{ r.departure_location or '?' }} → {{ r.destination_location or '?' }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        {% for r in routes if r.id == t.route_id and r.track_count %}
+                        <div class="remplace">remplace sa trace actuelle ({{ r.track_count }} points)</div>
+                        {% endfor %}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top:12px"><button type="submit" class="btn btn-yellow">Importer les traces</button></div>
+    </form>
+    {% endif %}
+
+    <form method="POST" action="/cruises/{{ cruise.id }}/gpx/new" enctype="multipart/form-data" class="card">
+        <h3>{{ "D'autres fichiers" if traces else 'Choisir les fichiers' }}</h3>
+        <ul>
+            <li>Un ou plusieurs fichiers GPX (Navionics, Google MyMaps…), sélectionnés ensemble :
+                un fichier par navigation, ou un seul avec toutes les traces de la croisière.</li>
+            <li>Rien n'est écrit avant l'écran de vérification.</li>
+            <li>Une route qui reçoit une trace perd celle qu'elle avait : réimporter les mêmes fichiers ne double rien.</li>
+        </ul>
+        {# Pas d'attribut accept : sur iPad, Safari grise sinon les fichiers
+           d'un type qu'il ne connaît pas (voir cruises/import.html). #}
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+            <input type="file" name="fichiers" multiple required>
+            <button type="submit" class="btn btn-blue">Lire les fichiers</button>
+        </div>
+    </form>
+
+</div>
+{% endblock %}

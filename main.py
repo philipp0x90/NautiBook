@@ -15,6 +15,7 @@ import json
 import re
 import unicodedata
 import subprocess
+import tempfile
 import aiosqlite
 import requests
 from contextlib import asynccontextmanager
@@ -23,6 +24,7 @@ from typing import List, Optional
 from urllib.parse import quote, unquote
 from utils import get_sensor_data, get_position, get_awa
 import import_filemaker
+import import_gpx
 import passwords
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
 
@@ -3845,12 +3847,16 @@ async def crew_list(request: Request):
         db.row_factory = aiosqlite.Row
         # Les croisières de chacun sur le navire courant (un voilier par
         # croisière, à côté du nom) ; la liste elle-même reste tous navires.
+        # Tri : les plus embarqués d'abord (sur ce navire, comme les voiliers),
+        # puis par nom — fold() pour qu'« Émile » ne passe pas après « Z ».
+        await db.create_function("fold", 1, _fold_sql, deterministic=True)
         ship = await _fetch_ship(db, get_current_ship_id(request))
         cursor = await db.execute(
             """SELECT m.*, (SELECT COUNT(DISTINCT cc.cruise_id) FROM cruise_crew cc
                             JOIN cruises c ON c.id = cc.cruise_id
                             WHERE cc.crew_member_id = m.id AND c.ship_id = ?) AS nb_cruises
-               FROM crew_members m ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE""",
+               FROM crew_members m
+               ORDER BY nb_cruises DESC, fold(last_name), fold(first_name)""",
             (ship["id"] if ship else 0,),
         )
         crew = await cursor.fetchall()
@@ -5094,6 +5100,133 @@ async def cruise_import(request: Request, nom: Optional[str] = Form(None),
     return await _cruise_import_page(request, resultat=resultat)
 
 
+# ── Import des traces GPX d'une croisière (temporaire) ──
+# Voir import_gpx : en attendant l'enregistrement automatique de la trace. Les
+# fichiers envoyés (un ou plusieurs) attendent dans GPX_TMP/<jeton>/ entre
+# l'écran de vérification et la confirmation — trop gros pour faire
+# l'aller-retour dans un champ caché.
+GPX_TMP = Path(tempfile.gettempdir()) / "nautibook-gpx"
+GPX_MAX_BYTES = 50 * 1024 * 1024   # par fichier ; 2022.gpx, une saison : 3,5 Mo
+GPX_TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
+
+
+async def _gpx_routes(db, cruise_id: int) -> list:
+    """Les routes de la croisière, avec le nombre de points de trace qu'elles
+    ont déjà (l'import les remplace)."""
+    cursor = await db.execute(
+        f"""SELECT r.id, r.start_time, r.departure_location, r.destination_location,
+                   {ROUTE_NUMBER} AS number,
+                   (SELECT COUNT(*) FROM track_points t WHERE t.route_id = r.id) AS track_count
+            FROM routes r WHERE r.cruise_id = ? ORDER BY r.id""",
+        (cruise_id,),
+    )
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+async def _gpx_page(request, cruise_id: int, **context):
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM cruises WHERE id = ?", (cruise_id,))
+        cruise = await cursor.fetchone()
+        if cruise is None:
+            raise HTTPException(status_code=404, detail="Cruise not found")
+        routes = await _gpx_routes(db, cruise_id)
+        ship = await _fetch_ship(db, cruise["ship_id"])
+    return templates.TemplateResponse("cruises/gpx.html", {
+        "request": request, "active_section": "cruises", "current_ship": dict(ship) if ship else None,
+        "cruise": dict(cruise), "routes": routes, **context})
+
+
+@app.get("/cruises/{cruise_id}/gpx/new", response_class=HTMLResponse)
+async def cruise_gpx_form(request: Request, cruise_id: int):
+    return await _gpx_page(request, cruise_id)
+
+
+@app.post("/cruises/{cruise_id}/gpx/new", response_class=HTMLResponse)
+async def cruise_gpx_check(request: Request, cruise_id: int,
+                           fichiers: List[UploadFile] = File(default=[])):
+    """Lit les fichiers et montre l'écran de vérification : rien n'est écrit."""
+    lus = []
+    for f in fichiers:
+        if not (f and f.filename):
+            continue
+        data = await f.read(GPX_MAX_BYTES + 1)
+        if len(data) > GPX_MAX_BYTES:
+            return await _gpx_page(request, cruise_id, erreur=f"« {f.filename} » est trop volumineux.")
+        lus.append((f.filename, data))
+    if not lus:
+        return await _gpx_page(request, cruise_id, erreur="Choisissez un ou plusieurs fichiers GPX.")
+    try:
+        traces = await asyncio.to_thread(import_gpx.lire, lus)
+    except import_gpx.GpxErreur as e:
+        return await _gpx_page(request, cruise_id, erreur=str(e))
+    GPX_TMP.mkdir(exist_ok=True)
+    # Les fichiers d'un aperçu jamais confirmé, au-delà d'un jour.
+    for vieux in GPX_TMP.iterdir():
+        if vieux.is_dir() and time.time() - vieux.stat().st_mtime > 86400:
+            _gpx_effacer(vieux)
+    jeton = secrets.token_hex(16)
+    dossier = GPX_TMP / jeton
+    dossier.mkdir()
+    # Numérotés pour garder l'ordre (les indices des traces en dépendent), le
+    # nom d'origine ensuite pour les messages.
+    for i, (nom, data) in enumerate(lus):
+        await asyncio.to_thread((dossier / f"{i:03d}_{Path(nom).name}").write_bytes, data)
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        routes = await _gpx_routes(db, cruise_id)
+    for t in traces:
+        t["route_id"] = None if t["doublon_de"] is not None else import_gpx.proposer(t, routes)
+        t["nb"] = len(t.pop("points"))
+    return await _gpx_page(request, cruise_id, traces=traces, jeton=jeton, nb_fichiers=len(lus))
+
+
+def _gpx_effacer(dossier: Path):
+    for f in dossier.iterdir():
+        f.unlink(missing_ok=True)
+    dossier.rmdir()
+
+
+@app.post("/cruises/{cruise_id}/gpx/confirm", response_class=HTMLResponse)
+async def cruise_gpx_confirm(request: Request, cruise_id: int):
+    """Écrit les traces choisies : pour chaque route concernée, sa trace est
+    remplacée — un second import des mêmes fichiers ne double rien."""
+    form = await request.form()
+    jeton = form.get("jeton") or ""
+    dossier = GPX_TMP / jeton
+    if not GPX_TOKEN_RE.match(jeton) or not dossier.is_dir():
+        return await _gpx_page(request, cruise_id, erreur="Les fichiers ne sont plus disponibles : envoyez-les de nouveau.")
+    lus = [(f.name.split("_", 1)[1], f.read_bytes()) for f in sorted(dossier.iterdir())]
+    traces = await asyncio.to_thread(import_gpx.lire, lus)
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        routes = {r["id"]: r for r in await _gpx_routes(db, cruise_id)}
+        par_route = {}
+        for i, t in enumerate(traces):
+            try:
+                route_id = int(form.get(f"route_{i}") or 0)
+            except ValueError:
+                continue
+            if route_id in routes:
+                par_route.setdefault(route_id, []).append(t)
+        points = 0
+        for route_id, liste in par_route.items():
+            await db.execute("DELETE FROM track_points WHERE route_id = ?", (route_id,))
+            # Deux traces pour une même route : la plus ancienne d'abord.
+            liste.sort(key=lambda t: t["debut"] or "")
+            defaut = routes[route_id]["start_time"] or datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+            for t in liste:
+                lignes = import_gpx.remplir_heures(t["points"], defaut)
+                await db.executemany(
+                    "INSERT INTO track_points (route_id, timestamp, lat, lon) VALUES (?, ?, ?, ?)",
+                    [(route_id, *p) for p in lignes],
+                )
+                points += len(lignes)
+        await db.commit()
+    _gpx_effacer(dossier)
+    return await _gpx_page(request, cruise_id, resultat={"routes": len(par_route), "points": points})
+
+
 @app.get("/cruises/list", response_class=HTMLResponse)
 async def cruise_list(request: Request, ordre: Optional[str] = None):
     """?ordre=desc (la plus récente en tête, par défaut) ou asc : choisi par les
@@ -6057,6 +6190,9 @@ async def create_quick_line(
 
 # ── Map API ───────────────────────────────────────────────────────────────────
 
+# Les points de trace se tracent dans l'ordre où ils ont été enregistrés (id),
+# pas par heure : une trace GPX importée peut avoir ses heures à l'envers ou
+# des points sans heure (import_gpx), et l'enregistreur écrit dans l'ordre.
 ROUTE_COLORS  = ["#2b79c6", "#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#c0392b", "#2980b9"]
 CRUISE_COLORS = ["#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#2b79c6", "#c0392b", "#f39c12"]
 
@@ -6082,7 +6218,7 @@ async def all_cruises_map_data(request: Request):
                    FROM track_points tp
                    JOIN routes r ON tp.route_id = r.id
                    WHERE r.cruise_id = ?
-                   ORDER BY tp.timestamp ASC""",
+                   ORDER BY COALESCE(r.start_time, r.created_at), r.id, tp.id""",
                 (c["id"],),
             )
             track_pts = [{"lat": p["lat"], "lon": p["lon"]} for p in await cursor.fetchall()]
@@ -6129,7 +6265,7 @@ async def cruise_map_data(cruise_id: int):
         routes = []
         for i, r in enumerate(routes_meta):
             cursor = await db.execute(
-                "SELECT lat, lon, timestamp FROM track_points WHERE route_id = ? ORDER BY timestamp ASC",
+                "SELECT lat, lon, timestamp FROM track_points WHERE route_id = ? ORDER BY id ASC",
                 (r["id"],),
             )
             track_pts = [{"lat": p["lat"], "lon": p["lon"]} for p in await cursor.fetchall()]
@@ -6162,7 +6298,7 @@ async def route_map_data(route_id: int):
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
-            "SELECT lat, lon, timestamp FROM track_points WHERE route_id = ? ORDER BY timestamp ASC",
+            "SELECT lat, lon, timestamp FROM track_points WHERE route_id = ? ORDER BY id ASC",
             (route_id,),
         )
         track_points = [{"lat": r["lat"], "lon": r["lon"], "timestamp": r["timestamp"]} for r in await cursor.fetchall()]
