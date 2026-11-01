@@ -1,5 +1,7 @@
 {# Marques d'escale (ancre) sur une carte Leaflet : carte de la croisière et
-   carte nautique. Les escales viennent de l'API map-data (_stopover_markers). #}
+   carte nautique. Les escales viennent de l'API map-data (_stopover_markers).
+   Qui peut modifier les croisières glisse l'ancre pour la poser à la main
+   (POST /stopovers/{id}/position) ; « Position automatique » l'efface. #}
 <script>
 const ICONE_ESCALE = L.icon({iconUrl: '/icons/escale.png', iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -11]});
 const ESCALE_LIEN = {{ 'true' if peut(request, 'croisieres.modifier') else 'false' }};
@@ -10,16 +12,55 @@ function texteEscale(v) {
     return d.innerHTML;
 }
 
+// Un formulaire ordinaire, envoyé tout de suite : la page se recharge sur la
+// même carte, qui reste affichée (nb-carte-affichee).
+function positionEscale(id, lat, lon) {
+    const f = document.createElement('form');
+    f.method = 'post';
+    f.action = '/stopovers/' + id + '/position';
+    const champs = {lat: lat, lon: lon, retour: location.pathname + location.search};
+    Object.keys(champs).forEach(k => {
+        const i = document.createElement('input');
+        i.type = 'hidden'; i.name = k; i.value = champs[k] == null ? '' : champs[k];
+        f.appendChild(i);
+    });
+    document.body.appendChild(f);
+    f.submit();
+}
+
 function marquesEscales(map, escales) {
     (escales || []).forEach(s => {
         const lignes = ['<strong>' + texteEscale(s.name) + '</strong>',
                         '<span style="font-size:11px;color:#667">' + texteEscale(s.position) + '</span>'];
         if (s.locality) lignes.push(texteEscale(s.locality));
         if (s.arrival || s.departure) lignes.push((s.arrival || '?') + ' → ' + (s.departure || '?'));
-        if (ESCALE_LIEN) lignes.push('<a href="/stopovers/' + s.id + '/edit">Fiche de l\'escale</a>');
-        L.marker([s.lat, s.lon], {icon: ICONE_ESCALE, title: s.name, zIndexOffset: 500})
+        if (ESCALE_LIEN) {
+            lignes.push('<a href="/stopovers/' + s.id + '/edit">Fiche de l\'escale</a>');
+        }
+        const bulle = document.createElement('div');
+        bulle.innerHTML = lignes.join('<br>');
+        if (ESCALE_LIEN && s.manual) {
+            const a = document.createElement('a');
+            a.href = '#';
+            a.textContent = 'Position automatique';
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                if (confirm('Replacer l\'ancre en fin de route ?')) positionEscale(s.id, null, null);
+            });
+            bulle.appendChild(document.createElement('br'));
+            bulle.appendChild(a);
+        }
+        const marque = L.marker([s.lat, s.lon], {icon: ICONE_ESCALE, title: s.name, zIndexOffset: 500, draggable: ESCALE_LIEN})
             .addTo(map)
-            .bindPopup(lignes.join('<br>'));
+            .bindPopup(bulle);
+        marque.on('dragend', () => {
+            const p = marque.getLatLng();
+            if (confirm('Placer l\'escale « ' + s.name + ' » ici ?')) {
+                positionEscale(s.id, p.lat.toFixed(6), p.lng.toFixed(6));
+            } else {
+                marque.setLatLng([s.lat, s.lon]);
+            }
+        });
     });
 }
 </script>

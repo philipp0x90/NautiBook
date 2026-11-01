@@ -667,6 +667,8 @@ async def init_db():
                 notes TEXT,
                 arrival_date TEXT,
                 departure_date TEXT,
+                position_lat REAL,
+                position_lon REAL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
             )
@@ -896,6 +898,15 @@ async def _migrate(db):
     if "place" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE carnet_photos ADD COLUMN place TEXT")
         print("Migration: carnet_photos.place added")
+
+    # Position posée à la main (ancre glissée sur la carte, ou saisie sur la
+    # fiche) ; vide, l'ancre se place en fin de route (_stopover_markers).
+    cursor = await db.execute("PRAGMA table_info(stopovers)")
+    stopover_cols = {row[1] for row in await cursor.fetchall()}
+    for col in ("position_lat", "position_lon"):
+        if col not in stopover_cols:
+            await db.execute(f"ALTER TABLE stopovers ADD COLUMN {col} REAL")
+            print(f"Migration: stopovers.{col} added")
 
     # Une route est terminée si et seulement si elle a une arrivée : le
     # drapeau suit end_time (voir ROUTE_OPEN_SQL), y compris pour les routes
@@ -5548,6 +5559,7 @@ async def new_stopover_form(request: Request, route_id: int):
     stopover = {
         "id": None, "name": None, "type": None, "departure_date": None,
         "cost_per_night": None, "cost": None, "notes": None,
+        "position_lat": None, "position_lon": None,
         "route_id": route["id"], "cruise_id": route["cruise_id_c"], "cruise_name": route["cruise_name"],
         "route_number": route["number"], "cruise_number": route["cruise_number"],
         "departure_location": route["departure_location"], "destination_location": route["destination_location"],
@@ -5572,6 +5584,12 @@ async def create_stopover(
     cost_per_night: Optional[float] = Form(None),
     cost: Optional[float] = Form(None),
     notes: Optional[str] = Form(None),
+    lat_deg: Optional[float] = Form(None),
+    lat_min: Optional[float] = Form(None),
+    lat_hem: Optional[str] = Form(None),
+    lon_deg: Optional[float] = Form(None),
+    lon_min: Optional[float] = Form(None),
+    lon_hem: Optional[str] = Form(None),
     doc_title: Optional[str] = Form(None),
     document_file: List[UploadFile] = File([]),
 ):
@@ -5586,11 +5604,13 @@ async def create_stopover(
             pass
     async with connect() as db:
         cursor = await db.execute(
-            """INSERT INTO stopovers (route_id, locality, name, type, arrival_date, departure_date, cost_per_night, cost, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO stopovers (route_id, locality, name, type, arrival_date, departure_date, cost_per_night, cost, notes,
+                                     position_lat, position_lon)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (route_id, locality or None, name or None, type or None,
              arrival_date or None, departure_date or None,
-             cost_per_night, cost if cost is not None else 0, notes or None),
+             cost_per_night, cost if cost is not None else 0, notes or None,
+             *_stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem)),
         )
         # Un reçu peut partir avec l'escale, avant qu'elle existe.
         files = [f for f in document_file if f.filename]
@@ -5637,6 +5657,12 @@ async def update_stopover(
     cost_per_night: Optional[float] = Form(None),
     cost: Optional[float] = Form(None),
     notes: Optional[str] = Form(None),
+    lat_deg: Optional[float] = Form(None),
+    lat_min: Optional[float] = Form(None),
+    lat_hem: Optional[str] = Form(None),
+    lon_deg: Optional[float] = Form(None),
+    lon_min: Optional[float] = Form(None),
+    lon_hem: Optional[str] = Form(None),
 ):
     if cost is None and cost_per_night is not None and arrival_date and departure_date:
         from datetime import date
@@ -5652,14 +5678,45 @@ async def update_stopover(
         route_id = row[0] if row else None
         await db.execute(
             """UPDATE stopovers SET locality=?, name=?, type=?, arrival_date=?, departure_date=?,
-               cost_per_night=?, cost=?, notes=? WHERE id=?""",
+               cost_per_night=?, cost=?, notes=?, position_lat=?, position_lon=? WHERE id=?""",
             (locality or None, name or None, type or None,
              arrival_date or None, departure_date or None,
-             cost_per_night, cost if cost is not None else 0, notes or None, stopover_id),
+             cost_per_night, cost if cost is not None else 0, notes or None,
+             *_stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem), stopover_id),
         )
         await db.commit()
     # Retour à la liste des escales, d'où que l'on vienne.
     return RedirectResponse(url="/cruises/stopovers", status_code=303)
+
+
+def _stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem):
+    """Les cases de la fiche → (lat, lon). Une moitié seule ne place rien :
+    l'ancre retourne en fin de route plutôt que sur l'équateur."""
+    lat = _dmm_to_dd(lat_deg, lat_min, lat_hem)
+    lon = _dmm_to_dd(lon_deg, lon_min, lon_hem)
+    return (lat, lon) if lat is not None and lon is not None else (None, None)
+
+
+# L'ancre glissée sur une carte. lat / lon vides : retour à la position
+# automatique. `retour` ramène sur la carte d'où l'on vient.
+@app.post("/stopovers/{stopover_id}/position")
+async def set_stopover_position(
+    stopover_id: int,
+    lat: Optional[float] = Form(None),
+    lon: Optional[float] = Form(None),
+    retour: Optional[str] = Form(None),
+):
+    if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        lat = lon = None
+    async with connect() as db:
+        await db.execute(
+            "UPDATE stopovers SET position_lat = ?, position_lon = ? WHERE id = ?",
+            (round(lat, 6) if lat is not None else None, round(lon, 6) if lon is not None else None, stopover_id),
+        )
+        await db.commit()
+    if not retour or not retour.startswith("/") or retour.startswith("//"):
+        retour = "/cruises/stopovers"
+    return RedirectResponse(url=retour, status_code=303)
 
 
 async def _add_stopover_document(db, stopover_id: int, title: Optional[str],
@@ -6211,22 +6268,23 @@ ROUTE_COLORS  = ["#2b79c6", "#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085
 CRUISE_COLORS = ["#e74c3c", "#27ae60", "#8e44ad", "#e67e22", "#16a085", "#2b79c6", "#c0392b", "#f39c12"]
 
 
-# Une escale n'a pas de coordonnées : elle est là où finit sa route — le dernier
-# point de la trace, sinon la dernière position notée au journal. Sans l'une ni
-# l'autre, pas de marque.
+# Une escale est là où on l'a posée à la main (position_lat / position_lon),
+# sinon là où finit sa route — le dernier point de la trace, sinon la dernière
+# position notée au journal. Sans rien de tout cela, pas de marque.
 async def _stopover_markers(db, where: str, params: tuple) -> list:
     cursor = await db.execute(
         f"""SELECT s.id, s.name, s.locality, s.arrival_date, s.departure_date,
-                  COALESCE(
+                  s.position_lat IS NOT NULL AND s.position_lon IS NOT NULL AS manual,
+                  CASE WHEN s.position_lat IS NOT NULL AND s.position_lon IS NOT NULL THEN s.position_lat ELSE COALESCE(
                       (SELECT t.lat FROM track_points t WHERE t.route_id = s.route_id ORDER BY t.id DESC LIMIT 1),
                       (SELECT l.position_lat FROM logbook_lines l WHERE l.route_id = s.route_id
                          AND l.position_lat IS NOT NULL AND l.position_lon IS NOT NULL
-                       ORDER BY l.timestamp DESC, l.id DESC LIMIT 1)) AS lat,
-                  COALESCE(
+                       ORDER BY l.timestamp DESC, l.id DESC LIMIT 1)) END AS lat,
+                  CASE WHEN s.position_lat IS NOT NULL AND s.position_lon IS NOT NULL THEN s.position_lon ELSE COALESCE(
                       (SELECT t.lon FROM track_points t WHERE t.route_id = s.route_id ORDER BY t.id DESC LIMIT 1),
                       (SELECT l.position_lon FROM logbook_lines l WHERE l.route_id = s.route_id
                          AND l.position_lat IS NOT NULL AND l.position_lon IS NOT NULL
-                       ORDER BY l.timestamp DESC, l.id DESC LIMIT 1)) AS lon
+                       ORDER BY l.timestamp DESC, l.id DESC LIMIT 1)) END AS lon
            FROM stopovers s
            JOIN routes r ON s.route_id = r.id
            JOIN cruises c ON r.cruise_id = c.id
@@ -6243,6 +6301,7 @@ async def _stopover_markers(db, where: str, params: tuple) -> list:
             "name": s["name"] or s["locality"] or "Escale",
             "locality": s["locality"] if s["name"] and s["locality"] != s["name"] else None,
             "position": f"{_lat(s['lat'])}, {_lon(s['lon'])}",
+            "manual": bool(s["manual"]),
             "arrival": _datefr(s["arrival_date"]) if s["arrival_date"] else None,
             "departure": _datefr(s["departure_date"]) if s["departure_date"] else None,
         })
