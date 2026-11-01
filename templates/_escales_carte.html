@@ -12,7 +12,8 @@ function texteEscale(v) {
 
 function marquesEscales(map, escales) {
     (escales || []).forEach(s => {
-        const lignes = ['<strong>' + texteEscale(s.name) + '</strong>'];
+        const lignes = ['<strong>' + texteEscale(s.name) + '</strong>',
+                        '<span style="font-size:11px;color:#667">' + texteEscale(s.position) + '</span>'];
         if (s.locality) lignes.push(texteEscale(s.locality));
         if (s.arrival || s.departure) lignes.push((s.arrival || '?') + ' → ' + (s.departure || '?'));
         if (ESCALE_LIEN) lignes.push('<a href="/stopovers/' + s.id + '/edit">Fiche de l\'escale</a>');

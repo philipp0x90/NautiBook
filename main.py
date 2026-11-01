@@ -6242,6 +6242,7 @@ async def _stopover_markers(db, where: str, params: tuple) -> list:
             "id": s["id"], "lat": s["lat"], "lon": s["lon"],
             "name": s["name"] or s["locality"] or "Escale",
             "locality": s["locality"] if s["name"] and s["locality"] != s["name"] else None,
+            "position": f"{_lat(s['lat'])}, {_lon(s['lon'])}",
             "arrival": _datefr(s["arrival_date"]) if s["arrival_date"] else None,
             "departure": _datefr(s["departure_date"]) if s["departure_date"] else None,
         })
