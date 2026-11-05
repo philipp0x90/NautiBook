@@ -364,6 +364,22 @@
                        border: 1.5px solid var(--accent); padding: 3.5px 10.5px; }
         .btn-arrivee svg { width: 1.15em; height: 1.15em; flex: none; }
         .btn-arrivee:hover { opacity: 1; background: var(--accent); color: #fff; }
+        /* Le geste principal d'une page (« Nouvelle route » sur la croisière en
+           cours, « Nouvelle ligne » sur une route) : un grand bouton, un « + »,
+           son nom et une ligne de rappel dessous. */
+        .btn-geant { display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 64px;
+                     padding: 8px 20px; box-sizing: border-box; border-radius: 14px; border: 0; cursor: pointer;
+                     text-decoration: none; font: inherit; }
+        .btn-geant svg { width: 28px; height: 28px; flex: none; }
+        .btn-geant-texte { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+        .btn-geant-nom { font-size: 20px; font-weight: 700; }
+        .btn-geant-rappel { font-size: 13px; opacity: .85; }
+        .btn-geant-bleu { background: var(--accent); color: #fff; box-shadow: 0 4px 14px rgba(43, 121, 198, .35); }
+        .btn-geant-jaune { background: #f5c842; color: #1f2937; min-height: 72px; box-shadow: 0 4px 14px rgba(180, 140, 20, .35); }
+        .btn-geant-jaune .btn-geant-nom { font-size: 22px; font-weight: 800; }
+        .btn-geant-jaune .btn-geant-rappel { color: #4b4320; opacity: 1; }
+        .btn-geant:hover { filter: brightness(1.05); }
+        .btn-gris { background: #eef2f6; color: #374151; }
         button.primary { background: var(--accent); color: #fff; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600; }
         .meta { color: var(--muted); font-size: 13px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
@@ -640,7 +656,8 @@
         </g>
     </symbol>
     {# L'ancre du logo, pour les boutons « Arrivée ». #}
-    <symbol id="icone-ancre" viewBox="0 0 64 64">
+    <symbol id="icone-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></symbol>
+        <symbol id="icone-ancre" viewBox="0 0 64 64">
         <g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="32" cy="10" r="6"/><path d="M32 16v41"/><path d="M19 25h26"/>
             <path d="M11 38c2 12 10 19 21 19s19-7 21-19"/>

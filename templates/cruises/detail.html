@@ -298,28 +298,32 @@
 {% endif %}
 
 {# Sous la liste des routes : la création de route et la fin de la croisière,
-   c'est de là qu'on enchaîne. Grille 1fr auto 1fr : « + Nouvelle route »
-   occupe seul la colonne du milieu, donc reste centré sur la page. Les
-   croisières précédente et suivante sont au-dessus des routes. #}
-<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin:14px 0 24px">
-    <div></div>
+   c'est de là qu'on enchaîne. « Nouvelle route », seulement sur la croisière
+   en cours (qu'on y arrive par /cruises/current ou par /cruises/{id}), est le
+   geste principal de la page : un grand bouton sur toute la largeur, qui
+   rappelle d'où partira la route (_route_prefill, comme son formulaire).
+   « Fin de la croisière » reste petit, à droite en dessous. Les croisières
+   précédente et suivante sont au-dessus des routes. #}
+{% if is_current %}
+<a href="/routes/new?cruise_id={{ cruise.id }}" class="btn-geant btn-geant-bleu" style="margin-top:14px">
+    <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+    <span class="btn-geant-texte">
+        <span class="btn-geant-nom">Nouvelle route</span>
+        {% set rappel = [] %}
+        {% if next_start and next_start.place %}{% set _ = rappel.append('Départ de ' ~ next_start.place) %}{% endif %}
+        {% if next_start and next_start.hours is not none %}{% set _ = rappel.append('moteur ' ~ (next_start.hours | dec(1)) ~ ' h') %}{% endif %}
+        {% if rappel %}<span class="btn-geant-rappel">{{ rappel | join(' · ') }}</span>{% endif %}
+    </span>
+</a>
+{% endif %}
+<div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:10px 0 24px">
     {% macro bouton_arrivee() %}
         <form method="POST" action="/cruises/{{ cruise.id }}/arrival" style="display:inline"
               onsubmit="return confirm('Marquer la fin de cette croisière ?')">
             <button type="submit" class="btn btn-arrivee"><svg aria-hidden="true"><use href="#icone-ancre"></use></svg>Fin de la croisière</button>
         </form>
     {% endmacro %}
-    {# « Fin de la croisière » calé à droite. #}
-    <div>
-        {# « + Nouvelle route » seulement sur la croisière en cours, qu'on y
-           arrive par /cruises/current ou par /cruises/{id}. #}
-        {% if is_current %}
-        <a href="/routes/new?cruise_id={{ cruise.id }}" class="btn btn-yellow">+ Nouvelle route</a>
-        {% endif %}
-    </div>
-    <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px">
-        {% if not cruise.end_time %}{{ bouton_arrivee() }}{% endif %}
-    </div>
+    {% if not cruise.end_time %}{{ bouton_arrivee() }}{% endif %}
 </div>
 
 {# ── Cruise Map ── #}

@@ -5063,12 +5063,14 @@ async def current_cruise(request: Request):
         recap = await _cruise_recap(db, cruise)
         cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
         itinerary_row = await cursor.fetchone()
+        next_start = await _next_start(db, cruise)
     response = templates.TemplateResponse(
         "cruises/detail.html",
         {
             "request": request,
             "active_section": "cruises",
             "is_current": True,
+            "next_start": next_start,
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
             "stopovers": [dict(s) for s in stopovers],
@@ -5435,6 +5437,7 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
         # fait que ce soit la croisière en cours : la mention doit s'afficher
         # comme sur /cruises/current.
         is_current = await _current_cruise_id(db, ship_id) == cruise_id
+        next_start = await _next_start(db, cruise) if is_current else None
         aboard, available_crew = await _cruise_crew(db, cruise_id)
         recap = await _cruise_recap(db, cruise)
         cursor = await db.execute("SELECT id FROM itineraries WHERE cruise_id = ?", (cruise_id,))
@@ -5445,6 +5448,7 @@ async def cruise_detail(request: Request, cruise_id: int, nouvelle: int = 0):
             "request": request,
             "active_section": "cruises",
             "is_current": is_current,
+            "next_start": next_start,
             "nouvelle": bool(nouvelle),
             "cruise": dict(cruise),
             "routes": [dict(r) for r in routes],
@@ -5946,34 +5950,53 @@ async def routes_index(request: Request):
     )
 
 
+async def _route_prefill(db, cruise):
+    """D'où part la prochaine route de cette croisière : (route précédente,
+    horamètre du navire). Lu par le formulaire de nouvelle route et rappelé
+    sur le bouton « Nouvelle route » de la croisière.
+
+    A leg starts where the previous one ended, with the same engine hours on
+    the clock. Highest id = the cruise's latest route, as everywhere else.
+    Either column may be NULL when that route has no arrival yet; the form
+    then simply opens blank."""
+    cursor = await db.execute(
+        """SELECT destination_location, motor_hours_end
+           FROM routes WHERE cruise_id = ? ORDER BY id DESC LIMIT 1""",
+        (cruise["id"],),
+    )
+    previous = await cursor.fetchone()
+    # Première route de la croisière : l'horamètre reprend là où l'a laissé
+    # la dernière arrivée enregistrée sur ce navire, toutes croisières
+    # confondues — le compteur du moteur, lui, ne repart pas de zéro.
+    last_hours = None
+    if previous is None:
+        cursor = await db.execute(
+            "SELECT r.motor_hours_end FROM routes r JOIN cruises c ON r.cruise_id = c.id "
+            "WHERE c.ship_id = ? AND r.motor_hours_end IS NOT NULL "
+            "ORDER BY COALESCE(r.end_time, r.start_time, r.created_at) DESC, r.id DESC LIMIT 1",
+            (cruise["ship_id"],))
+        row = await cursor.fetchone()
+        last_hours = row[0] if row else None
+    return (dict(previous) if previous else None), last_hours
+
+
+async def _next_start(db, cruise) -> dict:
+    """Rappelé sur le bouton « Nouvelle route » de la croisière en cours :
+    d'où partira la route et avec quel horamètre, comme son formulaire."""
+    previous, last_hours = await _route_prefill(db, cruise)
+    return {
+        "place": previous["destination_location"] if previous else cruise["departure"],
+        "hours": previous["motor_hours_end"] if previous else last_hours,
+    }
+
+
 @app.get("/routes/new", response_class=HTMLResponse)
 async def new_route_form(request: Request, cruise_id: int = Query(...)):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM cruises WHERE id = ?", (cruise_id,))
         cruise = await cursor.fetchone()
-        # A leg starts where the previous one ended, with the same engine hours
-        # on the clock. Highest id = the cruise's latest route, as everywhere
-        # else. Either column may be NULL when that route has no arrival yet;
-        # the form then simply opens blank.
-        cursor = await db.execute(
-            """SELECT destination_location, motor_hours_end
-               FROM routes WHERE cruise_id = ? ORDER BY id DESC LIMIT 1""",
-            (cruise_id,),
-        )
-        previous = await cursor.fetchone()
-        # Première route de la croisière : l'horamètre reprend là où l'a laissé
-        # la dernière arrivée enregistrée sur ce navire, toutes croisières
-        # confondues — le compteur du moteur, lui, ne repart pas de zéro.
-        last_hours = None
-        if previous is None and cruise is not None:
-            cursor = await db.execute(
-                "SELECT r.motor_hours_end FROM routes r JOIN cruises c ON r.cruise_id = c.id "
-                "WHERE c.ship_id = ? AND r.motor_hours_end IS NOT NULL "
-                "ORDER BY COALESCE(r.end_time, r.start_time, r.created_at) DESC, r.id DESC LIMIT 1",
-                (cruise["ship_id"],))
-            row = await cursor.fetchone()
-            last_hours = row[0] if row else None
+        previous, last_hours = await _route_prefill(db, cruise) if cruise else (None, None)
     if cruise is None:
         raise HTTPException(status_code=404, detail="Cruise not found")
     return templates.TemplateResponse(
@@ -5981,7 +6004,7 @@ async def new_route_form(request: Request, cruise_id: int = Query(...)):
         {
             "request": request,
             "cruise": dict(cruise),
-            "previous": dict(previous) if previous else None,
+            "previous": previous,
             "last_hours": last_hours,
             "now_hm": datetime.now().strftime("%H:%M"),
             "active_section": "routes",
@@ -6113,6 +6136,11 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "fuel_price": price, "fuel_price_date": price_date,
             "duration_min": _minutes_between(route["start_time"], route["end_time"]),
             "track_count": track_count,
+            # Rappelé sur le bouton « Nouvelle ligne » : depuis quand rien n'a
+            # été écrit au journal de cette route.
+            "last_line_min": _minutes_between(
+                max((str(ln["timestamp"]).replace("T", " ") for ln in lines if ln["timestamp"]), default=None),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
         },
     )
 
