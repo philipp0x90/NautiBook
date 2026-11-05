@@ -5854,6 +5854,7 @@ async def route_arrivee(
     route_id: int,
     destination_location: Optional[str] = Form(None),
     motor_hours_end: Optional[float] = Form(None),
+    creer_escale: Optional[str] = Form(None),
 ):
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     async with connect() as db:
@@ -5877,6 +5878,13 @@ async def route_arrivee(
             (now, dest, motor_hours_end, route_id),
         )
         await db.commit()
+        # « Créer ensuite l'escale » (cochée dans la fenêtre d'arrivée) : on
+        # enchaîne sur son formulaire, prérempli d'après la route — sauf si
+        # la route en a déjà une (une seule escale par route).
+        cursor = await db.execute("SELECT 1 FROM stopovers WHERE route_id = ? LIMIT 1", (route_id,))
+        has_stopover = await cursor.fetchone() is not None
+    if creer_escale and not has_stopover:
+        return RedirectResponse(url=f"/routes/{route_id}/stopovers/new", status_code=303)
     return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
 
 

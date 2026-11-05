@@ -109,6 +109,25 @@
     /* hidden doit l'emporter sur les display en ligne de la fenêtre « Nouvelle ligne ». */
     #ligne-modal [hidden] { display:none !important; }
     .modal-box { background:#fff; border-radius:10px; padding:24px; max-width:380px; width:90%; display:grid; gap:14px; }
+    /* À côté de « Nouvelle ligne », le bouton de l'étape suivante de la route
+       (arrivée, escale, fiche de l'escale) : même hauteur, largeur fixe. */
+    .etape-route { flex: 0 0 230px; display: flex; align-items: center; justify-content: center; gap: 10px;
+                   box-sizing: border-box; padding: 6px 14px; border-radius: 14px; font: inherit; cursor: pointer;
+                   text-decoration: none; }
+    .etape-route svg { width: 24px; height: 24px; flex: none; }
+    .etape-route img { width: 28px; height: 28px; flex: none; }
+    .etape-nom { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .etape-rappel { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .etape-arrivee { background: #fff; color: var(--accent); border: 2px solid var(--accent); }
+    .etape-arrivee .etape-rappel { color: #4b5563; }
+    .etape-arrivee:hover { background: #f0f6fc; }
+    .etape-escale { background: var(--accent); color: #fff; border: 2px solid var(--accent); }
+    .etape-escale .etape-rappel { opacity: .9; }
+    .etape-fiche { justify-content: flex-start; background: #fff; color: #111; border: 1px solid #dde5ee; }
+    .etape-fiche .etape-nom { font-size: 15px; }
+    .etape-fiche .etape-rappel { color: #4b5563; }
+    .etape-fiche:hover { border-color: var(--accent); }
+    @media (max-width: 560px) { .etape-route { flex-basis: 130px; } }
     /* Fenêtre « Nouvelle ligne » : des champs assez hauts pour le doigt. */
     #ligne-rapide select, #ligne-rapide input[type=text] { height: 38px; box-sizing: border-box; font-size: 14px; }
 
@@ -279,11 +298,7 @@
            principal de la page : un grand bouton jaune qui rappelle depuis
            quand rien n'a été écrit (last_line_min). Il ouvre la fenêtre
            « Nouvelle ligne » ; le lien reste celui du formulaire complet, pour
-           le droit (script des droits) et sans JS. À droite, en petit et
-           empilés : Arrivée de la route (ou, une fois arrivée, « + Nouvelle
-           route » — seulement sur la dernière route de la croisière en cours ;
-           compléter une croisière passée reste possible depuis sa page), puis
-           l'escale. #}
+           le droit (script des droits) et sans JS. #}
         <div style="display:flex;gap:12px;margin-top:12px;align-items:stretch">
             <a href="/routes/{{ route.id }}/new-line" class="btn-geant btn-geant-jaune" style="flex:1 1 auto"
                onclick="event.preventDefault();ouvrirNouvelleLigne()">
@@ -298,26 +313,43 @@
                     {%- elif not lines %} · première ligne de la route{% endif %}</span>
                 </span>
             </a>
-            <div style="display:flex;flex-direction:column;justify-content:center;gap:8px">
-                {% if not route.finished %}
-                <button type="button" class="btn btn-nav btn-arrivee" style="justify-content:center" onclick="document.getElementById('arrivee-modal').classList.add('open')"><svg aria-hidden="true"><use href="#icone-ancre"></use></svg>Arrivée de la route</button>
-                {% elif is_current and not next_route %}
-                <a href="/routes/new?cruise_id={{ route.cruise_id }}" class="btn btn-nav btn-arrivee" style="justify-content:center">+ Nouvelle route</a>
-                {% endif %}
-                {# Une route n'a qu'une escale : le bouton propose de la créer tant
-                   qu'il n'y en a pas, puis de modifier celle qui existe. C'est le
-                   seul chemin vers ces deux formulaires, qu'aucun écran ne liait.
-                   Pas de suppression de route ici : elle se fait depuis la page
-                   de la croisière (✕ de la liste des routes). #}
-                {% if stopovers %}
-                <a href="/stopovers/{{ stopovers[0].id }}/edit" class="btn btn-blue btn-nav" style="text-align:center"
-                   title="Modifier l'escale de cette route">
-                    Escale{% if stopovers[0].name or stopovers[0].locality %} : {{ stopovers[0].name or stopovers[0].locality }}{% endif %}
-                </a>
-                {% else %}
-                <a href="/routes/{{ route.id }}/stopovers/new" class="btn btn-gris btn-nav" style="text-align:center">+ Nouvelle escale</a>
-                {% endif %}
-            </div>
+            {# Un seul bouton à côté, qui suit l'avancement de la route : en
+               mer, l'arrivée ; arrivée, l'escale à créer ; escale créée, sa
+               fiche. « + Nouvelle route » n'est plus ici : il est en grand sur
+               la page de la croisière en cours. Une route n'a qu'une escale ;
+               sa suppression se fait depuis la liste des escales. #}
+            {% if not route.finished %}
+            <button type="button" class="etape-route etape-arrivee"
+                    onclick="document.getElementById('arrivee-modal').classList.add('open')">
+                <svg aria-hidden="true"><use href="#icone-ancre"></use></svg>
+                <span class="btn-geant-texte">
+                    <span class="etape-nom">Arrivée</span>
+                    {% if route.destination_location %}<span class="etape-rappel">à {{ route.destination_location }}</span>{% endif %}
+                </span>
+            </button>
+            {% elif not stopovers %}
+            <a href="/routes/{{ route.id }}/stopovers/new" class="etape-route etape-escale">
+                <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+                <span class="btn-geant-texte">
+                    <span class="etape-nom">Escale</span>
+                    {% if route.destination_location %}<span class="etape-rappel">à {{ route.destination_location }}</span>{% endif %}
+                </span>
+            </a>
+            {% else %}
+            {% set e = stopovers[0] %}
+            <a href="/stopovers/{{ e.id }}/edit" class="etape-route etape-fiche" title="Modifier l'escale de cette route">
+                <img src="/icons/escale.png" alt="">
+                <span class="btn-geant-texte" style="min-width:0">
+                    <span class="etape-nom">{{ e.name or e.locality or 'Escale' }}</span>
+                    {% set details = [] %}
+                    {% if e.type %}{% set _ = details.append(e.type) %}{% endif %}
+                    {% set duree = sejour(e.arrival_date, e.departure_date) %}
+                    {% if duree %}{% set _ = details.append(duree) %}{% endif %}
+                    {% set _ = details.append('modifier ›') %}
+                    <span class="etape-rappel">{{ details | join(' · ') }}</span>
+                </span>
+            </a>
+            {% endif %}
         </div>
     </div>
 
@@ -643,8 +675,8 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
 
 {# ── Arrivée modal ── #}
 <div id="arrivee-modal" class="modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <div class="modal-box" style="max-width:310px">
-        <h3 style="margin:0;font-size:17px">Arrivée</h3>
+    <div class="modal-box" style="max-width:380px">
+        <h3 style="margin:0;font-size:18px;text-align:center">Arrivée de la route</h3>
         <form method="POST" action="/routes/{{ route.id }}/arrivee" style="display:grid;gap:12px">
             {% if not route.destination_location %}
             <div>
@@ -661,11 +693,19 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
                        {% if route.motor_hours_start is not none %}min="{{ route.motor_hours_start }}"
                        oninput="this.setCustomValidity(this.validity.rangeUnderflow ? 'L\'horamètre à l\'arrivée ne peut pas être inférieur à celui du départ ({{ '%.1f' | format(route.motor_hours_start) }}).' : '')"{% endif %}>
             </div>
-            <div style="display:flex;gap:10px">
-                <button type="submit" class="btn btn-blue">Confirmer l'arrivée</button>
-                <button type="button" class="btn" style="background:#eee;color:#333"
-                        onclick="document.getElementById('arrivee-modal').classList.remove('open')">Annuler</button>
-            </div>
+            {# Arrivée puis escale, dans la foulée : cochée, route_arrivee
+               renvoie au formulaire de l'escale, prérempli d'après la route. #}
+            {% if not stopovers %}
+            <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f0f6fc;border-radius:8px;font-size:14px;font-weight:400;cursor:pointer;margin:0">
+                <input type="checkbox" name="creer_escale" value="1" checked style="width:18px;height:18px;flex:none">
+                <span>Créer ensuite l'escale{% if route.destination_location %} à <strong>{{ route.destination_location }}</strong>{% endif %}</span>
+            </label>
+            {% endif %}
+            <button type="submit" class="btn-geant btn-geant-bleu" style="width:100%;min-height:52px">
+                <span class="btn-geant-nom" style="font-size:18px">Enregistrer l'arrivée</span>
+            </button>
+            <button type="button" class="btn btn-gris" style="justify-self:start;font-size:14px;padding:7px 16px"
+                    onclick="document.getElementById('arrivee-modal').classList.remove('open')">Annuler</button>
         </form>
     </div>
 </div>
