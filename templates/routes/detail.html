@@ -109,6 +109,8 @@
     /* hidden doit l'emporter sur les display en ligne de la fenêtre « Nouvelle ligne ». */
     #ligne-modal [hidden] { display:none !important; }
     .modal-box { background:#fff; border-radius:10px; padding:24px; max-width:380px; width:90%; display:grid; gap:14px; }
+    /* Fenêtre « Nouvelle ligne » : des champs assez hauts pour le doigt. */
+    #ligne-rapide select, #ligne-rapide input[type=text] { height: 38px; box-sizing: border-box; font-size: 14px; }
 
     @media (max-width: 900px) {
         .route-layout { grid-template-columns: 1fr; }
@@ -675,8 +677,8 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
    à l'enregistrement par create_quick_line. SignalK injoignable : rien
    d'automatique à enregistrer, la fenêtre renvoie au formulaire complet. #}
 <div id="ligne-modal" class="modal" onclick="if(event.target===this)this.classList.remove('open')">
-    <div class="modal-box" style="max-width:420px">
-        <h3 style="margin:0;font-size:17px;text-align:center">Nouvelle ligne
+    <div class="modal-box" style="max-width:440px">
+        <h3 style="margin:0;font-size:18px;text-align:center">Nouvelle ligne
             <span style="display:block;font-size:13px;font-weight:400;color:var(--muted)">(Saisies manuelles)</span></h3>
         <div id="ligne-etat" style="font-size:13px;color:var(--muted)">Lecture des capteurs…</div>
         <form id="ligne-rapide" method="POST" action="/routes/{{ route.id }}/quick-line" style="display:grid;gap:12px" hidden>
@@ -710,12 +712,21 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
                 <label>Notes / Journal</label>
                 <textarea name="notes" rows="2" placeholder="Observations, événements..."></textarea>
             </div>
-            <div style="display:flex;gap:10px;align-items:center">
-                <button type="submit" class="btn btn-blue">Enregistrer</button>
-                <button type="button" class="btn" style="background:#eee;color:#333"
+            {# Enregistrer : le geste de la fenêtre, en grand et en bleu — le
+               jaune est celui du bouton qui l'ouvre. Les capteurs sont lus au
+               clic (create_quick_line), d'où le rappel. #}
+            <button type="submit" class="btn-geant btn-geant-bleu" style="width:100%;min-height:60px;margin-top:4px">
+                <svg aria-hidden="true" viewBox="0 0 24 24" style="width:26px;height:26px"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="btn-geant-texte">
+                    <span class="btn-geant-nom">Enregistrer la ligne</span>
+                    <span class="btn-geant-rappel">heure, position et vent lus maintenant</span>
+                </span>
+            </button>
+            <div style="display:flex;align-items:center;justify-content:space-between">
+                <button type="button" class="btn btn-gris" style="font-size:14px;padding:8px 18px"
                         onclick="document.getElementById('ligne-modal').classList.remove('open')">Annuler</button>
                 {# Le formulaire complet, toutes les mesures modifiables. #}
-                <a href="/routes/{{ route.id }}/new-line" class="btn btn-yellow" style="margin-left:auto">Détails</a>
+                <a href="/routes/{{ route.id }}/new-line" style="font-size:14px;font-weight:600;text-decoration:none;color:var(--accent-dark);padding:8px 4px">Détails — toutes les mesures ›</a>
             </div>
         </form>
         <div id="ligne-injoignable" hidden style="display:grid;gap:12px">
