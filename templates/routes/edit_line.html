@@ -82,8 +82,19 @@
         .field-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; gap: 20px; }
         .field-group { grid-row: auto; grid-template-rows: none; }
     }
+    /* Téléphone : les groupes l'un sous l'autre, mais deux champs par rangée
+       dans chaque groupe (une case de vent n'a pas besoin de toute la largeur) ;
+       la date de la ligne sous le titre ; Enregistrer en bas, sur toute la
+       largeur, à la place du bouton d'en-tête. */
+    .enregistrer-bas, .annuler-bas { display: none; }
     @media (max-width: 560px) {
         .field-groups { grid-template-columns: 1fr; }
+        .field-group { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; }
+        .field-group-title { grid-column: 1 / -1; }
+        .ligne-date { display: block; }
+        .ligne-entete button, .ligne-entete .annuler { display: none; }
+        .annuler-bas { display: inline-block; font-size: 14px; padding: 7px 16px; }
+        .enregistrer-bas { display: block; width: 100%; min-height: 52px; font-size: 17px; border-radius: 12px; }
     }
 </style>
 {% endblock %}
@@ -95,8 +106,8 @@
     <h2>
         Modifier la ligne du journal de bord
         {% if line.timestamp %}
-        <span style="font-size:14px;color:var(--muted)">
-            — {{ line.timestamp[:10] | datefr }} {{ line.timestamp[11:16] }}
+        <span class="ligne-date" style="font-size:14px;color:var(--muted)">
+            du {{ line.timestamp[:10] | datefr }} à {{ line.timestamp[11:13] }}h{{ line.timestamp[14:16] }}
         </span>
         {% endif %}
     </h2>
@@ -274,14 +285,18 @@
         </div>
     </div>
 
+    <button type="submit" class="primary enregistrer-bas">Enregistrer</button>
+
     <div style="display:flex;gap:10px;align-items:center">
-        {# Enregistrer et Annuler sont en tête de page ; ici, la seule
-           suppression, à l'écart. #}
+        {# Enregistrer et Annuler sont en tête de page ; sur téléphone, en bas :
+           Enregistrer au-dessus, Annuler ici à gauche. La suppression reste à
+           l'écart, à droite. #}
+        <a href="/routes/{{ line.route_id }}" class="btn btn-gris annuler-bas">Annuler</a>
         <div style="flex:1"></div>
         {# Le bouton est ici mais appartient au formulaire de suppression déclaré
            plus bas, via l'attribut form= : imbriquer deux <form> est interdit,
            et la suppression ne doit pas partager la route d'enregistrement. #}
-        <button type="submit" form="delete-line" class="btn btn-orange">— Supprimer la ligne</button>
+        <button type="submit" form="delete-line" class="btn btn-orange">Supprimer la ligne</button>
     </div>
 </form>
 

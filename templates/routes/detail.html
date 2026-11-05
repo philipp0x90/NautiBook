@@ -18,7 +18,9 @@
                      background: linear-gradient(rgba(240,248,252,0), rgba(240,248,252,.75) 55%, rgba(240,248,252,.97)); }
     /* Boutons de la page (navigation, sous le tableau) : plus petits que la
        taille commune des boutons de l'app. */
-    .route-layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+    /* minmax(0, 1fr), pas 1fr : sinon la colonne prend la largeur du tableau
+       du journal, et sur iPhone tout ce qui la partage sort de l'écran. */
+    .route-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
     /* Journal, sous le tableau. */
     .journal { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px 16px; margin: 16px 0; }
     .journal h4 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px;
@@ -127,12 +129,20 @@
     .etape-fiche .etape-nom { font-size: 15px; }
     .etape-fiche .etape-rappel { color: #4b5563; }
     .etape-fiche:hover { border-color: var(--accent); }
-    @media (max-width: 560px) { .etape-route { flex-basis: 130px; } }
+    /* Les deux côte à côte ; sur un écran étroit (iPhone en portrait), le
+       bouton d'étape passe dessous, sur toute la largeur. min-width: 0 laisse
+       le grand bouton rétrécir et son rappel aller à la ligne au lieu de
+       pousser la page hors de l'écran. */
+    @media (max-width: 560px) { .mention-longue { display: none; } }
+    .ligne-etape { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; align-items: stretch; }
+    .ligne-etape .btn-geant { flex: 1 1 300px; min-width: 0; }
+    .ligne-etape .btn-geant-texte { min-width: 0; }
+    @media (max-width: 560px) { .etape-route { flex: 1 1 100%; min-height: 56px; } }
     /* Fenêtre « Nouvelle ligne » : des champs assez hauts pour le doigt. */
     #ligne-rapide select, #ligne-rapide input[type=text] { height: 38px; box-sizing: border-box; font-size: 14px; }
 
     @media (max-width: 900px) {
-        .route-layout { grid-template-columns: 1fr; }
+        .route-layout { grid-template-columns: minmax(0, 1fr); }
         .bottom-grid { grid-template-columns: 1fr; }
     }
     /* Lien vers la croisière, à gauche du nom de la route. */
@@ -186,7 +196,9 @@
        cours » : « à ce jour » tant que la croisière continue. #}
     {% if not next_route and route.cruise_id %}
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);text-align:center">
-        Dernière route de<br>{% if is_current %}la croisière à ce jour{% else %}cette croisière{% endif %}
+        {# Sur smartphone, « Dernière route » seule : la phrase entière s'y
+           empilait sur cinq lignes. #}
+        Dernière route<span class="mention-longue"> de<br>{% if is_current %}la croisière à ce jour{% else %}cette croisière{% endif %}</span>
     </div>
     {% endif %}
     </div>
@@ -299,8 +311,8 @@
            quand rien n'a été écrit (last_line_min). Il ouvre la fenêtre
            « Nouvelle ligne » ; le lien reste celui du formulaire complet, pour
            le droit (script des droits) et sans JS. #}
-        <div style="display:flex;gap:12px;margin-top:12px;align-items:stretch">
-            <a href="/routes/{{ route.id }}/new-line" class="btn-geant btn-geant-jaune" style="flex:1 1 auto"
+        <div class="ligne-etape">
+            <a href="/routes/{{ route.id }}/new-line" class="btn-geant btn-geant-jaune"
                onclick="event.preventDefault();ouvrirNouvelleLigne()">
                 <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
                 <span class="btn-geant-texte">

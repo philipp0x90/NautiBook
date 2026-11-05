@@ -364,6 +364,13 @@
                        border: 1.5px solid var(--accent); padding: 3.5px 10.5px; }
         .btn-arrivee svg { width: 1.15em; height: 1.15em; flex: none; }
         .btn-arrivee:hover { opacity: 1; background: var(--accent); color: #fff; }
+        /* iPhone : Safari agrandit la page dès qu'on touche une case dont le
+           texte fait moins de 16 px, et ne la remet pas à l'échelle ensuite —
+           la page déborde alors des deux côtés. 16 px partout sur un écran
+           de téléphone (le pincement reste possible). */
+        @media (max-width: 560px) and (pointer: coarse) {
+            input, select, textarea { font-size: 16px !important; }
+        }
         /* Le geste principal d'une page (« Nouvelle route » sur la croisière en
            cours, « Nouvelle ligne » sur une route) : un grand bouton, un « + »,
            son nom et une ligne de rappel dessous. */
@@ -371,7 +378,7 @@
                      padding: 8px 20px; box-sizing: border-box; border-radius: 14px; border: 0; cursor: pointer;
                      text-decoration: none; font: inherit; }
         .btn-geant svg { width: 28px; height: 28px; flex: none; }
-        .btn-geant-texte { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+        .btn-geant-texte { display: flex; flex-direction: column; line-height: 1.15; text-align: left; min-width: 0; }
         .btn-geant-nom { font-size: 20px; font-weight: 700; }
         .btn-geant-rappel { font-size: 13px; opacity: .85; }
         .btn-geant-bleu { background: var(--accent); color: #fff; box-shadow: 0 4px 14px rgba(43, 121, 198, .35); }
