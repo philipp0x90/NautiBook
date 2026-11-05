@@ -255,7 +255,7 @@
                         <td>{{ ln.stw | unit('kn') }}</td>
                         <td>{{ ln.cog | deg }}</td>
                         <td>{{ ln.points_of_sail or '—' }}</td>
-                        <td>{{ ln.trip | unit('NM') }}</td>
+                        <td>{{ ln.trip ~ ' NM' if ln.trip is not none else '—' }}</td>{# 0 est le Trip de la première ligne : pas « unit », qui le prend pour vide #}
                     </tr>
                     </tbody>
                     {% else %}

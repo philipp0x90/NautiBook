@@ -42,12 +42,17 @@ fetch('/api/all-cruises/map-data')
         const legendItems = [];
 
         data.cruises.forEach(cruise => {
-            const trackCoords = cruise.track_points.map(p => [p.lat, p.lon]);
-            if (trackCoords.length > 1) {
-                L.polyline(trackCoords, {color: cruise.color, weight: 3, opacity: 0.85})
-                    .addTo(map)
-                    .bindPopup('<strong>' + cruise.name + '</strong>');
-            }
+            // Un tronçon par route (voir all_cruises_map_data).
+            const trackCoords = [];
+            cruise.tracks.forEach(t => {
+                const coords = t.map(p => [p.lat, p.lon]);
+                if (coords.length > 1) {
+                    L.polyline(coords, {color: cruise.color, weight: 3, opacity: 0.85})
+                        .addTo(map)
+                        .bindPopup('<strong>' + cruise.name + '</strong>');
+                }
+                trackCoords.push(...coords);
+            });
 
             cruise.logbook_points.forEach(p => {
                 L.circleMarker([p.lat, p.lon], {

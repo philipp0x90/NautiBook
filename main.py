@@ -224,7 +224,35 @@ def _euros(value):
     return f"{text}\u00a0€"
 
 
+def _sejour(arrival, departure):
+    """Durée d'une escale : « 3 nuits », ou au-delà d'un mois « 7 mois et 29
+    nuits » — mois du calendrier (09/09 → 09/04 = 7 mois), puis les nuits qui
+    restent. '' sans les deux dates ou sans nuit."""
+    try:
+        a = date.fromisoformat(str(arrival)[:10])
+        d = date.fromisoformat(str(departure)[:10])
+    except (TypeError, ValueError):
+        return ""
+    if d <= a:
+        return ""
+    def nuits(n):
+        return f"{n} nuit{'s' if n > 1 else ''}"
+    months = (d.year - a.year) * 12 + d.month - a.month
+    while months > 0:
+        y, m = divmod(a.month - 1 + months, 12)
+        try:
+            pivot = date(a.year + y, m + 1, a.day)
+        except ValueError:   # 31 janvier + 1 mois : fin février
+            pivot = date(a.year + y, m + 2, 1) - timedelta(days=1) if m + 1 < 12 else date(a.year + y, 12, 31)
+        if pivot <= d:
+            rest = (d - pivot).days
+            return f"{months} mois" + (f" et {nuits(rest)}" if rest else "")
+        months -= 1
+    return nuits((d - a).days)
+
+
 templates.env.filters["datefr"] = _datefr
+templates.env.globals["sejour"] = _sejour
 templates.env.filters["euros"] = _euros
 
 
@@ -6138,6 +6166,12 @@ async def new_line_form(request: Request, route_id: int):
     # requests est bloquant : hors de la boucle, sinon l'app entière attend
     # SignalK (jusqu'à 5 s par mesure quand il ne répond pas).
     data = await asyncio.to_thread(get_sensor_data)
+    if data:
+        async with connect() as db:
+            trip = await _route_trip(db, route_id, data.get("log"), data.get("trip"))
+        # get_sensor_data n'a pas de clé vide ; le gabarit lit data.trip.
+        if trip is not None:
+            data["trip"] = trip
     return templates.TemplateResponse(
         "routes/new_line.html",
         {
@@ -6196,6 +6230,24 @@ async def create_line(
     return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
 
 
+async def _route_trip(db, route_id: int, log, trip):
+    """Le Trip d'une nouvelle ligne : la distance depuis le début de la route,
+    soit son loch moins celui de la première ligne qui en a un — 0 pour la
+    première. Le trip de l'instrument n'est pas remis à zéro à chaque route,
+    on ne le garde que faute de loch."""
+    cursor = await db.execute(
+        "SELECT log FROM logbook_lines WHERE route_id = ? AND log IS NOT NULL"
+        " ORDER BY timestamp, id LIMIT 1",
+        (route_id,),
+    )
+    first = await cursor.fetchone()
+    if log is None:
+        return trip
+    if first is None:
+        return 0.0
+    return round(max(log - first[0], 0), 1)
+
+
 async def _insert_line(route_id: int, **v):
     """One logbook line, stamped now. Shared by the full form (create_line) and
     the new-line window (create_quick_line); the rounding lives here, so both
@@ -6248,6 +6300,8 @@ async def create_quick_line(
     data = await asyncio.to_thread(get_sensor_data)
     if not data:
         return RedirectResponse(url=f"/routes/{route_id}/new-line", status_code=303)
+    async with connect() as db:
+        data["trip"] = await _route_trip(db, route_id, data.get("log"), data.get("trip"))
     await _insert_line(
         route_id,
         **{k: data.get(k) for k in SIGNALK_LABELS},
@@ -6324,15 +6378,23 @@ async def all_cruises_map_data(request: Request):
 
         cruises = []
         for i, c in enumerate(cruises_meta):
+            # Un tronçon par route : relier la fin d'une trace au début de la
+            # suivante tirerait un trait droit à travers la terre dès qu'une
+            # route manque de trace, ou que sa trace est enregistrée à l'envers.
             cursor = await db.execute(
-                """SELECT tp.lat, tp.lon
+                """SELECT tp.route_id, tp.lat, tp.lon
                    FROM track_points tp
                    JOIN routes r ON tp.route_id = r.id
                    WHERE r.cruise_id = ?
                    ORDER BY COALESCE(r.start_time, r.created_at), r.id, tp.id""",
                 (c["id"],),
             )
-            track_pts = [{"lat": p["lat"], "lon": p["lon"]} for p in await cursor.fetchall()]
+            tracks, last_route = [], None
+            for p in await cursor.fetchall():
+                if p["route_id"] != last_route:
+                    tracks.append([])
+                    last_route = p["route_id"]
+                tracks[-1].append({"lat": p["lat"], "lon": p["lon"]})
 
             cursor = await db.execute(
                 """SELECT l.position_lat AS lat, l.position_lon AS lon
@@ -6348,7 +6410,7 @@ async def all_cruises_map_data(request: Request):
                 "id": c["id"],
                 "name": c["name"] or f"Croisière #{c['id']}",
                 "color": CRUISE_COLORS[i % len(CRUISE_COLORS)],
-                "track_points": track_pts,
+                "tracks": tracks,
                 "logbook_points": log_pts,
             })
 
