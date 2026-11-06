@@ -40,6 +40,7 @@
     /* Position : degrés, minutes décimales, hémisphère, comme le journal. */
     .dmm-row { display: flex; gap: 4px; align-items: center; }
     .dmm-row input { min-width: 0; }
+    #stationnement[hidden] { display: none !important; }
     .escale-boutons { display: flex; gap: 10px; justify-content: flex-end; }
     .escale-docs { max-width: 640px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
     @media (max-width: 560px) {
@@ -101,6 +102,14 @@
                 <input type="date" name="departure_date" id="departure_date" value="{{ stopover.departure_date or '' }}">
             </div>
         </div>
+        {# Au-delà d'une semaine (PARKING_MIN_NIGHTS) : « Stationnement » au
+           lieu de la durée, et une dépense de type Stationnement plutôt
+           qu'Escale. Affichée par le script selon les dates. #}
+        <label id="stationnement" hidden style="display:flex;align-items:center;gap:8px;margin:12px 0 0;font-weight:600;cursor:pointer">
+            <input type="checkbox" name="parking" value="1" {{ 'checked' if stopover.parking else '' }} style="width:18px;height:18px">
+            Stationnement
+            <span class="meta" style="font-weight:400">— affiché à la place de la durée</span>
+        </label>
     </section>
 
     <section class="escale-section">
@@ -150,6 +159,17 @@
                        value="{{ '%.2f' | format(stopover.cost) if stopover.cost else '' }}" placeholder="0,00">
             </div>
         </div>
+        {# Le Total crée la dépense de l'escale dans les Comptes et la tient à
+           jour (_sync_stopover_expense). #}
+        <div class="meta" style="margin-top:6px">
+            {% if stopover.expense %}
+            Dans les Comptes :
+            {% if peut(request, 'comptes.voir') %}<a href="/ship/expenses/{{ stopover.expense.id }}">{{ stopover.expense.designation }} — {{ stopover.expense.paid | euros }}</a>
+            {% else %}{{ stopover.expense.designation }}{% endif %}
+            {% else %}
+            Le Total s'inscrit dans les Comptes, en dépense « Escale ».
+            {% endif %}
+        </div>
     </section>
 
     <section class="escale-section">
@@ -176,6 +196,7 @@
     const arr = document.getElementById('arrival_date'), dep = document.getElementById('departure_date');
     const cpn = document.getElementById('cost_per_night'), tot = document.getElementById('cost_total');
     const nuitsEl = document.getElementById('nuits');
+    const stationnement = document.getElementById('stationnement');
     // Le total suit le calcul tant qu'il est vide ou égal au calcul précédent ;
     // une fois saisi à la main autrement, on n'y touche plus.
     let calcule = null;
@@ -198,6 +219,8 @@
         jours();
         const n = nuits();
         nuitsEl.textContent = n ? n + (n > 1 ? ' nuits' : ' nuit') : '';
+        // Même seuil que PARKING_MIN_NIGHTS (main.py).
+        stationnement.hidden = !(n > 7);
         const prix = parseFloat(cpn.value);
         if (n && !isNaN(prix)) {
             const v = (prix * n).toFixed(2);

@@ -76,6 +76,21 @@
     <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Comptes</span>
 </div>
 
+{# Dépense créée par une escale (_sync_stopover_expense) : l'escale en est la
+   référence. La fiche se lit ici, champs figés, et se modifie là-bas. #}
+{% set verrou = edition and entry.stopover_id %}
+{% if verrou %}
+<div class="card" style="max-width:980px;margin-bottom:14px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#f0f6fc">
+    <img src="/icons/escale.png" alt="" style="width:28px;height:28px">
+    <div style="flex:1 1 300px">
+        Dépense créée par l'escale
+        {% if stopover %}<strong>{{ stopover.name or stopover.locality or 'Escale' }}</strong>
+        ({{ stopover.arrival_date | datefr }}{% if stopover.departure_date %} → {{ stopover.departure_date | datefr }}{% endif %}){% endif %}.
+        <span class="meta" style="display:block">Elle se modifie depuis l'escale : son Total, ses dates, son nom. Supprimer l'escale ou vider son Total la supprime.</span>
+    </div>
+    <a href="/stopovers/{{ entry.stopover_id }}/edit" class="btn btn-primary">Ouvrir l'escale ›</a>
+</div>
+{% endif %}
 {# multipart : le document part avec le reste de la fiche. #}
 <div class="expense-page">
 <form method="POST" enctype="multipart/form-data" class="card expense-form" id="expense-form"
@@ -175,7 +190,9 @@
     </div>
 
     <div class="actions" style="grid-area:actions">
+        {% if not verrou %}
         <button type="submit" class="btn btn-primary">{{ 'Enregistrer les modifications' if edition else 'Enregistrer' }}</button>
+        {% endif %}
         <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
         {# La fiche du fournisseur, à droite, quand il est dans le carnet
            (expenses.supplier retient son nom : société, à défaut contact). #}
@@ -192,8 +209,21 @@
 
 {# Documents de la dépense (expense_documents, fichiers dans
    IMG/Invoices-Receipts/) : factures, reçus, devis… autant qu'il en faut. #}
+{% if verrou %}
+{# Les reçus sont ceux de l'escale (stopover_documents) : montrés ici, ajoutés
+   et retirés depuis l'escale. #}
+<section class="card expense-docs" id="documents" style="margin-top:16px">
+    <h3 style="margin:0 0 10px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Reçus de l'escale</h3>
+    {% for d in stopover_docs %}
+    <div style="padding:4px 0"><a href="{{ d.path }}" target="_blank" style="font-weight:600;text-decoration:none;color:var(--accent)">📎 {{ d.title }}</a></div>
+    {% else %}
+    <div class="meta">Aucun reçu sur l'escale. <a href="/stopovers/{{ entry.stopover_id }}/edit#documents">En ajouter un depuis l'escale ›</a></div>
+    {% endfor %}
+</section>
+{% else %}
 {{ section_documents(documents, '/ship/expenses', entry.id if edition else none, 'expense-form',
                      'de la dépense', doc_max_bytes, doc_accept, classe='expense-docs') }}
+{% endif %}
 
 <script>
 // Même règle que _expense_balance : sans montant pas de solde, payé vide = 0.
@@ -206,6 +236,10 @@ function majSolde() {
         (parseFloat(montant) - paye).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 majSolde();
+{% if verrou %}
+document.querySelectorAll('#expense-form input, #expense-form select, #expense-form textarea')
+    .forEach(champ => { champ.disabled = true; });
+{% endif %}
 
 </script>
 

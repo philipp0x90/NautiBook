@@ -86,7 +86,7 @@
                 <td>{% if s.type %}<span class="type type-{{ s.type }}">{{ s.type }}</span>{% endif %}</td>
                 <td>
                     {{ s.arrival_date | jourmois }}{% if s.departure_date %} – {{ s.departure_date | jourmois }}{% endif %}
-                    {% set duree = sejour(s.arrival_date, s.departure_date) %}{% if duree %}<span class="nuits">{{ duree }}</span>{% endif %}
+                    {% set duree = 'Stationnement' if s.parking else sejour(s.arrival_date, s.departure_date) %}{% if duree %}<span class="nuits">{{ duree }}</span>{% endif %}
                 </td>
                 <td>
                     {% if s.route_id %}

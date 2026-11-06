@@ -156,8 +156,10 @@
 
 {# ── Top nav bar ── en grille 1fr auto 1fr, comme l'en-tête de la page
    croisière : le titre reste centré sur la page quelle que soit la largeur de
-   la colonne de gauche, qui porte le bouton précédent et « Croisière en cours ». #}
-<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;margin-bottom:14px">
+   la colonne de gauche, qui porte le bouton précédent et « Croisière en cours ».
+   Le lien de la croisière est sur une seconde rangée : les mentions des côtés
+   se centrent ainsi sur le cadre du nom seul, pas sur le cadre et le lien. #}
+<div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:3px 10px;margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:12px;min-width:0">
         {% if is_current %}
         <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted)">Croisière en cours</div>
@@ -181,12 +183,6 @@
             </span>
             {% if next_route %}<a href="/routes/{{ next_route.id }}" title="Route suivante">›</a>{% else %}<span class="eteint">›</span>{% endif %}
         </div>
-        {# La croisière de la route, centrée sous son nom : un clic y ramène,
-           que la croisière soit en cours ou passée. #}
-        {% if route.cruise_id %}
-        <div style="margin-top:3px"><a href="/cruises/{{ route.cruise_id }}" class="route-croisiere"
-           title="Ouvrir la croisière">‹ {{ route.cruise_name or 'Croisière' }}</a></div>
-        {% endif %}
     </div>
 
     <div style="justify-self:end">
@@ -202,6 +198,13 @@
     </div>
     {% endif %}
     </div>
+
+    {# La croisière de la route, centrée sous son nom : un clic y ramène,
+       que la croisière soit en cours ou passée. #}
+    {% if route.cruise_id %}
+    <div style="grid-column:2;text-align:center"><a href="/cruises/{{ route.cruise_id }}" class="route-croisiere"
+       title="Ouvrir la croisière">‹ {{ route.cruise_name or 'Croisière' }}</a></div>
+    {% endif %}
 </div>
 
 {# ── Départ / Arrivée ── modifiables sur place, comme sur la page croisière. #}
@@ -355,7 +358,7 @@
                     <span class="etape-nom">{{ e.name or e.locality or 'Escale' }}</span>
                     {% set details = [] %}
                     {% if e.type %}{% set _ = details.append(e.type) %}{% endif %}
-                    {% set duree = sejour(e.arrival_date, e.departure_date) %}
+                    {% set duree = 'Stationnement' if e.parking else sejour(e.arrival_date, e.departure_date) %}
                     {% if duree %}{% set _ = details.append(duree) %}{% endif %}
                     {% set _ = details.append('modifier ›') %}
                     <span class="etape-rappel">{{ details | join(' · ') }}</span>

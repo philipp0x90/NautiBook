@@ -468,6 +468,7 @@ async def init_db():
                 category TEXT,
                 payment TEXT,
                 supplier TEXT,
+                stopover_id INTEGER REFERENCES stopovers(id) ON DELETE CASCADE,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -697,6 +698,7 @@ async def init_db():
                 departure_date TEXT,
                 position_lat REAL,
                 position_lon REAL,
+                parking INTEGER NOT NULL DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (route_id) REFERENCES routes(id) ON DELETE CASCADE
             )
@@ -935,6 +937,23 @@ async def _migrate(db):
         if col not in stopover_cols:
             await db.execute(f"ALTER TABLE stopovers ADD COLUMN {col} REAL")
             print(f"Migration: stopovers.{col} added")
+    if "parking" not in stopover_cols:
+        await db.execute("ALTER TABLE stopovers ADD COLUMN parking INTEGER NOT NULL DEFAULT 0")
+        print("Migration: stopovers.parking added")
+
+    # La dépense qu'une escale crée dans les Comptes (_sync_stopover_expense) :
+    # une au plus par escale, supprimée avec elle.
+    cursor = await db.execute("PRAGMA table_info(expenses)")
+    if "stopover_id" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute(
+            "ALTER TABLE expenses ADD COLUMN stopover_id INTEGER REFERENCES stopovers(id) ON DELETE CASCADE"
+        )
+        print("Migration: expenses.stopover_id added")
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS expenses_one_stopover ON expenses(stopover_id)"
+        " WHERE stopover_id IS NOT NULL"
+    )
+    await _stopover_expenses(db)
 
     # Une route est terminée si et seulement si elle a une arrivée : le
     # drapeau suit end_time (voir ROUTE_OPEN_SQL), y compris pour les routes
@@ -944,6 +963,91 @@ async def _migrate(db):
     )
     if cursor.rowcount:
         print(f"Migration: routes.finished realigned on end_time ({cursor.rowcount})")
+
+
+# ── Escale → dépense ──
+# Une escale qui a un coût (son Total) crée sa dépense dans les Comptes, et en
+# reste la référence : chaque enregistrement de l'escale la réécrit, la vider
+# de son Total ou la supprimer l'efface (ON DELETE CASCADE). Dans les Comptes,
+# cette dépense ne se modifie ni ne se supprime (update_expense, delete_expense) ;
+# sa fiche renvoie à l'escale et montre les reçus de celle-ci. Type « Escale »,
+# ou « Stationnement » pour une escale marquée comme telle (parking).
+
+async def _sync_stopover_expense(db, stopover_id: int):
+    cursor = await db.execute(
+        """SELECT s.id, s.locality, s.name, s.arrival_date, s.departure_date, s.cost, s.parking,
+                  c.ship_id
+           FROM stopovers s JOIN routes r ON s.route_id = r.id JOIN cruises c ON r.cruise_id = c.id
+           WHERE s.id = ?""",
+        (stopover_id,),
+    )
+    s = await cursor.fetchone()
+    if s is None:
+        return
+    s_id, locality, name, arrival, departure, cost, parking, ship_id = s
+    if not cost:
+        await db.execute("DELETE FROM expenses WHERE stopover_id = ?", (s_id,))
+        return
+    place = locality or name or "?"
+    duree = _sejour(arrival, departure)
+    designation = f"{'Stationnement' if parking else 'Escale'} {place}" + (f" — {duree}" if duree else "")
+    supplier = " - ".join(dict.fromkeys(x for x in (locality, name) if x)) or None
+    values = ((departure or arrival or "")[:10] or None, designation, supplier, cost, cost, 0,
+              "Stationnement" if parking else "Escale", ship_id)
+    cursor = await db.execute(
+        """UPDATE expenses SET date = ?, designation = ?, supplier = ?, unit_price = ?, paid = ?,
+                               balance = ?, expense_type = ?, ship_id = ?
+           WHERE stopover_id = ?""",
+        (*values, s_id),
+    )
+    if cursor.rowcount == 0:
+        await db.execute(
+            """INSERT INTO expenses (date, designation, supplier, unit_price, paid, balance,
+                                     expense_type, ship_id, stopover_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (*values, s_id),
+        )
+
+
+async def _stopover_expenses(db):
+    """Au démarrage : toute escale qui a un coût et pas encore de dépense en
+    reçoit une — les escales saisies avant cette règle, et celles qu'apporte
+    un import. Une dépense déjà saisie à la main pour la même escale (même
+    navire, même montant, à 3 jours près) lui est reliée au lieu d'être
+    doublée. Puis toutes les dépenses d'escale sont réécrites d'après leur
+    escale : la règle de _sync_stopover_expense peut changer, l'escale reste
+    la référence."""
+    cursor = await db.execute(
+        """SELECT s.id, s.cost, s.arrival_date, s.departure_date, c.ship_id
+           FROM stopovers s JOIN routes r ON s.route_id = r.id JOIN cruises c ON r.cruise_id = c.id
+           WHERE s.cost > 0 AND NOT EXISTS (SELECT 1 FROM expenses e WHERE e.stopover_id = s.id)""")
+    linked = created = 0
+    for s_id, cost, arrival, departure, ship_id in await cursor.fetchall():
+        first, last = (arrival or departure or "")[:10], (departure or arrival or "")[:10]
+        match = None
+        if first:
+            cur = await db.execute(
+                """SELECT id FROM expenses
+                   WHERE stopover_id IS NULL AND ship_id = ? AND ABS(COALESCE(paid, unit_price) - ?) < 0.01
+                     AND date(date) BETWEEN date(?, '-3 days') AND date(?, '+3 days')
+                   ORDER BY id LIMIT 1""",
+                (ship_id, cost, first, last))
+            match = await cur.fetchone()
+        if match:
+            await db.execute("UPDATE expenses SET stopover_id = ? WHERE id = ?", (s_id, match[0]))
+            linked += 1
+        else:
+            created += 1
+    cursor = await db.execute("SELECT stopover_id FROM expenses WHERE stopover_id IS NOT NULL")
+    for (s_id,) in await cursor.fetchall():
+        await _sync_stopover_expense(db, s_id)
+    cursor = await db.execute(
+        "SELECT s.id FROM stopovers s WHERE s.cost > 0"
+        " AND NOT EXISTS (SELECT 1 FROM expenses e WHERE e.stopover_id = s.id)")
+    for (s_id,) in await cursor.fetchall():
+        await _sync_stopover_expense(db, s_id)
+    if linked or created:
+        print(f"Migration: stopover expenses — {created} created, {linked} linked to an existing expense")
 
 
 TRACK_INTERVAL = 30  # seconds between automatic GPS recordings
@@ -2139,9 +2243,13 @@ async def ship_expenses(request: Request, tri: Optional[str] = None, ordre: Opti
         cursor = await db.execute(
             # Le trombone de la liste ouvre le premier document de la dépense.
             f"""SELECT *,
-                   (SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
-                    ORDER BY d.id LIMIT 1) AS first_doc,
-                   (SELECT COUNT(*) FROM expense_documents d WHERE d.expense_id = expenses.id) AS doc_count
+                   COALESCE((SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
+                             ORDER BY d.id LIMIT 1),
+                            (SELECT path FROM stopover_documents d WHERE d.stopover_id = expenses.stopover_id
+                             ORDER BY d.id LIMIT 1)) AS first_doc,
+                   (SELECT COUNT(*) FROM expense_documents d WHERE d.expense_id = expenses.id)
+                   + (SELECT COUNT(*) FROM stopover_documents d WHERE d.stopover_id = expenses.stopover_id)
+                   AS doc_count
                 FROM expenses WHERE ship_id = ? ORDER BY {order_by}""", (ship_id,)
         )
         entries = await cursor.fetchall()
@@ -2179,7 +2287,7 @@ EXPENSE_SORTS = {
 # en renommer un laisse les lignes existantes sur l'ancien libellé, que le
 # formulaire d'édition continue d'afficher (voir expenses_form.html). None
 # marque le séparateur entre les types et « Autre ».
-EXPENSE_TYPES = ["Equipement", "Entretien", "Stationnement", "Administratif", None, "Autre"]
+EXPENSE_TYPES = ["Equipement", "Entretien", "Escale", "Stationnement", "Administratif", None, "Autre"]
 
 # Valeur de l'option « Saisir manuellement » du fournisseur. Ce n'est pas un
 # nom : la dépense est enregistrée sans fournisseur, puis le formulaire de
@@ -2205,6 +2313,13 @@ def _expense_balance(unit_price, paid):
     return unit_price - paid, paid
 
 
+async def _stopover_of_expense(db, expense_id: int) -> Optional[int]:
+    """L'escale qui a créé cette dépense, ou None pour une dépense ordinaire."""
+    cursor = await db.execute("SELECT stopover_id FROM expenses WHERE id = ?", (expense_id,))
+    row = await cursor.fetchone()
+    return row[0] if row else None
+
+
 async def _expense_form(request: Request, entry: Optional[dict], supplier: Optional[str] = None):
     """Formulaire des comptes, en création (entry=None) comme en modification."""
     ship_id = get_current_ship_id(request)
@@ -2222,6 +2337,17 @@ async def _expense_form(request: Request, entry: Optional[dict], supplier: Optio
                 "SELECT * FROM expense_documents WHERE expense_id = ? ORDER BY id", (entry["id"],)
             )
             documents = [dict(d) for d in await cursor.fetchall()]
+        # Dépense d'une escale : l'escale (pour y renvoyer) et ses reçus.
+        stopover, stopover_docs = None, []
+        if entry and entry.get("stopover_id"):
+            cursor = await db.execute(
+                "SELECT id, name, locality, arrival_date, departure_date FROM stopovers WHERE id = ?",
+                (entry["stopover_id"],))
+            row = await cursor.fetchone()
+            stopover = dict(row) if row else None
+            cursor = await db.execute(
+                "SELECT * FROM stopover_documents WHERE stopover_id = ? ORDER BY id", (entry["stopover_id"],))
+            stopover_docs = [dict(d) for d in await cursor.fetchall()]
     return templates.TemplateResponse(
         "ship/expenses_form.html",
         {
@@ -2239,6 +2365,8 @@ async def _expense_form(request: Request, entry: Optional[dict], supplier: Optio
             "supplier": supplier,
             "doc_accept": ",".join(sorted(DOC_SUFFIXES)),
             "doc_max_bytes": DOC_MAX_BYTES,
+            "stopover": stopover,
+            "stopover_docs": stopover_docs,
         },
     )
 
@@ -2674,6 +2802,9 @@ async def update_expense(
 ):
     balance, paid = _expense_balance(unit_price, paid)
     async with connect() as db:
+        # La dépense d'une escale se modifie depuis l'escale, jamais ici.
+        if await _stopover_of_expense(db, entry_id):
+            return RedirectResponse(url=f"/ship/expenses/{entry_id}", status_code=303)
         # Les documents ont leurs propres formulaires (expense_documents).
         await db.execute(
             """UPDATE expenses SET date = ?, designation = ?, description = ?,
@@ -2751,6 +2882,9 @@ async def delete_expense_document(doc_id: int):
 @app.post("/ship/expenses/{entry_id}/delete")
 async def delete_expense(entry_id: int):
     async with connect() as db:
+        # La dépense d'une escale disparaît avec elle, ou quand on vide son Total.
+        if await _stopover_of_expense(db, entry_id):
+            return RedirectResponse(url=f"/ship/expenses/{entry_id}", status_code=303)
         await db.execute("DELETE FROM expenses WHERE id = ?", (entry_id,))
         await db.commit()
     return RedirectResponse(url="/ship/expenses", status_code=303)
@@ -5591,7 +5725,7 @@ async def new_stopover_form(request: Request, route_id: int):
     stopover = {
         "id": None, "name": None, "type": None, "departure_date": None,
         "cost_per_night": None, "cost": None, "notes": None,
-        "position_lat": None, "position_lon": None,
+        "position_lat": None, "position_lon": None, "parking": 0, "expense": None,
         "route_id": route["id"], "cruise_id": route["cruise_id_c"], "cruise_name": route["cruise_name"],
         "route_number": route["number"], "cruise_number": route["cruise_number"],
         "departure_location": route["departure_location"], "destination_location": route["destination_location"],
@@ -5622,6 +5756,7 @@ async def create_stopover(
     lon_deg: Optional[float] = Form(None),
     lon_min: Optional[float] = Form(None),
     lon_hem: Optional[str] = Form(None),
+    parking: Optional[str] = Form(None),
     doc_title: Optional[str] = Form(None),
     document_file: List[UploadFile] = File([]),
 ):
@@ -5637,13 +5772,15 @@ async def create_stopover(
     async with connect() as db:
         cursor = await db.execute(
             """INSERT INTO stopovers (route_id, locality, name, type, arrival_date, departure_date, cost_per_night, cost, notes,
-                                     position_lat, position_lon)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                     position_lat, position_lon, parking)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (route_id, locality or None, name or None, type or None,
              arrival_date or None, departure_date or None,
              cost_per_night, cost if cost is not None else 0, notes or None,
-             *_stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem)),
+             *_stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem),
+             _stopover_parking(parking, arrival_date, departure_date)),
         )
+        await _sync_stopover_expense(db, cursor.lastrowid)
         # Un reçu peut partir avec l'escale, avant qu'elle existe.
         files = [f for f in document_file if f.filename]
         for upload in files:
@@ -5669,11 +5806,17 @@ async def edit_stopover_form(request: Request, stopover_id: int):
         cursor = await db.execute(
             "SELECT * FROM stopover_documents WHERE stopover_id = ? ORDER BY id", (stopover_id,))
         documents = [dict(d) for d in await cursor.fetchall()]
+        # Sa dépense dans les Comptes, s'il en a une (_sync_stopover_expense).
+        cursor = await db.execute(
+            "SELECT id, designation, paid FROM expenses WHERE stopover_id = ?", (stopover_id,))
+        expense = await cursor.fetchone()
     if stopover is None:
         raise HTTPException(status_code=404, detail="Stopover not found")
+    stopover = dict(stopover)
+    stopover["expense"] = dict(expense) if expense else None
     return templates.TemplateResponse(
         "routes/stopover_form.html",
-        {"request": request, "active_section": "cruises", "stopover": dict(stopover), "nouveau": False,
+        {"request": request, "active_section": "cruises", "stopover": stopover, "nouveau": False,
          "documents": documents, "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
     )
 
@@ -5695,6 +5838,7 @@ async def update_stopover(
     lon_deg: Optional[float] = Form(None),
     lon_min: Optional[float] = Form(None),
     lon_hem: Optional[str] = Form(None),
+    parking: Optional[str] = Form(None),
 ):
     if cost is None and cost_per_night is not None and arrival_date and departure_date:
         from datetime import date
@@ -5710,15 +5854,31 @@ async def update_stopover(
         route_id = row[0] if row else None
         await db.execute(
             """UPDATE stopovers SET locality=?, name=?, type=?, arrival_date=?, departure_date=?,
-               cost_per_night=?, cost=?, notes=?, position_lat=?, position_lon=? WHERE id=?""",
+               cost_per_night=?, cost=?, notes=?, position_lat=?, position_lon=?, parking=? WHERE id=?""",
             (locality or None, name or None, type or None,
              arrival_date or None, departure_date or None,
              cost_per_night, cost if cost is not None else 0, notes or None,
-             *_stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem), stopover_id),
+             *_stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem),
+             _stopover_parking(parking, arrival_date, departure_date), stopover_id),
         )
+        await _sync_stopover_expense(db, stopover_id)
         await db.commit()
     # Retour à la liste des escales, d'où que l'on vienne.
     return RedirectResponse(url="/cruises/stopovers", status_code=303)
+
+
+PARKING_MIN_NIGHTS = 7
+
+
+def _stopover_parking(parking, arrival, departure) -> int:
+    """« Stationnement » ne vaut que pour une escale de plus d'une semaine :
+    la case n'est proposée qu'au-delà (stopover_form.html), et une escale
+    raccourcie depuis la perd."""
+    try:
+        nights = (date.fromisoformat(departure[:10]) - date.fromisoformat(arrival[:10])).days
+    except (TypeError, ValueError):
+        return 0
+    return 1 if parking and nights > PARKING_MIN_NIGHTS else 0
 
 
 def _stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem):
