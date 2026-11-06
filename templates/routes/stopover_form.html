@@ -163,9 +163,8 @@
            jour (_sync_stopover_expense). #}
         <div class="meta" style="margin-top:6px">
             {% if stopover.expense %}
-            Dans les Comptes :
-            {% if peut(request, 'comptes.voir') %}<a href="/ship/expenses/{{ stopover.expense.id }}">{{ stopover.expense.designation }} — {{ stopover.expense.paid | euros }}</a>
-            {% else %}{{ stopover.expense.designation }}{% endif %}
+            {% if peut(request, 'comptes.voir') %}<a href="/ship/expenses/{{ stopover.expense.id }}">Voir l'escale dans les comptes</a> — {{ stopover.expense.paid | euros }}
+            {% else %}Inscrite dans les comptes — {{ stopover.expense.paid | euros }}{% endif %}
             {% else %}
             Le Total s'inscrit dans les Comptes, en dépense « Escale ».
             {% endif %}

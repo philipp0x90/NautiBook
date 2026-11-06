@@ -62,6 +62,8 @@
     /* Le formulaire, puis ses documents dessous. */
     .expense-page { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
     .expense-docs { max-width: 980px; }
+    /* Le style en ligne l'emportait sur hidden : le texte restait affiché. */
+    #aide-escale[hidden] { display: none !important; }
 </style>
 {% endblock %}
 
@@ -76,17 +78,23 @@
     <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Comptes</span>
 </div>
 
-{# Dépense créée par une escale (_sync_stopover_expense) : l'escale en est la
+{# Dépense liée à une escale (_sync_stopover_expense) : l'escale en est la
    référence. La fiche se lit ici, champs figés, et se modifie là-bas. #}
 {% set verrou = edition and entry.stopover_id %}
 {% if verrou %}
 <div class="card" style="max-width:980px;margin-bottom:14px;padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#f0f6fc">
     <img src="/icons/escale.png" alt="" style="width:28px;height:28px">
+    {# L'explication en infobulle : au survol sur le Mac, au toucher sur
+       l'iPad et l'iPhone (qui n'ont pas de survol), où le bouton ⓘ l'affiche. #}
+    {% set aide = "Modifier cette dépense depuis l'escale (total, dates, nom). Supprimer l'escale ou vider son total supprime la dépense liée." %}
     <div style="flex:1 1 300px">
-        Dépense créée par l'escale
+        Dépense liée à l'escale
         {% if stopover %}<strong>{{ stopover.name or stopover.locality or 'Escale' }}</strong>
-        ({{ stopover.arrival_date | datefr }}{% if stopover.departure_date %} → {{ stopover.departure_date | datefr }}{% endif %}){% endif %}.
-        <span class="meta" style="display:block">Elle se modifie depuis l'escale : son Total, ses dates, son nom. Supprimer l'escale ou vider son Total la supprime.</span>
+        ({{ stopover.arrival_date | datefr }}{% if stopover.departure_date %} → {{ stopover.departure_date | datefr }}{% endif %}){% endif %}
+        <button type="button" title="{{ aide }}" aria-label="{{ aide }}"
+                onclick="const t = document.getElementById('aide-escale'); t.hidden = !t.hidden"
+                style="border:0;background:none;padding:0 4px;font-size:16px;color:var(--accent);cursor:pointer;vertical-align:-1px">ⓘ</button>
+        <div id="aide-escale" class="meta" hidden>{{ aide }}</div>
     </div>
     <a href="/stopovers/{{ entry.stopover_id }}/edit" class="btn btn-primary">Ouvrir l'escale ›</a>
 </div>
