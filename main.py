@@ -6023,6 +6023,10 @@ async def route_arrivee(
             "SELECT cruise_id, destination_location, motor_hours_start FROM routes WHERE id = ?", (route_id,)
         )
         route = await cursor.fetchone()
+        # L'horamètre est obligatoire à chaque arrivée (le formulaire l'exige
+        # aussi) : après une réouverture, l'ancienne lecture n'est plus juste.
+        if motor_hours_end is None:
+            return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
         # Un horamètre ne recule pas : une arrivée sous le départ est refusée
         # (le formulaire l'empêche déjà, ceci couvre un envoi direct).
         if (route and motor_hours_end is not None and route["motor_hours_start"] is not None
@@ -6032,9 +6036,8 @@ async def route_arrivee(
         if route and route["destination_location"]:
             dest = route["destination_location"]
         await db.execute(
-            # Champ vide : l'horamètre déjà saisi (route rouverte) est gardé.
             "UPDATE routes SET end_time=?, finished=1, destination_location=COALESCE(?, destination_location), "
-            "motor_hours_end=COALESCE(?, motor_hours_end) WHERE id=?",
+            "motor_hours_end=? WHERE id=?",
             (now, dest, motor_hours_end, route_id),
         )
         await db.commit()
@@ -6046,6 +6049,39 @@ async def route_arrivee(
     if creer_escale and not has_stopover:
         return RedirectResponse(url=f"/routes/{route_id}/stopovers/new", status_code=303)
     return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+
+
+async def _reopenable(db, route) -> bool:
+    """« Rouvrir la route » : seulement la dernière route de la croisière en
+    cours — rouvrir une route passée, puis y écrire maintenant, n'a pas de
+    sens (pour elles : « Ajouter une ligne oubliée »)."""
+    cursor = await db.execute(
+        "SELECT MAX(id) FROM routes WHERE cruise_id = ?", (route["cruise_id"],))
+    last = (await cursor.fetchone())[0]
+    cursor = await db.execute("SELECT ship_id FROM cruises WHERE id = ?", (route["cruise_id"],))
+    ship = await cursor.fetchone()
+    return (last == route["id"] and ship is not None
+            and await _current_cruise_id(db, ship[0]) == route["cruise_id"])
+
+
+@app.post("/routes/{route_id}/reopen")
+async def route_reopen(route_id: int):
+    """Efface l'arrivée et l'horamètre d'arrivée (à ressaisir à la prochaine
+    arrivée), et supprime l'escale de la route s'il y en a une — avec sa
+    dépense et ses reçus (cascade) ; la confirmation l'a annoncé. Puis la
+    fenêtre « Nouvelle ligne » s'ouvre (?ligne=1)."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT id, cruise_id FROM routes WHERE id = ?", (route_id,))
+        route = await cursor.fetchone()
+        if route is None or not await _reopenable(db, route):
+            return RedirectResponse(url=f"/routes/{route_id}", status_code=303)
+        await db.execute("DELETE FROM stopovers WHERE route_id = ?", (route_id,))
+        await db.execute(
+            "UPDATE routes SET end_time = NULL, motor_hours_end = NULL, finished = 0 WHERE id = ?",
+            (route_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/routes/{route_id}?ligne=1", status_code=303)
 
 
 # Départ / arrivée d'une route, modifiables sur place depuis sa page, avec leur
@@ -6218,7 +6254,7 @@ def _minutes_between(start, end) -> Optional[int]:
 
 
 @app.get("/routes/{route_id}", response_class=HTMLResponse)
-async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
+async def route_detail(request: Request, route_id: int, nouvelle: int = 0, ligne: int = 0):
     """The `nouvelle` flag is set by create_route and only opens the modal that
     offers a first logbook line; it changes nothing else on the page."""
     async with connect() as db:
@@ -6278,6 +6314,12 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
 
         cursor = await db.execute("SELECT COUNT(*) FROM track_points WHERE route_id = ?", (route_id,))
         track_count = (await cursor.fetchone())[0]
+        reopenable = bool(route["finished"]) and await _reopenable(db, route)
+        # Ce que « Rouvrir la route » supprimerait avec l'escale, pour le dire.
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM stopover_documents d JOIN stopovers s ON d.stopover_id = s.id"
+            " WHERE s.route_id = ?", (route_id,))
+        stopover_docs = (await cursor.fetchone())[0]
 
         ship_id = get_current_ship_id(request)
         cursor = await db.execute(
@@ -6304,6 +6346,9 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0):
             "fuel_price": price, "fuel_price_date": price_date,
             "duration_min": _minutes_between(route["start_time"], route["end_time"]),
             "track_count": track_count,
+            "reopenable": reopenable,
+            "stopover_docs": stopover_docs,
+            "open_line": bool(ligne),
             # Rappelé sur le bouton « Nouvelle ligne » : depuis quand rien n'a
             # été écrit au journal de cette route.
             "last_line_min": _minutes_between(
@@ -6342,7 +6387,7 @@ async def _previous_conditions(db, route_id: int):
 
 
 @app.get("/routes/{route_id}/new-line", response_class=HTMLResponse)
-async def new_line_form(request: Request, route_id: int):
+async def new_line_form(request: Request, route_id: int, oubliee: int = 0, hors: int = 0):
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute(
@@ -6361,7 +6406,9 @@ async def new_line_form(request: Request, route_id: int):
         raise HTTPException(status_code=404, detail="Route not found")
     # requests est bloquant : hors de la boucle, sinon l'app entière attend
     # SignalK (jusqu'à 5 s par mesure quand il ne répond pas).
-    data = await asyncio.to_thread(get_sensor_data)
+    # Ligne oubliée, datée avant l'arrivée : les capteurs donneraient les
+    # valeurs de maintenant, fausses pour cette heure-là. Formulaire vide.
+    data = None if oubliee else await asyncio.to_thread(get_sensor_data)
     if data:
         async with connect() as db:
             trip = await _route_trip(db, route_id, data.get("log"), data.get("trip"))
@@ -6376,6 +6423,8 @@ async def new_line_form(request: Request, route_id: int):
             "data": data,
             "route": dict(route),
             "previous": previous,
+            "oubliee": bool(oubliee),
+            "hors": bool(hors),
         },
     )
 
@@ -6411,9 +6460,25 @@ async def create_line(
     pressure: Optional[float] = Form(None),
     visual_pos: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    timestamp: Optional[str] = Form(None),
 ):
+    # Ligne oubliée : son heure, choisie dans le formulaire, doit tomber entre
+    # le départ et l'arrivée de la route — sinon l'arrivée ne serait plus la
+    # fin de la route. Hors de là, retour au formulaire avec l'erreur.
+    if timestamp:
+        timestamp = timestamp.replace("T", " ")[:16]
+        async with connect() as db:
+            cursor = await db.execute("SELECT start_time, end_time FROM routes WHERE id = ?", (route_id,))
+            bounds = await cursor.fetchone()
+        start = (bounds[0] or "").replace("T", " ")[:16] if bounds else ""
+        end = (bounds[1] or "").replace("T", " ")[:16] if bounds else ""
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", timestamp) \
+                or (start and timestamp < start) or (end and timestamp > end):
+            return RedirectResponse(url=f"/routes/{route_id}/new-line?oubliee=1&hors=1", status_code=303)
+        timestamp += ":00"
     await _insert_line(
         route_id,
+        timestamp=timestamp or None,
         aws=aws, awa=awa, water_temp=water_temp, heading=heading, cog=cog, log=log,
         trip=trip, depth=depth,
         position_lat=_dmm_to_dd(lat_deg, lat_min, lat_hem),
@@ -6444,10 +6509,17 @@ async def _route_trip(db, route_id: int, log, trip):
     return round(max(log - first[0], 0), 1)
 
 
-async def _insert_line(route_id: int, **v):
-    """One logbook line, stamped now. Shared by the full form (create_line) and
-    the new-line window (create_quick_line); the rounding lives here, so both
-    store the same shapes. update_line keeps its own copy of it."""
+async def _insert_line(route_id: int, timestamp: Optional[str] = None, **v):
+    """One logbook line, stamped now — or at `timestamp`, a line forgotten
+    before the arrival (« Ajouter une ligne oubliée »). Shared by the full form
+    (create_line) and the new-line window (create_quick_line); the rounding
+    lives here, so both store the same shapes. update_line keeps its own copy
+    of it.
+
+    A line stamped now on a route already arrived reopens it (the arrival
+    would no longer be its end) — the safety net behind the grey button, for a
+    page left open before the arrival. Its stopover stays: only « Rouvrir la
+    route » removes it, after confirmation."""
     if v.get("depth") is not None:
         v["depth"] = round(v["depth"], 1)
     # Angles are logged as whole degrees (position lat/lon keep full precision).
@@ -6463,8 +6535,12 @@ async def _insert_line(route_id: int, **v):
         await db.execute(
             f"INSERT INTO logbook_lines (timestamp, route_id, {', '.join(columns)})"
             f" VALUES (?, ?, {', '.join('?' * len(columns))})",
-            (datetime.now(), route_id, *(v.get(c) for c in columns)),
+            (timestamp or datetime.now(), route_id, *(v.get(c) for c in columns)),
         )
+        if timestamp is None:
+            await db.execute(
+                f"UPDATE routes SET end_time = NULL, finished = 0 WHERE id = ? AND {ROUTE_FINISHED_SQL}",
+                (route_id,))
         await db.commit()
 
 

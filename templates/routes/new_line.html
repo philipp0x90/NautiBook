@@ -84,12 +84,31 @@
 
 <div class="ligne-entete">
     <button type="submit" form="ligne-form" class="primary">Enregistrer la ligne</button>
-    <h2>Ajouter une ligne au journal de bord</h2>
+    <h2>{{ 'Ajouter une ligne oubliée' if oubliee else 'Ajouter une ligne au journal de bord' }}</h2>
     <a href="/routes/{{ route.id }}" class="annuler">Annuler</a>
 </div>
 
 <form method="POST" action="/routes/{{ route.id }}/new-line" class="card" id="ligne-form" style="display:grid;gap:12px"
       onsubmit="return confirmerConditions(this)">
+
+    {# Ligne oubliée, sur une route arrivée : son heure, entre le départ et
+       l'arrivée (create_line le vérifie), préremplie à l'arrivée. Pas de
+       mesures lues sur les capteurs : elles seraient celles de maintenant. #}
+    {% if oubliee %}
+    {% set debut = (route.start_time or '') | replace(' ', 'T') %}
+    {% set fin = (route.end_time or '') | replace(' ', 'T') %}
+    <div style="display:flex;flex-wrap:wrap;align-items:end;gap:10px 16px">
+        <div style="flex:0 1 240px">
+            <label>Date et heure de la ligne</label>
+            <input type="datetime-local" name="timestamp" required value="{{ fin[:16] }}"
+                   {% if debut %}min="{{ debut[:16] }}"{% endif %} {% if fin %}max="{{ fin[:16] }}"{% endif %}>
+        </div>
+        <div class="meta" style="flex:1 1 260px">
+            Entre le départ et l'arrivée de la route. Les mesures ne sont pas lues sur les capteurs : à remplir d'après vos notes.
+            {% if hors %}<strong style="color:#c0392b;display:block">L'heure doit tomber entre le départ et l'arrivée de la route.</strong>{% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="field-groups">
 

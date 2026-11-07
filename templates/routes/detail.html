@@ -315,6 +315,20 @@
            « Nouvelle ligne » ; le lien reste celui du formulaire complet, pour
            le droit (script des droits) et sans JS. #}
         <div class="ligne-etape">
+            {% if route.finished %}
+            {# Route arrivée : plus de ligne « maintenant ». Le bouton gris
+               propose une ligne oubliée (datée avant l'arrivée) ou, sur la
+               dernière route de la croisière en cours, de rouvrir la route. #}
+            {% set arrivee = route.end_time | replace('T', ' ') %}
+            <button type="button" class="btn-geant btn-geant-gris"
+                    onclick="document.getElementById('arrivee-choix').classList.add('open')">
+                <svg aria-hidden="true"><use href="#icone-ancre"></use></svg>
+                <span class="btn-geant-texte">
+                    <span class="btn-geant-nom">Route arrivée</span>
+                    <span class="btn-geant-rappel">le {{ arrivee[:10] | datefr }} à {{ arrivee[11:13] }}h{{ arrivee[14:16] }} · toucher pour {{ 'ajouter une ligne ou rouvrir' if reopenable else 'ajouter une ligne oubliée' }}</span>
+                </span>
+            </button>
+            {% else %}
             <a href="/routes/{{ route.id }}/new-line" class="btn-geant btn-geant-jaune"
                onclick="event.preventDefault();ouvrirNouvelleLigne()">
                 <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
@@ -328,6 +342,7 @@
                     {%- elif not lines %} · première ligne de la route{% endif %}</span>
                 </span>
             </a>
+            {% endif %}
             {# Un seul bouton à côté, qui suit l'avancement de la route : en
                mer, l'arrivée ; arrivée, l'escale à créer ; escale créée, sa
                fiche. « + Nouvelle route » n'est plus ici : il est en grand sur
@@ -704,7 +719,7 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
                     <span style="display:block;font-weight:400;font-size:13px">(Horamètre au départ : {{ '%.1f' | format(route.motor_hours_start) }})</span>{% endif %}</label>
                 {# Un horamètre ne recule pas : le navigateur refuse une valeur
                    inférieure au départ, et route_arrivee le revérifie. #}
-                <input type="number" name="motor_hours_end" step="0.1"
+                <input type="number" name="motor_hours_end" step="0.1" required
                        {% if route.motor_hours_start is not none %}min="{{ route.motor_hours_start }}"
                        oninput="this.setCustomValidity(this.validity.rangeUnderflow ? 'L\'horamètre à l\'arrivée ne peut pas être inférieur à celui du départ ({{ '%.1f' | format(route.motor_hours_start) }}).' : '')"{% endif %}>
             </div>
@@ -724,6 +739,47 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
         </form>
     </div>
 </div>
+
+{# ── Route arrivée ── Le choix du bouton gris : une ligne oubliée, datée
+   avant l'arrivée (formulaire « Détails » sans lecture des capteurs), ou —
+   seulement sur la dernière route de la croisière en cours — rouvrir la
+   route : l'arrivée et l'horamètre d'arrivée sont effacés, l'escale
+   supprimée (route_reopen), puis la fenêtre « Nouvelle ligne » s'ouvre. #}
+{% if route.finished %}
+<div id="arrivee-choix" class="modal" onclick="if(event.target===this)this.classList.remove('open')">
+    <div class="modal-box" style="max-width:400px">
+        {% set arrivee = route.end_time | replace('T', ' ') %}
+        <h3 style="margin:0;font-size:18px;text-align:center">Route arrivée
+            <span style="display:block;font-size:13px;font-weight:400;color:var(--muted)">le {{ arrivee[:10] | datefr }} à {{ arrivee[11:13] }}h{{ arrivee[14:16] }}</span></h3>
+        <a href="/routes/{{ route.id }}/new-line?oubliee=1" class="btn-geant btn-geant-bleu" style="min-height:56px">
+            <span class="btn-geant-texte">
+                <span class="btn-geant-nom" style="font-size:17px">Ajouter une ligne oubliée</span>
+                <span class="btn-geant-rappel">datée avant l'arrivée, sans lecture des capteurs</span>
+            </span>
+        </a>
+        {% if reopenable %}
+        {% set e = stopovers[0] if stopovers else none %}
+        {% set message = "Rouvrir la route ?\n\nL'arrivée du " ~ (arrivee[:10] | datefr) ~ " à " ~ arrivee[11:13] ~ "h" ~ arrivee[14:16] ~ " et l'horamètre d'arrivée seront effacés." %}
+        {% if e %}
+        {% set message = message ~ "\n\nL'escale " ~ (e.name or e.locality or '') ~ " sera supprimée"
+                         ~ (", avec sa dépense de " ~ (e.cost | euros) ~ " dans les comptes" if e.cost else "")
+                         ~ ((" et ses " ~ stopover_docs ~ " reçus" if stopover_docs > 1 else " et son reçu") if stopover_docs else "") ~ "." %}
+        {% endif %}
+        <form method="POST" action="/routes/{{ route.id }}/reopen" style="margin:0"
+              onsubmit="return confirm({{ message | tojson | forceescape }})">
+            <button type="submit" class="btn-geant etape-arrivee" style="width:100%;min-height:56px">
+                <span class="btn-geant-texte">
+                    <span class="btn-geant-nom" style="font-size:17px">Rouvrir la route</span>
+                    <span class="btn-geant-rappel" style="color:#4b5563">l'arrivée est effacée{{ ', l\'escale supprimée' if e else '' }}</span>
+                </span>
+            </button>
+        </form>
+        {% endif %}
+        <button type="button" class="btn btn-gris" style="justify-self:start;font-size:14px;padding:7px 16px"
+                onclick="document.getElementById('arrivee-choix').classList.remove('open')">Annuler</button>
+    </div>
+</div>
+{% endif %}
 
 {# ── Nouvelle ligne ── On n'y saisit que ce qu'aucun capteur ne mesure :
    mer, visibilité et voiles, hérités de la ligne précédente (la fenêtre est
@@ -830,6 +886,11 @@ function ouvrirNouvelleLigne() {
    Ouverte d'emblée (classe open) puisque create_route vient de rediriger ici
    avec ?nouvelle=1. « Plus tard » ne fait que la refermer : la route existe
    déjà, il n'y a rien à annuler. #}
+{# Après « Rouvrir la route » (?ligne=1) : la fenêtre « Nouvelle ligne » d'emblée. #}
+{% if open_line and not route.finished %}
+<script>addEventListener('DOMContentLoaded', () => ouvrirNouvelleLigne());</script>
+{% endif %}
+
 {% if ask_new_line %}
 <div id="premiere-ligne-modal" class="modal open" onclick="if(event.target===this)this.classList.remove('open')">
     <div class="modal-box">
