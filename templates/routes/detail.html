@@ -320,12 +320,24 @@
                propose une ligne oubliée (datée avant l'arrivée) ou, sur la
                dernière route de la croisière en cours, de rouvrir la route. #}
             {% set arrivee = route.end_time | replace('T', ' ') %}
+            {# La route suivante, à gauche : seulement après la dernière route
+               de la croisière en cours, comme le grand bouton de la croisière,
+               dont il a la couleur. #}
+            {% if is_current and not next_route %}
+            <a href="/routes/new?cruise_id={{ route.cruise_id }}" class="etape-route etape-escale" style="order:-1">
+                <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+                <span class="btn-geant-texte">
+                    <span class="etape-nom">Nouvelle route</span>
+                    {% if route.destination_location %}<span class="etape-rappel">départ de {{ route.destination_location }}</span>{% endif %}
+                </span>
+            </a>
+            {% endif %}
             <button type="button" class="btn-geant btn-geant-gris"
                     onclick="document.getElementById('arrivee-choix').classList.add('open')">
                 <svg aria-hidden="true"><use href="#icone-ancre"></use></svg>
                 <span class="btn-geant-texte">
-                    <span class="btn-geant-nom">Route arrivée</span>
-                    <span class="btn-geant-rappel">le {{ arrivee[:10] | datefr }} à {{ arrivee[11:13] }}h{{ arrivee[14:16] }} · toucher pour {{ 'ajouter une ligne ou rouvrir' if reopenable else 'ajouter une ligne oubliée' }}</span>
+                    <span class="btn-geant-nom">Arrivée{% if route.destination_location %} à {{ route.destination_location }}{% endif %} le {{ arrivee[:10] | datefr }} à {{ arrivee[11:13] }}h{{ arrivee[14:16] }}</span>
+                    <span class="btn-geant-rappel">{{ 'Toucher pour ajouter une ligne oubliée ou rouvrir la route' if reopenable else 'Toucher pour ajouter une ligne oubliée' }}</span>
                 </span>
             </button>
             {% else %}
@@ -358,7 +370,7 @@
                 </span>
             </button>
             {% elif not stopovers %}
-            <a href="/routes/{{ route.id }}/stopovers/new" class="etape-route etape-escale">
+            <a href="/routes/{{ route.id }}/stopovers/new" class="etape-route etape-arrivee">
                 <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
                 <span class="btn-geant-texte">
                     <span class="etape-nom">Escale</span>
