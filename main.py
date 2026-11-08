@@ -8,6 +8,7 @@ import asyncio
 import os
 import hashlib
 import secrets
+import sqlite3
 import time
 import csv
 import io
@@ -954,6 +955,7 @@ async def _migrate(db):
         " WHERE stopover_id IS NOT NULL"
     )
     await _stopover_expenses(db)
+    await _simplify_tracks(db)
 
     # Une route est terminée si et seulement si elle a une arrivée : le
     # drapeau suit end_time (voir ROUTE_OPEN_SQL), y compris pour les routes
@@ -1301,6 +1303,47 @@ def _doc_title(filename: str) -> str:
     """Titre par défaut d'un document : le nom du fichier sans extension ni
     l'horodatage que _save_upload lui a ajouté (20261026-164900_)."""
     return re.sub(r"^\d{8}-\d{6}[-_]", "", Path(filename).stem)
+
+
+async def _simplify_tracks(db):
+    """Une fois pour toutes : les traces déjà importées réduites comme le
+    sont désormais les nouvelles (import_gpx.simplifier) — un point par
+    seconde rendait les cartes lentes. Copie de la base d'abord, à côté
+    d'elle (logbook.db.backup-avant-simplification) ; la marque dans
+    app_secrets empêche de recommencer."""
+    cursor = await db.execute("SELECT 1 FROM app_secrets WHERE name = 'tracks_simplified'")
+    if await cursor.fetchone():
+        return
+    cursor = await db.execute("SELECT COUNT(*) FROM track_points")
+    avant = (await cursor.fetchone())[0]
+    if avant:
+        await db.commit()
+        copie = f"{DATABASE_URL}.backup-avant-simplification"
+
+        def sauver():
+            src, dst = sqlite3.connect(DATABASE_URL), sqlite3.connect(copie)
+            with dst:
+                src.backup(dst)
+            dst.close()
+            src.close()
+
+        await asyncio.to_thread(sauver)
+        cursor = await db.execute("SELECT DISTINCT route_id FROM track_points")
+        for (route_id,) in await cursor.fetchall():
+            cursor = await db.execute(
+                "SELECT id, lat, lon FROM track_points WHERE route_id = ? ORDER BY id", (route_id,)
+            )
+            points = [tuple(p) for p in await cursor.fetchall()]
+            gardes = {p[0] for p in import_gpx.simplifier(points)}
+            await db.executemany(
+                "DELETE FROM track_points WHERE id = ?",
+                [(p[0],) for p in points if p[0] not in gardes],
+            )
+        cursor = await db.execute("SELECT COUNT(*) FROM track_points")
+        print(f"Migration: track_points simplified, {avant} → {(await cursor.fetchone())[0]} (copy: {copie})")
+    await db.execute("INSERT INTO app_secrets (name, value) VALUES ('tracks_simplified', ?)",
+                     (datetime.now().strftime("%Y-%m-%d %H:%M:%S"),))
+    await db.commit()
 
 
 async def _migrate_gallery_to_carnet(db):
@@ -5391,7 +5434,7 @@ async def cruise_gpx_confirm(request: Request, cruise_id: int):
             liste.sort(key=lambda t: t["debut"] or "")
             defaut = routes[route_id]["start_time"] or datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             for t in liste:
-                lignes = import_gpx.remplir_heures(t["points"], defaut)
+                lignes = import_gpx.simplifier(import_gpx.remplir_heures(t["points"], defaut))
                 await db.executemany(
                     "INSERT INTO track_points (route_id, timestamp, lat, lon) VALUES (?, ?, ?, ?)",
                     [(route_id, *p) for p in lignes],

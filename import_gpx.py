@@ -22,6 +22,7 @@ Ce que les fichiers réels ont montré (2022.gpx, octobre 2026) :
   seconde est écartée.
 """
 
+import math
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -129,3 +130,41 @@ def remplir_heures(points: list, defaut: str) -> list:
         derniere = heure or derniere
         sortie.append((derniere, lat, lon))
     return sortie
+
+
+# Les traces Navionics ont un point par seconde : 76 000 pour une seule
+# navigation, des mégaoctets à envoyer et à dessiner pour une carte. On ne
+# garde que les points dont le tracé a besoin, à TOLERANCE mètres près —
+# invisible à l'échelle d'une carte, environ 2 % des points.
+TOLERANCE = 5
+
+
+def simplifier(points: list, tolerance: float = TOLERANCE) -> list:
+    """Douglas-Peucker sur des tuples (timestamp, lat, lon), dans l'ordre
+    donné, premier et dernier point toujours gardés. Distances en mètres,
+    sur une projection plate autour du premier point (assez juste à
+    l'échelle d'une navigation)."""
+    if len(points) < 3:
+        return list(points)
+    k = 111320.0
+    cos0 = math.cos(math.radians(points[0][1]))
+    xy = [(p[2] * k * cos0, p[1] * k) for p in points]
+    garder = [False] * len(points)
+    garder[0] = garder[-1] = True
+    pile = [(0, len(points) - 1)]
+    while pile:
+        a, b = pile.pop()
+        ax, ay = xy[a]
+        dx, dy = xy[b][0] - ax, xy[b][1] - ay
+        longueur = math.hypot(dx, dy)
+        loin, i_loin = 0.0, None
+        for i in range(a + 1, b):
+            px, py = xy[i][0] - ax, xy[i][1] - ay
+            # Extrémités confondues (une boucle) : distance au point a.
+            d = abs(dy * px - dx * py) / longueur if longueur else math.hypot(px, py)
+            if d > loin:
+                loin, i_loin = d, i
+        if i_loin is not None and loin > tolerance:
+            garder[i_loin] = True
+            pile += [(a, i_loin), (i_loin, b)]
+    return [p for p, g in zip(points, garder) if g]
