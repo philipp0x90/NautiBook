@@ -50,6 +50,7 @@
         padding: 5px 7px; background: #5bc8e0; color: #fff; font-weight: 700;
         border: 1px solid #3aaec8; text-align: center; white-space: nowrap;
     }
+    .time-date { display: block; font-size: 10px; font-weight: 400; color: #9aa8b6; margin-top: 2px; }
     .log-table td { padding: 4px 7px; border: 1px solid #e0edf5; vertical-align: middle; white-space: nowrap; }
     .log-table .time-cell {
         font-size: 14px; font-weight: 700; text-align: center;
@@ -252,6 +253,8 @@
                         onclick="rowLink(event, '/logbook/{{ ln.id }}/edit')">
                         <td class="time-cell" rowspan="2">
                             {{ ln.timestamp[11:16] if ln.timestamp else '—' }}
+                            {# La date sous l'heure, discrète : une route peut durer plusieurs jours. #}
+                            {% if ln.timestamp %}<span class="time-date">{{ ln.timestamp | jourmois }}</span>{% endif %}
                         </td>
                         <td>{{ ln.aws | unit('kn') }}</td>
                         <td>{{ ln.tws | unit('kn') }}</td>
