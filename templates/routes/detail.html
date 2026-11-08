@@ -43,9 +43,6 @@
     .j-texte:focus, .j-texte.j-edit { border-color: var(--accent); background: #fff; outline: none; }
     .j-texte::placeholder { color: #9aa8b6; font-style: italic; }
     .j-ajout .j-texte { min-height: 5em; }   /* trois lignes pour écrire */
-    .j-boutons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
-    .j-boutons .btn { padding: 4px 12px; font-size: 12px; }
-    .j-boutons .btn:not(.btn-blue) { background: #eee; color: #333; }
     .j-ajout { margin-bottom: 8px; }
     @media (max-width: 640px) { .j-entree { grid-template-columns: 1fr; gap: 4px; } }
     .log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -480,21 +477,15 @@ function buildMap() {
 {# ── Journal ── sous le tableau, sur toute la largeur. D'abord les notes des
    lignes dans l'ordre des heures, puis les Notes de la route (ce qui ne se
    rattache à aucun moment : le journal repris de FileMaker à l'import).
-   Modification sur place, mais enregistrée par un bouton : « Enregistrer » et
-   « Annuler » n'apparaissent qu'une fois le texte touché, Échap annule, et un
-   clic ailleurs n'enregistre rien — un texte long à moitié écrit ne part pas
-   sur une fausse manœuvre (script en bas de page). Vider un texte et
-   l'enregistrer le supprime. #}
+   Modification sur place, sans bouton : quitter le texte l'enregistre s'il a
+   changé, Échap remet l'original (script en bas de page). Vider un texte et
+   le quitter le supprime. #}
 {% set notes_lines = lines | selectattr('notes') | list %}
 {% set blank_lines = lines | rejectattr('notes') | list %}
 {% macro texte_journal(action, valeur, indice) %}
 <form method="POST" action="{{ action }}" class="j-form">
     <textarea name="value" class="j-texte" rows="1" placeholder="{{ indice }}"
-              title="Cliquer pour modifier">{{ valeur or '' }}</textarea>
-    <div class="j-boutons" hidden>
-        <button type="button" class="btn j-annuler">Annuler</button>
-        <button type="submit" class="btn btn-blue">Enregistrer</button>
-    </div>
+              title="Cliquer pour modifier — enregistré en quittant le champ">{{ valeur or '' }}</textarea>
 </form>
 {% endmacro %}
 <section class="journal" id="journal">
@@ -521,12 +512,7 @@ function buildMap() {
                 </select>
             </div>
             <div>
-                <textarea name="value" class="j-texte j-edit" rows="2" required placeholder="Observations, événements…"></textarea>
-                <div class="j-boutons">
-                    <button type="button" class="btn j-annuler-ajout"
-                            onclick="this.form.hidden = true; this.form.reset(); document.querySelector('.j-bouton-ajout').hidden = false">Annuler</button>
-                    <button type="submit" class="btn btn-blue">Enregistrer</button>
-                </div>
+                <textarea name="value" class="j-texte j-edit" rows="2" required placeholder="Observations, événements… (enregistré en quittant le champ)"></textarea>
             </div>
         </div>
     </form>
@@ -581,22 +567,40 @@ function buildMap() {
     bas.addEventListener('click', () => defile.scrollTo({ top: defile.scrollHeight, behavior: 'smooth' }));
 })();
 
-// Journal : chaque texte grandit avec son contenu ; « Enregistrer / Annuler »
-// n'apparaissent qu'une fois le texte modifié. Échap ou Annuler remettent le
-// texte d'origine. Un clic ailleurs n'enregistre rien.
+// Journal : chaque texte grandit avec son contenu et s'enregistre quand on le
+// quitte, s'il a changé. Échap remet le texte d'origine.
 document.querySelectorAll('.journal textarea').forEach(function (t) {
     // Une zone encore masquée (l'ajout) mesure 0 : on la laisse à sa hauteur
     // de CSS jusqu'à ce qu'elle soit visible et qu'on y tape.
     const ajuster = () => { if (!t.offsetParent) return;
         t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; };
     ajuster();
-    const form = t.closest('.j-form');
-    if (!form) { t.addEventListener('input', ajuster); return; }
-    const boutons = form.querySelector('.j-boutons'), origine = t.value;
-    function annuler() { t.value = origine; ajuster(); boutons.hidden = true; t.classList.remove('j-edit'); t.blur(); }
-    t.addEventListener('input', function () { ajuster(); boutons.hidden = t.value === origine; t.classList.toggle('j-edit', t.value !== origine); });
-    t.addEventListener('keydown', function (e) { if (e.key === 'Escape') annuler(); });
-    form.querySelector('.j-annuler').addEventListener('click', annuler);
+    t.addEventListener('input', ajuster);
+    const form = t.form;
+    let envoye = false;
+    const envoyer = () => { if (envoye) return; envoye = true; form.submit(); };
+    if (form.id === 'j-ajout') {
+        // Nouvelle note : vide en sortant, la zone se referme ; choisir la
+        // ligne dans le menu de la même zone n'est pas « quitter ».
+        const fermer = () => { form.hidden = true; form.reset();
+            document.querySelector('.j-bouton-ajout').hidden = false; };
+        const quitter = function (e) {
+            if (e.relatedTarget && form.contains(e.relatedTarget)) return;
+            if (t.value.trim()) envoyer(); else fermer();
+        };
+        const menu = form.querySelector('select');
+        t.addEventListener('blur', quitter);
+        menu.addEventListener('blur', quitter);
+        menu.addEventListener('change', () => t.focus());
+        t.addEventListener('keydown', function (e) { if (e.key === 'Escape') { t.value = ''; t.blur(); } });
+        return;
+    }
+    let origine = t.value;
+    t.addEventListener('input', () => t.classList.toggle('j-edit', t.value !== origine));
+    t.addEventListener('blur', () => { if (t.value !== origine) envoyer(); });
+    t.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { t.value = origine; ajuster(); t.classList.remove('j-edit'); t.blur(); }
+    });
 });
 </script>
 
