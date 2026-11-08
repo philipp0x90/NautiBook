@@ -22,6 +22,7 @@
        du journal, et sur iPhone tout ce qui la partage sort de l'écran. */
     .route-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
     /* Journal, sous le tableau. */
+    .journal, .log-table { --col-heure: 80px; }
     .journal { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px; padding: 14px 16px; margin: 16px 0; }
     .journal h4 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px;
                   display: flex; align-items: center; }
@@ -29,13 +30,18 @@
     .journal [hidden] { display: none !important; }
     .j-notes { background: #f7fafc; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
     .j-notes-titre { font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
-    /* Colonne de l'heure juste assez large pour elle ; la position visuelle
-       éventuelle passe à la ligne dessous, en petit. */
-    .j-entree { display: grid; grid-template-columns: 48px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid #edf2f7; }
+    /* Colonne de l'heure de la largeur de celle du tableau (--col-heure), la
+       date d'un changement de jour y tient sur une ligne ; la position
+       visuelle éventuelle passe à la ligne dessous, en petit. */
+    .j-entree { display: grid; grid-template-columns: var(--col-heure) 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid #edf2f7; }
     /* Ajout : la colonne de l'heure à la taille du menu, pas plus. */
     .j-ajout .j-entree { grid-template-columns: auto 1fr; }
     .j-quand { font-size: 13px; font-weight: 700; padding-top: 4px; }
     .j-quand span { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+    .j-quand .time-date { font-size: 12px; line-height: 1; font-weight: 600; color: #c62828; margin-top: 0; }
+    /* Heure et date centrées dans leur colonne, comme dans le tableau (pas
+       sur téléphone, où l'heure passe au-dessus de la note). */
+    @media (min-width: 641px) { .journal > .j-entree > .j-quand { text-align: center; } }
     .j-quand select { font-size: 13px; padding: 4px 6px; width: auto; max-width: 220px; }
     .j-texte { width: 100%; font: inherit; font-size: 14px; line-height: 1.5; resize: none; overflow: hidden;
                padding: 3px 6px; background: transparent; border: 1px solid transparent; border-radius: 6px; }
@@ -50,8 +56,9 @@
         padding: 5px 7px; background: #5bc8e0; color: #fff; font-weight: 700;
         border: 1px solid #3aaec8; text-align: center; white-space: nowrap;
     }
-    .time-date { display: block; font-size: 10px; font-weight: 400; color: #9aa8b6; margin-top: 2px; }
+    .time-date { display: block; font-size: 12px; line-height: 1; font-weight: 600; color: #c62828; margin-top: 0; }
     .log-table td { padding: 4px 7px; border: 1px solid #e0edf5; vertical-align: middle; white-space: nowrap; }
+    .log-table .time-cell, .log-table th.col-heure { width: var(--col-heure); box-sizing: border-box; }
     .log-table .time-cell {
         font-size: 14px; font-weight: 700; text-align: center;
         background: #eaf6fb; border-right: 2px solid #5bc8e0;
@@ -85,6 +92,10 @@
        permet de surligner « la ligne » d'un bloc au survol, ce qu'un :hover sur
        un <tr> seul ne saurait faire. */
     .log-table .log-line { cursor: pointer; }
+    .log-table .log-line.jour-change .row-top td { border-top: 2px solid #c62828; }
+    /* À épaisseur égale, Safari garde la bordure du bas de la ligne du dessus
+       (.row-bot) : elle passe donc au rouge elle aussi. */
+    .log-table .log-line:has(+ .log-line.jour-change) .row-bot td { border-bottom-color: #c62828; }
     .log-table .log-line:hover td { background: #e8f7fb; }
     .log-table .add-row td { background: #e8f7fb; }
     .log-table .add-row td a { color: var(--accent-dark); font-weight: 700; text-decoration: none; font-size: 14px; }
@@ -233,7 +244,7 @@
             <table class="log-table">
                 <thead style="position:sticky;top:0;z-index:1">
                     <tr>
-                        <th rowspan="2">Heure<br>(loc.)</th>
+                        <th rowspan="2" class="col-heure">Heure<br>(loc.)</th>
                         <th>AWS</th><th>TWS</th><th>Mer</th><th>T°mer</th>
                         <th>SOG</th><th>Cap</th><th>Voiles</th><th>Loch</th>
                         <th rowspan="2">Prof.</th>
@@ -245,16 +256,21 @@
                         <th>STW</th><th>COG</th><th>Allure</th><th>Trip</th>
                     </tr>
                 </thead>
+                    {# Changement de jour par rapport à la ligne du dessus : la
+                       date en rouge sous l'heure et un trait rouge au-dessus de
+                       la ligne (le premier jour est dans le bandeau). Le
+                       Journal reprend la date, sans le trait. #}
                     {% for ln in lines %}
                     {# rowLink ignore les clics tombés sur un élément interactif,
                        donc le champ « position visuelle » reste éditable en place. #}
-                    <tbody class="log-line">
+                    {% set jour_change = ln.timestamp and not loop.first and (loop.previtem.timestamp or '')[:10] != ln.timestamp[:10] %}
+                    <tbody class="log-line{{ ' jour-change' if jour_change else '' }}">
                     <tr class="row-top" title="Modifier cette ligne"
                         onclick="rowLink(event, '/logbook/{{ ln.id }}/edit')">
                         <td class="time-cell" rowspan="2">
                             {{ ln.timestamp[11:16] if ln.timestamp else '—' }}
                             {# La date sous l'heure, discrète : une route peut durer plusieurs jours. #}
-                            {% if ln.timestamp %}<span class="time-date">{{ ln.timestamp | jourmois }}</span>{% endif %}
+                            {% if jour_change %}<span class="time-date">{{ ln.timestamp | jourmois }}</span>{% endif %}
                         </td>
                         <td>{{ ln.aws | unit('kn') }}</td>
                         <td>{{ ln.tws | unit('kn') }}</td>
@@ -522,8 +538,10 @@ function buildMap() {
     {% endif %}
 
     {% for ln in notes_lines %}
+    {% set jour_change = ln.timestamp and not loop.first and (loop.previtem.timestamp or '')[:10] != ln.timestamp[:10] %}
     <div class="j-entree">
         <div class="j-quand">{{ ln.timestamp[11:16] if ln.timestamp else '—' }}
+            {% if jour_change %}<span class="time-date">{{ ln.timestamp | jourmois }}</span>{% endif %}
             {% if ln.visual_pos %}<span>{{ ln.visual_pos }}</span>{% endif %}</div>
         {{ texte_journal('/logbook/' ~ ln.id ~ '/field/notes', ln.notes, '') }}
     </div>
