@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote, unquote
-from utils import get_sensor_data, get_position, get_awa
+from utils import get_sensor_data, get_position, get_awa, _get_signalk_http_url
 import import_filemaker
 import import_gpx
 import passwords
@@ -8036,6 +8036,17 @@ async def settings_test_signalk(ikommunicate_url: Optional[str] = Form(None)):
     data = await asyncio.to_thread(get_sensor_data)
 
     if not data:
+        # Rien lu : soit personne ne répond à l'adresse, soit un serveur
+        # SignalK répond mais ne publie aucune mesure (instruments éteints,
+        # ou rien ne l'alimente) — deux pannes différentes, deux messages.
+        if await asyncio.to_thread(_get_signalk_http_url):
+            return _retour_settings(
+                "signalk",
+                "erreur",
+                f"{host} répond, mais ne publie aucune mesure. Vérifiez que les "
+                "instruments sont allumés et reliés au serveur SignalK "
+                "(son interface d'administration, « Data Connections »).",
+            )
         return _retour_settings(
             "signalk",
             "erreur",
