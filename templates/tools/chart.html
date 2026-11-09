@@ -54,11 +54,17 @@ fetch('/api/all-cruises/map-data')
                 trackCoords.push(...coords);
             });
 
-            cruise.logbook_points.forEach(p => {
-                L.circleMarker([p.lat, p.lon], {
-                    radius: 4, color: cruise.color, fillColor: cruise.color, fillOpacity: 1, weight: 2
-                }).addTo(map);
-            });
+            // Un point par ligne du journal seulement pour une croisière sans
+            // trace GPX, dont c'est le seul tracé ; avec une trace, la carte
+            // d'ensemble s'en passe (les cartes de croisière et de route les
+            // gardent toutes).
+            if (trackCoords.length === 0) {
+                cruise.logbook_points.forEach(p => {
+                    L.circleMarker([p.lat, p.lon], {
+                        radius: 4, color: cruise.color, fillColor: cruise.color, fillOpacity: 1, weight: 2
+                    }).addTo(map);
+                });
+            }
 
             allCoords.push(...trackCoords, ...cruise.logbook_points.map(p => [p.lat, p.lon]));
 
