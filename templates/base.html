@@ -1047,8 +1047,9 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
 
 // PDF (documents du navire, factures et reçus des comptes…) : dans une
 // visionneuse plein écran, par-dessus la page, avec son propre « ✕ Fermer ».
-// Ni onglet ni fenêtre : sur l'iPad, l'app lancée depuis l'écran d'accueil n'a
-// pas de barre de Safari pour fermer un onglet ou revenir en arrière. PDF.js
+// Dans le navigateur, un PDF s'ouvre dans une nouvelle fenêtre (onglet).
+// Lancée depuis l'écran d'accueil (html.app-autonome), ni onglet ni fenêtre :
+// l'app n'a pas de barre de Safari pour les fermer ou revenir en arrière. PDF.js
 // (vendor/pdfjs, servi par l'app : marche hors ligne) dessine chaque page —
 // sur iPad, un PDF posé dans la page n'en montrerait que la première. Tout lien
 // vers un .pdf, sur toutes les pages, s'ouvre ici ; ⌘-clic : le navigateur.
@@ -1082,6 +1083,10 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
         }
     }
     window.ouvrirPdf = async function (adresse, nom) {
+        if (!document.documentElement.classList.contains('app-autonome')) {
+            window.open(adresse, '_blank', 'noopener');
+            return;
+        }
         url = adresse; zoom = 1;
         titre.textContent = nom || decodeURIComponent(adresse.split('/').pop().replace(/^\d{8}-\d{6}_/, ''));
         compte.textContent = 'Chargement…';
