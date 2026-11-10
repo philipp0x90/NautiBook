@@ -3152,6 +3152,8 @@ async def about(request: Request):
 # arrive par le menu de l'ancre (accueil), avec « À propos ».
 
 HELP_PAGES = [
+    {"slug": "signalk", "title": "Connexion SignalK",
+     "summary": "adresse du serveur, accès en lecture seule, aucune mesure"},
     {"slug": "gasoil", "title": "Gasoil",
      "summary": "pleins, consommation, réservoir et autonomie"},
 ]
