@@ -55,6 +55,21 @@
         font-size: 14px;
         background: #f8fafc;
     }
+    /* Libellé écrit comme une phrase, pas en petites capitales. */
+    .field label.label-phrase { display: block; font-size: 14px; font-weight: 400; color: #1a1a2e; margin: 10px 0 8px;
+                                text-transform: none; letter-spacing: 0; }
+    .adresses-recentes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
+    .adresses-titre { color: var(--muted); margin-right: 2px; }
+    .adresse-puce { display: inline-flex; align-items: stretch; border: 1.5px solid #cfe3ef; border-radius: 999px;
+                    background: #f2f9fc; overflow: hidden; }
+    .adresse-puce button { border: none; background: none; font: inherit; cursor: pointer; color: #0f3a4a; }
+    .adresse-choisir { padding: 4px 4px 4px 12px; font-weight: 600; }
+    .adresse-choisir small { font-weight: 400; color: var(--muted); margin-left: 4px; }
+    .adresse-oublier { padding: 4px 10px 4px 6px; color: var(--muted) !important; }
+    .adresse-puce button:hover { background: #e2f2f8; }
+    .adresse-ligne { display: flex; align-items: center; gap: 12px; }
+    .adresse-ligne input { flex: 1; min-width: 0; }
+    .adresse-ligne .badge-ok, .adresse-ligne .badge-missing { white-space: nowrap; }
     .field input:focus {
         outline: none;
         border-color: var(--accent);
@@ -162,35 +177,46 @@
     <div class="settings-subtitle">Configuration de NautiBook</div>
 
     <div class="settings-section">
-        <div class="settings-section-title">Capteurs &amp; SignalK</div>
-        <div class="settings-section-desc">
-            L'URL de base du serveur iKommunicate/SignalK. Elle est utilisée pour
-            pré-remplir automatiquement les données capteurs lors de la saisie d'une
-            ligne de journal.
-        </div>
+        <div class="settings-section-title">Serveur SignalK</div>
         <form method="post" action="/settings">
             <div class="field">
-                <label for="ik_url">Adresse iKommunicate / SignalK</label>
-                <input
-                    type="text"
-                    id="ik_url"
-                    name="ikommunicate_url"
-                    value="{{ ikommunicate_host }}"
-                    placeholder="192.168.1.102:3000"
-                >
-                <div class="field-hint">
-                    Adresse IP, <strong>avec le port</strong> si le serveur n'est pas sur le
-                    port&nbsp;80 — ex.&nbsp;: <code>192.168.1.102:3000</code>.
-                    SignalK écoute sur <code>3000</code> par défaut&nbsp;; sans le port,
-                    l'adresse est enregistrée mais aucun capteur ne répond.
-                    &nbsp;·&nbsp;
+                <label for="ik_url" class="label-phrase">Entrez ici l’adresse IP du serveur SignalK&nbsp;:</label>
+                {# La case et son état sur une même ligne. #}
+                <div class="adresse-ligne">
+                    <input
+                        type="text"
+                        id="ik_url"
+                        name="ikommunicate_url"
+                        value="{{ ikommunicate_host }}"
+                        placeholder="192.168.1.102:3000"
+                    >
                     {% if ikommunicate_host %}
                     <span class="badge-ok">✓ configuré</span>
                     {% else %}
                     <span class="badge-missing">non configuré</span>
                     {% endif %}
-                    <br>
-                    <span style="color: var(--text-muted, #888);">Pour tester sans capteurs&nbsp;: <code>demo.signalk.org</code></span> · <a href="/help/signalk">Configuration du serveur SignalK ›</a>
+                </div>
+                {# Adresses récentes (config.yaml, propres à cette machine) : un
+                   toucher met l'adresse dans la case et lance le test, qui
+                   l'enregistre ; ✕ l'oublie. L'adresse en cours n'y figure pas. #}
+                {% set recentes = signalk_recent | rejectattr('address', 'equalto', ikommunicate_host)
+                                                 | rejectattr('ip', 'equalto', ikommunicate_host) | list %}
+                {% if recentes %}
+                <div class="adresses-recentes">
+                    <span class="adresses-titre">Adresses récentes&nbsp;:</span>
+                    {% for e in recentes %}
+                    <span class="adresse-puce">
+                        <button type="button" class="adresse-choisir" title="{{ e.address }}{% if e.ip and e.ip != e.address %} ({{ e.ip }}){% endif %} — utiliser et tester"
+                                onclick="choisirAdresse({{ e.address | tojson | forceescape }})">
+                            {{ e.name or e.address }}{% if e.name and e.ip %} <small>{{ e.ip }}</small>{% endif %}
+                        </button><button type="submit" class="adresse-oublier" formaction="/settings/signalk-forget"
+                                name="oublier" value="{{ e.address }}" title="Oublier cette adresse">✕</button>
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <div class="field-hint">
+                    <span style="color: var(--text-muted, #888);">Pour tester sans capteurs&nbsp;: <code>demo.signalk.org</code></span> · <a href="/help/signalk">Connexion SignalK ›</a>
                 </div>
             </div>
             {% if signalk %}
@@ -204,7 +230,7 @@
                 {# formaction envoie le même formulaire ailleurs : le test reçoit
                    donc l'adresse telle qu'elle est dans la case, et l'enregistre
                    avant d'essayer. #}
-                <button type="submit" class="btn-test"
+                <button type="submit" class="btn-test" id="btn-test-signalk"
                         formaction="/settings/test-signalk">Tester la connexion</button>
             </div>
         </form>
@@ -238,6 +264,14 @@
 </footer>
 
 <script>
+// Adresse récente choisie : dans la case, puis le bouton « Tester la
+// connexion », qui l'enregistre avant d'essayer.
+function choisirAdresse(adresse) {
+    document.getElementById('ik_url').value = adresse;
+    const test = document.getElementById('btn-test-signalk');
+    test.form.requestSubmit(test);
+}
+
 // La sauvegarde prend une à deux secondes sans que rien ne bouge à l'écran :
 // sans ce retour, un second clic lancerait une deuxième copie. Le drapeau sur
 // le formulaire suffit, le rechargement de la page le remettant à zéro.

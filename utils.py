@@ -189,3 +189,69 @@ def get_sensor_data() -> dict:
         print(f"SignalK data collection error: {e}")
 
     return data
+
+
+# ── Noms des serveurs (mDNS) ──
+# Les adresses récentes des Réglages montrent le nom des machines
+# (« nautibook », « MacStudio-de-Benoit ») plutôt que leur IP : le réseau les
+# annonce en .local (mDNS, Bonjour / avahi). La bibliothèque standard ne sait
+# pas faire la recherche inverse IP → nom en mDNS, d'où cette requête à la
+# main : une question PTR envoyée au groupe 224.0.0.251:5353 depuis un port
+# quelconque, à laquelle la machine répond directement (« legacy unicast »).
+
+def _dns_nom(paquet: bytes, i: int) -> tuple[str, int]:
+    """Lit un nom DNS (avec pointeurs de compression) ; renvoie le nom et la
+    position qui suit le nom à son emplacement d'origine."""
+    etiquettes, fin = [], None
+    for _ in range(64):
+        n = paquet[i]
+        if n == 0:
+            i += 1
+            break
+        if n & 0xC0 == 0xC0:
+            if fin is None:
+                fin = i + 2
+            i = ((n & 0x3F) << 8) | paquet[i + 1]
+            continue
+        etiquettes.append(paquet[i + 1:i + 1 + n].decode("utf-8", "replace"))
+        i += 1 + n
+    return ".".join(etiquettes), (fin if fin is not None else i)
+
+
+def mdns_name(ip: str, timeout: float = 1.5) -> str | None:
+    """Le nom .local qu'une machine du réseau annonce pour son IPv4, ou None."""
+    import socket
+    import struct
+    try:
+        inverse = ".".join(reversed(ip.split("."))) + ".in-addr.arpa"
+        question = b"".join(bytes([len(e)]) + e.encode() for e in inverse.split(".")) + b"\0"
+        paquet = struct.pack(">HHHHHH", 0, 0, 1, 0, 0, 0) + question + struct.pack(">HH", 12, 1)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(timeout)
+            s.sendto(paquet, ("224.0.0.251", 5353))
+            reponse, _ = s.recvfrom(4096)
+        qd, an = struct.unpack(">HH", reponse[4:8])
+        i = 12
+        for _ in range(qd):
+            _, i = _dns_nom(reponse, i)
+            i += 4
+        for _ in range(an):
+            _, i = _dns_nom(reponse, i)
+            type_, _, _, longueur = struct.unpack(">HHIH", reponse[i:i + 10])
+            i += 10
+            if type_ == 12:
+                return _dns_nom(reponse, i)[0] or None
+            i += longueur
+    except Exception:
+        return None
+    return None
+
+
+def resolve_host(name: str) -> str | None:
+    """L'IPv4 d'un nom, si cette machine sait le résoudre (un nom .local
+    demande mDNS côté système : libnss-mdns sur le Pi)."""
+    import socket
+    try:
+        return socket.getaddrinfo(name, None, socket.AF_INET)[0][4][0]
+    except Exception:
+        return None

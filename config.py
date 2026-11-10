@@ -63,3 +63,28 @@ def get_keel_offset() -> float:
 
 def is_configured() -> bool:
     return bool(get_ikommunicate_host())
+
+
+# ── Adresses SignalK récentes ──
+# Les serveurs essayés depuis cette machine (le Pi, le Mac, l'iKommunicate…),
+# rappelés d'un toucher dans les Réglages. Chaque entrée : `address`, ce qui
+# va dans la case (le nom .local quand la machine en annonce un, sinon l'IP),
+# `name`, le nom affiché, et `ip`, l'adresse IP et le port d'origine. La
+# plus récente d'abord, RECENT_HOSTS au plus.
+RECENT_HOSTS = 5
+
+
+def get_recent_hosts() -> list[dict]:
+    recent = load_config().get("signalk_recent") or []
+    return [e for e in recent if isinstance(e, dict) and e.get("address")]
+
+
+def remember_host(entry: dict):
+    """Met l'entrée en tête ; une entrée de même adresse ou de même IP part."""
+    cles = {entry.get("address"), entry.get("ip")} - {None}
+    autres = [e for e in get_recent_hosts() if not ({e.get("address"), e.get("ip")} & cles)]
+    save_config({"signalk_recent": [entry] + autres[: RECENT_HOSTS - 1]})
+
+
+def forget_host(address: str):
+    save_config({"signalk_recent": [e for e in get_recent_hosts() if e.get("address") != address]})

@@ -23,11 +23,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote, unquote
-from utils import get_sensor_data, get_position, get_awa, _get_signalk_http_url
+from utils import get_sensor_data, get_position, get_awa, _get_signalk_http_url, mdns_name, resolve_host
 import import_filemaker
 import import_gpx
 import passwords
-from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured
+from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured, get_recent_hosts, remember_host, forget_host
 
 # NAUTIBOOK_DB : une autre base que logbook.db, pour regarder une copie dans
 # l'app sans toucher la vraie (essai d'un import, par exemple) :
@@ -7904,6 +7904,7 @@ async def settings_form(
             "active_section": "settings",
             "current_ship": dict(ship) if ship else None,
             "ikommunicate_host": get_ikommunicate_host() or "",
+            "signalk_recent": get_recent_hosts(),
             # Toute autre valeur que 'ok' ou 'erreur' n'affiche rien.
             "sauvegarde": sauvegarde if sauvegarde in ("ok", "erreur") else "",
             "sauvegarde_message": message_sauvegarde,
@@ -7919,6 +7920,43 @@ async def settings_save(
     ikommunicate_url: Optional[str] = Form(None),
 ):
     save_config({"ikommunicate_url": (ikommunicate_url or "").strip()})
+    await _remember_signalk()
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+def _signalk_entry(host: str) -> dict:
+    """L'entrée des adresses récentes pour host (« 192.168.0.109:3000 ») :
+    le nom .local que la machine annonce, s'il se résout ici, devient ce que
+    le bouton met dans la case — un nom survit à un changement d'IP de la
+    box. Le nom peut se résoudre vers une autre IP de la même machine (câble
+    et wifi), ce qui va aussi bien. Bloquant (mDNS) : appelé dans un thread."""
+    machine, _, port = host.rpartition(":")
+    if not (machine and port.isdigit()):
+        machine, port = host, ""
+    suffixe = f":{port}" if port else ""
+    if re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", machine):
+        nom = mdns_name(machine)
+        if nom and resolve_host(nom):
+            return {"address": nom + suffixe, "name": nom.removesuffix(".local"), "ip": host}
+        return {"address": host, "name": None, "ip": host}
+    ip = resolve_host(machine)
+    return {"address": host, "name": machine.removesuffix(".local") if machine.endswith(".local") else None,
+            "ip": (ip + suffixe) if ip else None}
+
+
+async def _remember_signalk():
+    """Retient l'adresse enregistrée parmi les récentes (Réglages)."""
+    host = get_ikommunicate_host()
+    if host:
+        remember_host(await asyncio.to_thread(_signalk_entry, host))
+
+
+@app.post("/settings/signalk-forget")
+async def settings_signalk_forget(oublier: Optional[str] = Form(None)):
+    """Le ✕ d'une adresse récente. Le bouton partage le formulaire de la case
+    (formaction) : seul `oublier` compte, l'adresse en cours ne change pas."""
+    if oublier:
+        forget_host(oublier)
     return RedirectResponse(url="/settings", status_code=303)
 
 
@@ -8031,6 +8069,7 @@ async def settings_test_signalk(ikommunicate_url: Optional[str] = Form(None)):
     host = get_ikommunicate_host()
     if not host:
         return _retour_settings("signalk", "erreur", "Aucune adresse enregistrée.")
+    await _remember_signalk()
 
     # requests bloquant, comme get_position() dans le traqueur. Un hôte muet
     # coûte les 5 s du timeout de découverte, pas la somme des endpoints :
