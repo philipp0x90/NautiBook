@@ -5758,6 +5758,20 @@ async def create_cruise(
 
 # ── Stopovers ────────────────────────────────────────────────────────────────
 
+async def _supplier_names(db, route_id) -> list:
+    """Noms des contacts du navire de la route, proposés pour le nom du port
+    d'une escale : écrit à l'identique, il rattache la dépense de l'escale à
+    la fiche du fournisseur (le même nom que retient expenses.supplier)."""
+    cursor = await db.execute(
+        """SELECT DISTINCT COALESCE(company, contact_name) AS n FROM contacts
+           WHERE ship_id = (SELECT c.ship_id FROM routes r JOIN cruises c ON r.cruise_id = c.id
+                            WHERE r.id = ?)
+             AND COALESCE(company, contact_name) IS NOT NULL ORDER BY n COLLATE NOCASE""",
+        (route_id,),
+    )
+    return [row[0] for row in await cursor.fetchall()]
+
+
 @app.get("/routes/{route_id}/stopovers/new", response_class=HTMLResponse)
 async def new_stopover_form(request: Request, route_id: int):
     """Même formulaire que la modification (stopover_form.html), prérempli
@@ -5772,6 +5786,7 @@ async def new_stopover_form(request: Request, route_id: int):
             (route_id,),
         )
         route = await cursor.fetchone()
+        suppliers = await _supplier_names(db, route_id)
     if route is None:
         raise HTTPException(status_code=404, detail="Route not found")
     # Toutes les clés du formulaire, vides : le gabarit les teste avec
@@ -5789,7 +5804,7 @@ async def new_stopover_form(request: Request, route_id: int):
     return templates.TemplateResponse(
         "routes/stopover_form.html",
         {"request": request, "active_section": "routes", "stopover": stopover, "nouveau": True,
-         "documents": [], "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
+         "suppliers": suppliers, "documents": [], "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
     )
 
 
@@ -5864,6 +5879,7 @@ async def edit_stopover_form(request: Request, stopover_id: int):
         cursor = await db.execute(
             "SELECT id, designation, paid FROM expenses WHERE stopover_id = ?", (stopover_id,))
         expense = await cursor.fetchone()
+        suppliers = await _supplier_names(db, stopover["route_id"]) if stopover else []
     if stopover is None:
         raise HTTPException(status_code=404, detail="Stopover not found")
     stopover = dict(stopover)
@@ -5871,7 +5887,7 @@ async def edit_stopover_form(request: Request, stopover_id: int):
     return templates.TemplateResponse(
         "routes/stopover_form.html",
         {"request": request, "active_section": "cruises", "stopover": stopover, "nouveau": False,
-         "documents": documents, "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
+         "suppliers": suppliers, "documents": documents, "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
     )
 
 

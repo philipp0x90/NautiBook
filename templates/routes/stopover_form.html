@@ -77,8 +77,18 @@
                 <input type="text" name="locality" value="{{ stopover.locality or '' }}">
             </div>
             <div>
-                <label>Nom du port</label>
-                <input type="text" name="name" value="{{ stopover.name or '' }}">
+                {# Infobulle au survol sur le Mac ; au toucher, le bouton ⓘ l'affiche
+                   (l'iPad n'a pas de survol). Les contacts du navire sont proposés :
+                   un nom identique rattache la dépense de l'escale à leur fiche. #}
+                {% set aide = "Pour un stationnement, inscrivez plutôt le fournisseur : d'autres services seront sans doute facturés (carénage, entretien…), et sa fiche en fera le total." %}
+                <label for="escale-nom">Nom du port ou du fournisseur
+                    <button type="button" title="{{ aide }}" aria-label="{{ aide }}"
+                            onclick="const t = document.getElementById('aide-fournisseur'); t.hidden = !t.hidden"
+                            style="border:0;background:none;padding:0 4px;font-size:15px;color:var(--accent);cursor:pointer;vertical-align:-1px">ⓘ</button>
+                </label>
+                <input type="text" name="name" id="escale-nom" value="{{ stopover.name or '' }}" list="fournisseurs" autocomplete="off">
+                <datalist id="fournisseurs">{% for n in suppliers %}<option value="{{ n }}">{% endfor %}</datalist>
+                <div id="aide-fournisseur" class="meta" hidden>{{ aide }}</div>
             </div>
         </div>
         <div class="escale-types" role="radiogroup" aria-label="Type d'escale">
