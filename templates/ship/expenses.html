@@ -167,8 +167,10 @@
                 <td>{{ e.designation or '' }}</td>
                 <td>{{ e.expense_type or '' }}</td>
                 <td>
-                    {% if e.supplier in supplier_ids %}
-                    <a href="/ship/contacts/{{ supplier_ids[e.supplier] }}" title="Ouvrir la fiche du fournisseur"
+                    {# Une dépense d'escale mène au contact qui porte le nom du port. #}
+                    {% set fiche = supplier_ids.get(e.supplier) or supplier_ids.get(e.port_name) %}
+                    {% if fiche %}
+                    <a href="/ship/contacts/{{ fiche }}" title="Ouvrir la fiche du fournisseur"
                        style="color:var(--accent);text-decoration:none">{{ e.supplier }}</a>
                     {% else %}
                     {{ e.supplier or '' }}

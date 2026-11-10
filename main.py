@@ -2286,6 +2286,7 @@ async def ship_expenses(request: Request, tri: Optional[str] = None, ordre: Opti
         cursor = await db.execute(
             # Le trombone de la liste ouvre le premier document de la dépense.
             f"""SELECT *,
+                   (SELECT name FROM stopovers s WHERE s.id = expenses.stopover_id) AS port_name,
                    COALESCE((SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
                              ORDER BY d.id LIMIT 1),
                             (SELECT path FROM stopover_documents d WHERE d.stopover_id = expenses.stopover_id
@@ -3769,12 +3770,20 @@ async def contact_detail(request: Request, contact_id: int):
         name_filter = contact.get("company") or contact.get("contact_name") or ""
         cursor = await db.execute(
             # Le trombone ouvre le premier document de l'achat, comme dans les comptes.
+            # Une dépense d'escale a pour fournisseur « Localité - Nom du port » :
+            # elle revient au contact qui porte le nom du port.
             """SELECT *,
-                   (SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
-                    ORDER BY d.id LIMIT 1) AS first_doc,
-                   (SELECT COUNT(*) FROM expense_documents d WHERE d.expense_id = expenses.id) AS doc_count
-               FROM expenses WHERE ship_id = ? AND supplier = ? ORDER BY date DESC, id DESC""",
-            (ship_id, name_filter),
+                   COALESCE((SELECT path FROM expense_documents d WHERE d.expense_id = expenses.id
+                             ORDER BY d.id LIMIT 1),
+                            (SELECT path FROM stopover_documents d WHERE d.stopover_id = expenses.stopover_id
+                             ORDER BY d.id LIMIT 1)) AS first_doc,
+                   (SELECT COUNT(*) FROM expense_documents d WHERE d.expense_id = expenses.id)
+                   + (SELECT COUNT(*) FROM stopover_documents d WHERE d.stopover_id = expenses.stopover_id)
+                   AS doc_count
+               FROM expenses WHERE ship_id = ?
+                 AND (supplier = ? OR stopover_id IN (SELECT id FROM stopovers WHERE name = ?))
+               ORDER BY date DESC, id DESC""",
+            (ship_id, name_filter, name_filter),
         )
         purchases = await cursor.fetchall()
         places = await _contact_places(db, ship_id)
