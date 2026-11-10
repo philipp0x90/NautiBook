@@ -1293,7 +1293,11 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
         // Liens vers une page interdite (« + Nouvelle dépense »…) : retirés.
         document.querySelectorAll('a[href^="/"]').forEach(function (a) {
             if (a.closest('nav, header')) return;
-            if (!permis('GET', a.getAttribute('href'))) a.style.display = 'none';
+            if (permis('GET', a.getAttribute('href'))) return;
+            // Dans le texte du mode d'emploi, le mot reste, sans le lien : la
+            // phrase garderait sinon un trou (« définis à la page : »).
+            if (a.closest('.aide')) a.replaceWith(...a.childNodes);
+            else a.style.display = 'none';
         });
     });
 })();
