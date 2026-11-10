@@ -65,18 +65,17 @@ def _jourfr(value):
 JOURS_COURTS = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."]
 
 
-def _jourmois(value, annee=False):
+def _jourmois(value):
     """ISO date → « sam. 06/09 » : jour abrégé, jour et mois, sans l'année, pour
     les listes où celle-ci est déjà dite (les escales, sous leur croisière).
-    annee=True l'ajoute (« sam. 06/09/2025 ») : un séjour à cheval sur deux
-    années. En dur, pour la même raison que _jourfr."""
+    En dur, pour la même raison que _jourfr."""
     if not value:
         return "—"
     try:
         d = date.fromisoformat(str(value)[:10])
     except ValueError:
         return "—"
-    return f"{JOURS_COURTS[d.weekday()]} {d.day:02d}/{d.month:02d}" + (f"/{d.year}" if annee else "")
+    return f"{JOURS_COURTS[d.weekday()]} {d.day:02d}/{d.month:02d}"
 
 
 MOIS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
