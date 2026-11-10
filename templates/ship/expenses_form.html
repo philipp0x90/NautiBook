@@ -203,12 +203,20 @@
         {% endif %}
         <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
         {# La fiche du fournisseur, à droite, quand il est dans le carnet
-           (expenses.supplier retient son nom : société, à défaut contact). #}
-        {% set fiche = contacts | selectattr('company', 'eq', entry.supplier) | list
-                       or contacts | selectattr('contact_name', 'eq', entry.supplier) | list if edition and entry.supplier else [] %}
+           (expenses.supplier retient son nom : société, à défaut contact).
+           Une dépense d'escale (« Localité - Nom du port ») mène au contact
+           qui porte le nom du port. #}
+        {% set nom = entry.supplier if edition else none %}
+        {% set fiche = contacts | selectattr('company', 'eq', nom) | list
+                       or contacts | selectattr('contact_name', 'eq', nom) | list if nom else [] %}
+        {% if not fiche and edition and stopover and stopover.name %}
+        {% set nom = stopover.name %}
+        {% set fiche = contacts | selectattr('company', 'eq', nom) | list
+                       or contacts | selectattr('contact_name', 'eq', nom) | list %}
+        {% endif %}
         {% if fiche %}
         <a href="/ship/contacts/{{ fiche[0].id }}" class="btn btn-blue" style="margin-left:auto"
-           title="Ouvrir la fiche de {{ entry.supplier }}">Contact fournisseur</a>
+           title="Ouvrir la fiche de {{ nom }}">Contact fournisseur</a>
         {% endif %}
     </div>
 
