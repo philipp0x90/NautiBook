@@ -85,7 +85,9 @@
                 </td>
                 <td>{% if s.type %}<span class="type type-{{ s.type }}">{{ s.type }}</span>{% endif %}</td>
                 <td>
-                    {{ s.arrival_date | jourmois }}{% if s.departure_date %} – {{ s.departure_date | jourmois }}{% endif %}
+                    {# Un séjour à cheval sur deux années les donne toutes deux. #}
+                    {% set deux_annees = s.arrival_date and s.departure_date and s.arrival_date[:4] != s.departure_date[:4] %}
+                    {{ s.arrival_date | jourmois(deux_annees) }}{% if s.departure_date %} – {{ s.departure_date | jourmois(deux_annees) }}{% endif %}
                     {% set duree = 'Stationnement' if s.parking else sejour(s.arrival_date, s.departure_date) %}{% if duree %}<span class="nuits">{{ duree }}</span>{% endif %}
                 </td>
                 <td>
