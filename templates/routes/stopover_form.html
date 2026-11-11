@@ -180,7 +180,7 @@
         </div>
         {# Le Total crée la dépense de l'escale dans les Comptes et la tient à
            jour (_sync_stopover_expense). #}
-        <div class="meta" style="margin-top:6px">
+        <div class="meta" style="margin-top:6px" id="escale-depense" data-comptes="{{ 1 if peut(request, 'comptes.voir') else 0 }}">
             {% if stopover.expense %}
             {% if peut(request, 'comptes.voir') %}<a href="/ship/expenses/{{ stopover.expense.id }}">Voir l'escale dans les comptes</a> — {{ stopover.expense.paid | euros }}
             {% else %}Inscrite dans les comptes — {{ stopover.expense.paid | euros }}{% endif %}
@@ -196,10 +196,15 @@
     </section>
 
     <div class="escale-boutons">
-        {# Annuler ramène d'où l'on vient : la route pour une création, la
-           liste des escales pour une modification. #}
-        <a href="{{ '/routes/' ~ stopover.route_id if nouveau else '/cruises/stopovers' }}" class="btn" style="background:#eee;color:#333">Annuler</a>
+        {% if nouveau %}
+        <a href="/routes/{{ stopover.route_id }}" class="btn" style="background:#eee;color:#333">Annuler</a>
         <button type="submit" class="btn btn-primary">Enregistrer</button>
+        {% else %}
+        {# Modification : chaque champ quitté s'enregistre (script plus bas),
+           sans bouton ; l'état s'affiche ici. #}
+        <span class="meta" id="escale-etat" style="align-self:center"></span>
+        <a href="/cruises/stopovers" class="btn" style="background:#eee;color:#333">Escales</a>
+        {% endif %}
     </div>
 
 </form>
@@ -251,6 +256,42 @@
     if (n0 && !isNaN(p0)) calcule = (p0 * n0).toFixed(2);   // le total actuel compte comme calculé s'il l'était
     maj();
 })();
+
+{% if not nouveau %}
+// Modification : un champ quitté (« change » : à la sortie d'un texte, tout de
+// suite pour une date, un bouton de type, la case Stationnement) enregistre
+// toute la fiche, en arrière-plan — un rechargement ferait perdre le champ
+// suivant. Entrée fait de même au lieu de quitter la page. auto=1 : le
+// serveur répond par la dépense liée au lieu de renvoyer à la liste.
+(function () {
+    const form = document.getElementById('escale-form');
+    const etat = document.getElementById('escale-etat');
+    const depense = document.getElementById('escale-depense');
+    let enCours = null, encore = false;
+    async function enregistrer() {
+        if (enCours) { encore = true; return; }
+        const donnees = new FormData(form);
+        donnees.set('auto', '1');
+        etat.textContent = 'Enregistrement…';
+        enCours = fetch(form.action, { method: 'POST', body: donnees, keepalive: true })
+            .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(d => {
+                etat.textContent = 'Enregistré ✓';
+                if (d.expense_id) {
+                    depense.innerHTML = depense.dataset.comptes === '1'
+                        ? '<a href="/ship/expenses/' + d.expense_id + '">Voir l\'escale dans les comptes</a> — ' + d.paid
+                        : 'Inscrite dans les comptes — ' + d.paid;
+                } else {
+                    depense.textContent = 'Le Total s\'inscrit dans les Comptes, en dépense « Escale ».';
+                }
+            })
+            .catch(() => { etat.textContent = 'Non enregistré — vérifiez la connexion'; })
+            .finally(() => { enCours = null; if (encore) { encore = false; enregistrer(); } });
+    }
+    form.addEventListener('change', enregistrer);
+    form.addEventListener('submit', e => { e.preventDefault(); enregistrer(); });
+})();
+{% endif %}
 </script>
 
 {% endblock %}

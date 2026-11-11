@@ -1,6 +1,6 @@
 # main.py
 from fastapi import FastAPI, HTTPException, Request, Form, Query, File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime, date, timedelta
@@ -5930,6 +5930,7 @@ async def update_stopover(
     lon_min: Optional[float] = Form(None),
     lon_hem: Optional[str] = Form(None),
     parking: Optional[str] = Form(None),
+    auto: Optional[str] = Form(None),
 ):
     if cost is None and cost_per_night is not None and arrival_date and departure_date:
         from datetime import date
@@ -5954,6 +5955,14 @@ async def update_stopover(
         )
         await _sync_stopover_expense(db, stopover_id)
         await db.commit()
+        # Enregistrement automatique (un champ quitté, stopover_form.html) :
+        # la page reste, elle reçoit seulement de quoi tenir à jour le lien
+        # vers la dépense.
+        if auto:
+            cursor = await db.execute("SELECT id, paid FROM expenses WHERE stopover_id = ?", (stopover_id,))
+            expense = await cursor.fetchone()
+            return JSONResponse({"expense_id": expense[0] if expense else None,
+                                 "paid": _euros(expense[1]) if expense else None})
     # Retour à la liste des escales, d'où que l'on vienne.
     return RedirectResponse(url="/cruises/stopovers", status_code=303)
 
