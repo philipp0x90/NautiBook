@@ -232,6 +232,9 @@
                    avant d'essayer. #}
                 <button type="submit" class="btn-test" id="btn-test-signalk"
                         formaction="/settings/test-signalk">Tester la connexion</button>
+                {# L'interface d'administration du serveur (/admin/), à l'adresse
+                   de la case, dans une nouvelle fenêtre. #}
+                <button type="button" class="btn-test" onclick="ouvrirServeurSignalK()">Serveur SignalK</button>
             </div>
         </form>
     </div>
@@ -270,6 +273,14 @@ function choisirAdresse(adresse) {
     document.getElementById('ik_url').value = adresse;
     const test = document.getElementById('btn-test-signalk');
     test.form.requestSubmit(test);
+}
+
+// « Serveur SignalK » : son interface d'administration, à l'adresse de la case.
+function ouvrirServeurSignalK() {
+    const hote = document.getElementById('ik_url').value.trim()
+        .replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+    if (!hote) { document.getElementById('ik_url').focus(); return; }
+    window.open('http://' + hote + '/admin/', '_blank', 'noopener');
 }
 
 // La sauvegarde prend une à deux secondes sans que rien ne bouge à l'écran :
