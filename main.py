@@ -5758,6 +5758,26 @@ async def create_cruise(
 
 # ── Stopovers ────────────────────────────────────────────────────────────────
 
+async def _stopover_neighbours(db, stopover_id: int):
+    """Ids de l'escale précédente et de la suivante du même navire, dans
+    l'ordre de la page Escales (croisière par croisière, puis arrivée) ;
+    None aux bouts."""
+    cursor = await db.execute(
+        f"""SELECT s.id FROM stopovers s
+               JOIN routes r ON s.route_id = r.id JOIN cruises c ON r.cruise_id = c.id
+            WHERE c.ship_id = (SELECT c2.ship_id FROM stopovers s2
+                                 JOIN routes r2 ON s2.route_id = r2.id
+                                 JOIN cruises c2 ON r2.cruise_id = c2.id WHERE s2.id = ?)
+            ORDER BY {CRUISE_ORDER}, COALESCE(s.arrival_date, '9999') ASC, s.id ASC""",
+        (stopover_id,),
+    )
+    ids = [row[0] for row in await cursor.fetchall()]
+    if stopover_id not in ids:
+        return None, None
+    i = ids.index(stopover_id)
+    return (ids[i - 1] if i > 0 else None), (ids[i + 1] if i + 1 < len(ids) else None)
+
+
 async def _supplier_names(db, route_id) -> list:
     """Noms des contacts du navire de la route, proposés pour le nom du port
     d'une escale : écrit à l'identique, il rattache la dépense de l'escale à
@@ -5880,6 +5900,7 @@ async def edit_stopover_form(request: Request, stopover_id: int):
             "SELECT id, designation, paid FROM expenses WHERE stopover_id = ?", (stopover_id,))
         expense = await cursor.fetchone()
         suppliers = await _supplier_names(db, stopover["route_id"]) if stopover else []
+        prev_id, next_id = await _stopover_neighbours(db, stopover_id)
     if stopover is None:
         raise HTTPException(status_code=404, detail="Stopover not found")
     stopover = dict(stopover)
@@ -5887,7 +5908,7 @@ async def edit_stopover_form(request: Request, stopover_id: int):
     return templates.TemplateResponse(
         "routes/stopover_form.html",
         {"request": request, "active_section": "cruises", "stopover": stopover, "nouveau": False,
-         "suppliers": suppliers, "documents": documents, "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
+         "suppliers": suppliers, "prev_id": prev_id, "next_id": next_id, "documents": documents, "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES))},
     )
 
 

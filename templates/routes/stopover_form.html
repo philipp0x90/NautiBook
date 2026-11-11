@@ -53,7 +53,16 @@
 {% block content %}
 
 <div class="section-bar">
+    {% if nouveau %}
     <div class="section-bar-title">{{ titre }}</div>
+    {% else %}
+    {# Escale précédente et suivante, dans l'ordre de la page Escales. #}
+    <div class="section-bar-title fiche-nav">
+        {% if prev_id %}<a href="/stopovers/{{ prev_id }}/edit" title="Escale précédente">‹</a>{% else %}<span class="eteint">‹</span>{% endif %}
+        <span>{{ titre }}</span>
+        {% if next_id %}<a href="/stopovers/{{ next_id }}/edit" title="Escale suivante">›</a>{% else %}<span class="eteint">›</span>{% endif %}
+    </div>
+    {% endif %}
 </div>
 
 <form method="POST" action="{{ action }}" class="card escale-carte" id="escale-form" enctype="multipart/form-data">
@@ -84,7 +93,7 @@
                 <label for="escale-nom">Nom du port ou du fournisseur
                     <button type="button" title="{{ aide }}" aria-label="{{ aide }}"
                             onclick="const t = document.getElementById('aide-fournisseur'); t.hidden = !t.hidden"
-                            style="border:0;background:none;padding:0 4px;font-size:15px;color:var(--accent);cursor:pointer;vertical-align:-1px">ⓘ</button>
+                            style="border:0;background:none;padding:0 4px;font-size:15px;line-height:0;color:var(--accent);cursor:pointer;vertical-align:-1px">ⓘ</button>
                 </label>
                 <input type="text" name="name" id="escale-nom" value="{{ stopover.name or '' }}" list="fournisseurs" autocomplete="off">
                 <datalist id="fournisseurs">{% for n in suppliers %}<option value="{{ n }}">{% endfor %}</datalist>
