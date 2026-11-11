@@ -4,7 +4,7 @@
    formulaire — à la création, préremplies d'après la route (localité = son
    arrivée, date d'arrivée = la sienne) — et le contexte (croisière, route). #}
 {% set action = '/routes/' ~ stopover.route_id ~ '/stopovers/new' if nouveau else '/stopovers/' ~ stopover.id ~ '/edit' %}
-{% set titre = 'Nouvelle escale' if nouveau else "Modifier l'escale" %}
+{% set titre = 'Nouvelle escale' if nouveau else ('Escale à ' ~ stopover.locality if stopover.locality else 'Escale') %}
 {% block title %}{{ titre }} — NautiBook{% endblock %}
 
 {% block head %}
