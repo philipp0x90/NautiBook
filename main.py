@@ -994,21 +994,28 @@ async def _sync_stopover_expense(db, stopover_id: int):
     duree = _sejour(arrival, departure)
     designation = f"{'Stationnement' if parking else 'Escale'} {place}" + (f" — {duree}" if duree else "")
     supplier = " - ".join(dict.fromkeys(x for x in (locality, name) if x)) or None
-    values = ((departure or arrival or "")[:10] or None, designation, supplier, cost, cost, 0,
-              "Stationnement" if parking else "Escale", ship_id)
+    date_ = (departure or arrival or "")[:10] or None
+    kind = "Stationnement" if parking else "Escale"
+    # Payé se saisit dans les Comptes (un acompte, un reste à payer) : il ne
+    # suit le Total que tant qu'il lui était égal (ou vide) ; le solde suit.
     cursor = await db.execute(
-        """UPDATE expenses SET date = ?, designation = ?, supplier = ?, unit_price = ?, paid = ?,
-                               balance = ?, expense_type = ?, ship_id = ?
+        """UPDATE expenses SET date = ?, designation = ?, supplier = ?, expense_type = ?, ship_id = ?,
+                               paid = CASE WHEN paid IS NULL OR ABS(paid - COALESCE(unit_price, 0)) < 0.005
+                                           THEN ? ELSE paid END,
+                               unit_price = ?
            WHERE stopover_id = ?""",
-        (*values, s_id),
+        (date_, designation, supplier, kind, ship_id, cost, cost, s_id),
     )
     if cursor.rowcount == 0:
         await db.execute(
             """INSERT INTO expenses (date, designation, supplier, unit_price, paid, balance,
                                      expense_type, ship_id, stopover_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (*values, s_id),
+               VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)""",
+            (date_, designation, supplier, cost, cost, kind, ship_id, s_id),
         )
+    else:
+        await db.execute("UPDATE expenses SET balance = unit_price - COALESCE(paid, 0) WHERE stopover_id = ?",
+                         (s_id,))
 
 
 async def _stopover_expenses(db):
@@ -2846,8 +2853,17 @@ async def update_expense(
 ):
     balance, paid = _expense_balance(unit_price, paid)
     async with connect() as db:
-        # La dépense d'une escale se modifie depuis l'escale, jamais ici.
+        # La dépense d'une escale : montant, date, objet, fournisseur et
+        # catégorie viennent de l'escale (_sync_stopover_expense) et se
+        # modifient là-bas ; ici, seulement le payé, le mode de paiement et
+        # la description, que la synchronisation ne réécrit pas.
         if await _stopover_of_expense(db, entry_id):
+            await db.execute(
+                """UPDATE expenses SET paid = ?, balance = unit_price - ?, payment = ?, description = ?
+                   WHERE id = ?""",
+                (paid or 0, paid or 0, payment or None, description or None, entry_id),
+            )
+            await db.commit()
             return RedirectResponse(url=f"/ship/expenses/{entry_id}", status_code=303)
         # Les documents ont leurs propres formulaires (expense_documents).
         await db.execute(
