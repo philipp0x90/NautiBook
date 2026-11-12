@@ -115,7 +115,7 @@
    verticales négatives : les boutons ne grandissent pas la barre. #}
 <div class="section-bar section-bar-collee">
     {% if peut(request, 'comptes.voir') %}
-    <a href="/ship/expenses{{ '?ligne=/ship/expenses/' ~ purchases[0].id if purchases }}" class="btn"
+    <a href="/ship/expenses{{ '?ligne=/ship/expenses/' ~ purchases[-1].id if purchases }}" class="btn"
        style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff"
        title="{{ 'Ouvrir les comptes sur la dernière dépense chez ce fournisseur' if purchases else 'Ouvrir les comptes' }}">← Comptes</a>
     {% else %}

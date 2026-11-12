@@ -3816,7 +3816,7 @@ async def contact_detail(request: Request, contact_id: int):
                    AS doc_count
                FROM expenses WHERE ship_id = ?
                  AND (supplier = ? OR stopover_id IN (SELECT id FROM stopovers WHERE name = ?))
-               ORDER BY date DESC, id DESC""",
+               ORDER BY date IS NULL, date ASC, id ASC""",
             (ship_id, name_filter, name_filter),
         )
         purchases = await cursor.fetchall()
