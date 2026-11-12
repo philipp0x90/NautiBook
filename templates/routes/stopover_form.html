@@ -89,12 +89,14 @@
                 {# Infobulle au survol sur le Mac ; au toucher, le bouton ⓘ l'affiche
                    (l'iPad n'a pas de survol). Les contacts du navire sont proposés :
                    un nom identique rattache la dépense de l'escale à leur fiche. #}
-                {% set aide = "Pour un stationnement, inscrivez plutôt le fournisseur : d'autres services seront sans doute facturés (carénage, entretien…), et sa fiche en fera le total." %}
+                {% set aide = "Pour un stationnement, indiquez le fournisseur : si d'autres services sont facturés (carénage, entretien…), sa fiche en fera le total." %}
                 {# Champ nommé port_search, pas « name » : Safari y proposait les
                    contacts du Mac (Remplissage automatique), et ignore
                    autocomplete="off" ; un champ de « search » n'est jamais
-                   prérempli. Le serveur le lit sous l'alias port_search. #}
-                <label for="escale-port-search">Nom du port ou du fournisseur
+                   prérempli. Le serveur le lit sous l'alias port_search. Safari lit aussi
+                   le libellé : « N&#8203;om » porte une espace sans largeur, invisible,
+                   pour qu'il n'y reconnaisse plus le mot « Nom ». #}
+                <label for="escale-port-search">N&#8203;om du port ou du fournisseur
                     <button type="button" title="{{ aide }}" aria-label="{{ aide }}"
                             onclick="const t = document.getElementById('aide-fournisseur'); t.hidden = !t.hidden"
                             style="border:0;background:none;padding:0 4px;font-size:15px;line-height:0;color:var(--accent);cursor:pointer;vertical-align:-1px">ⓘ</button>
