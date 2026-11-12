@@ -2940,13 +2940,17 @@ async def delete_expense_document(doc_id: int):
 
 
 @app.post("/ship/expenses/{entry_id}/delete")
-async def delete_expense(entry_id: int):
+async def delete_expense(entry_id: int, retour: Optional[str] = Form(None)):
     async with connect() as db:
         # La dépense d'une escale disparaît avec elle, ou quand on vide son Total.
         if await _stopover_of_expense(db, entry_id):
             return RedirectResponse(url=f"/ship/expenses/{entry_id}", status_code=303)
         await db.execute("DELETE FROM expenses WHERE id = ?", (entry_id,))
         await db.commit()
+    # Supprimée depuis la fiche d'un fournisseur : retour à cette fiche. Seul ce
+    # chemin-là est suivi, jamais une adresse quelconque.
+    if retour and re.fullmatch(r"/ship/contacts/\d+", retour):
+        return RedirectResponse(url=f"{retour}#achats", status_code=303)
     return RedirectResponse(url="/ship/expenses", status_code=303)
 
 
