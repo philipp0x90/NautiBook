@@ -2856,6 +2856,7 @@ async def update_expense(
     expense_type: Optional[str] = Form(None),
     payment: Optional[str] = Form(None),
     supplier: Optional[str] = Form(None),
+    auto: Optional[str] = Form(None),
 ):
     balance, paid = _expense_balance(unit_price, paid)
     async with connect() as db:
@@ -2871,6 +2872,8 @@ async def update_expense(
                 (date or None, paid or 0, paid or 0, payment or None, description or None, entry_id),
             )
             await db.commit()
+            if auto:
+                return JSONResponse({"ok": True})
             return RedirectResponse(url=f"/ship/expenses/{entry_id}", status_code=303)
         # Les documents ont leurs propres formulaires (expense_documents).
         await db.execute(
@@ -2883,6 +2886,10 @@ async def update_expense(
              None if supplier == NEW_CONTACT else supplier or None, entry_id),
         )
         await db.commit()
+    # Enregistrement automatique (un champ quitté, expenses_form.html) : la
+    # page reste.
+    if auto and supplier != NEW_CONTACT:
+        return JSONResponse({"ok": True})
     return _after_expense_save(entry_id, supplier)
 
 

@@ -207,8 +207,15 @@
     </div>
 
     <div class="actions" style="grid-area:actions">
-        <button type="submit" class="btn btn-primary">{{ 'Enregistrer les modifications' if edition else 'Enregistrer' }}</button>
+        {% if edition %}
+        {# Modification : chaque champ quitté s'enregistre (script plus bas),
+           sans bouton ; l'état s'affiche ici. #}
+        <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Comptes</a>
+        <span class="meta" id="depense-etat" style="align-self:center"></span>
+        {% else %}
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
         <a href="/ship/expenses" class="btn" style="background:#eee;color:#333">Annuler</a>
+        {% endif %}
         {# La fiche du fournisseur, à droite, quand il est dans le carnet
            (expenses.supplier retient son nom : société, à défaut contact).
            Une dépense d'escale (« Localité - Nom du port ») mène au contact
@@ -266,6 +273,38 @@ document.querySelectorAll('#expense-form [name=unit_price], #expense-form [name=
     .forEach(champ => { champ.disabled = true; });
 {% endif %}
 
+{% if edition %}
+// Modification : un champ quitté (« change » : à la sortie d'un texte, tout de
+// suite pour une liste ou la date) enregistre toute la fiche en arrière-plan,
+// comme la fiche d'une escale — un rechargement ferait perdre le champ
+// suivant. Entrée fait de même. Deux exceptions qui quittent la page, comme
+// avant : « + Saisir manuellement » dans Fournisseur (enregistre puis ouvre la
+// création du contact) ; et un objet vide n'est pas enregistré.
+(function () {
+    const form = document.getElementById('expense-form');
+    const etat = document.getElementById('depense-etat');
+    const fournisseur = form.querySelector('[name=supplier]');
+    let enCours = null, encore = false;
+    function enregistrer() {
+        if (fournisseur && fournisseur.value === '{{ new_contact }}') return;
+        if (!form.checkValidity()) { etat.textContent = 'Non enregistré — l\'objet est obligatoire'; return; }
+        if (enCours) { encore = true; return; }
+        const donnees = new FormData(form);
+        donnees.set('auto', '1');
+        etat.textContent = 'Enregistrement…';
+        enCours = fetch(form.action, { method: 'POST', body: donnees, keepalive: true })
+            .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+            .then(() => { etat.textContent = 'Enregistré ✓'; })
+            .catch(() => { etat.textContent = 'Non enregistré — vérifiez la connexion'; })
+            .finally(() => { enCours = null; if (encore) { encore = false; enregistrer(); } });
+    }
+    form.addEventListener('change', enregistrer);
+    form.addEventListener('submit', e => {
+        if (fournisseur && fournisseur.value === '{{ new_contact }}') return;
+        e.preventDefault(); enregistrer();
+    });
+})();
+{% endif %}
 </script>
 
 {% endblock %}
