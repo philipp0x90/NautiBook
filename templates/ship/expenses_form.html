@@ -93,7 +93,7 @@
     <img src="/icons/escale.png" alt="" style="width:28px;height:28px">
     {# L'explication en infobulle : au survol sur le Mac, au toucher sur
        l'iPad et l'iPhone (qui n'ont pas de survol), où le bouton ⓘ l'affiche. #}
-    {% set aide = "Le montant, l'objet, le fournisseur et la catégorie viennent de l'escale et se modifient depuis l'escale. Ici : la date (au départ, celle de la fin de l'escale), le payé, le mode de paiement et la description. Supprimer l'escale ou vider son total supprime la dépense liée." %}
+    {% set aide = "Modifier les champs montant, objet, catégorie et fournisseur depuis la page escale. Supprimer l'escale ou vider son total supprime la dépense liée." %}
     <div style="flex:1 1 300px">
         Dépense liée à l'escale
         {% if stopover %}<strong>{{ stopover.name or stopover.locality or 'Escale' }}</strong>
