@@ -101,7 +101,9 @@
         <button type="button" title="{{ aide }}" aria-label="{{ aide }}"
                 onclick="const t = document.getElementById('aide-escale'); t.hidden = !t.hidden"
                 style="border:0;background:none;padding:0 4px;font-size:16px;color:var(--accent);cursor:pointer;vertical-align:-1px">ⓘ</button>
-        <div id="aide-escale" class="meta" hidden>{{ aide }}</div>
+        {# Le même texte, les noms des champs en gras (l'infobulle du survol,
+           un attribut title, ne peut pas en mettre). #}
+        <div id="aide-escale" class="meta" hidden>Modifier les champs <b>montant</b>, <b>objet</b>, <b>catégorie</b> et <b>fournisseur</b> depuis la page escale. Supprimer l'escale ou vider son total supprime la dépense liée.</div>
     </div>
     <a href="/stopovers/{{ entry.stopover_id }}/edit" class="btn btn-primary">Ouvrir l'escale ›</a>
 </div>
