@@ -86,7 +86,7 @@
     <img src="/icons/escale.png" alt="" style="width:28px;height:28px">
     {# L'explication en infobulle : au survol sur le Mac, au toucher sur
        l'iPad et l'iPhone (qui n'ont pas de survol), où le bouton ⓘ l'affiche. #}
-    {% set aide = "Le montant, la date, l'objet, le fournisseur et la catégorie viennent de l'escale et se modifient depuis l'escale. Ici : le payé, le mode de paiement et la description. Supprimer l'escale ou vider son total supprime la dépense liée." %}
+    {% set aide = "Le montant, l'objet, le fournisseur et la catégorie viennent de l'escale et se modifient depuis l'escale. Ici : la date (au départ, celle de la fin de l'escale), le payé, le mode de paiement et la description. Supprimer l'escale ou vider son total supprime la dépense liée." %}
     <div style="flex:1 1 300px">
         Dépense liée à l'escale
         {% if stopover %}<strong>{{ stopover.name or stopover.locality or 'Escale' }}</strong>
@@ -252,8 +252,8 @@ function majSolde() {
 majSolde();
 {% if verrou %}
 // Dépense d'escale : figés, les champs qui viennent de l'escale ; restent
-// modifiables le payé, le mode de paiement et la description.
-document.querySelectorAll('#expense-form [name=date], #expense-form [name=unit_price], #expense-form [name=designation], #expense-form [name=expense_type], #expense-form [name=supplier]')
+// modifiables la date, le payé, le mode de paiement et la description.
+document.querySelectorAll('#expense-form [name=unit_price], #expense-form [name=designation], #expense-form [name=expense_type], #expense-form [name=supplier]')
     .forEach(champ => { champ.disabled = true; });
 {% endif %}
 

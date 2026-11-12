@@ -975,7 +975,12 @@ async def _migrate(db):
 # sa fiche renvoie à l'escale et montre les reçus de celle-ci. Type « Escale »,
 # ou « Stationnement » pour une escale marquée comme telle (parking).
 
-async def _sync_stopover_expense(db, stopover_id: int):
+async def _sync_stopover_expense(db, stopover_id: int, old_date: Optional[str] = None):
+    """old_date : la date que l'escale donnait à sa dépense avant cette
+    modification (départ, à défaut arrivée). La date se saisit aussi dans les
+    Comptes (le jour du paiement) : elle ne suit l'escale que tant qu'elle
+    valait cette date-là, ou était vide. Sans old_date (démarrage), la date
+    actuelle de l'escale sert de référence, ce qui ne change rien."""
     cursor = await db.execute(
         """SELECT s.id, s.locality, s.name, s.arrival_date, s.departure_date, s.cost, s.parking,
                   c.ship_id
@@ -999,12 +1004,13 @@ async def _sync_stopover_expense(db, stopover_id: int):
     # Payé se saisit dans les Comptes (un acompte, un reste à payer) : il ne
     # suit le Total que tant qu'il lui était égal (ou vide) ; le solde suit.
     cursor = await db.execute(
-        """UPDATE expenses SET date = ?, designation = ?, supplier = ?, expense_type = ?, ship_id = ?,
+        """UPDATE expenses SET date = CASE WHEN date IS NULL OR date = ? THEN ? ELSE date END,
+                               designation = ?, supplier = ?, expense_type = ?, ship_id = ?,
                                paid = CASE WHEN paid IS NULL OR ABS(paid - COALESCE(unit_price, 0)) < 0.005
                                            THEN ? ELSE paid END,
                                unit_price = ?
            WHERE stopover_id = ?""",
-        (date_, designation, supplier, kind, ship_id, cost, cost, s_id),
+        (old_date or date_, date_, designation, supplier, kind, ship_id, cost, cost, s_id),
     )
     if cursor.rowcount == 0:
         await db.execute(
@@ -2853,15 +2859,16 @@ async def update_expense(
 ):
     balance, paid = _expense_balance(unit_price, paid)
     async with connect() as db:
-        # La dépense d'une escale : montant, date, objet, fournisseur et
-        # catégorie viennent de l'escale (_sync_stopover_expense) et se
-        # modifient là-bas ; ici, seulement le payé, le mode de paiement et
-        # la description, que la synchronisation ne réécrit pas.
+        # La dépense d'une escale : montant, objet, fournisseur et catégorie
+        # viennent de l'escale (_sync_stopover_expense) et se modifient
+        # là-bas ; ici, la date, le payé, le mode de paiement et la
+        # description, que la synchronisation ne réécrit plus une fois saisis.
         if await _stopover_of_expense(db, entry_id):
             await db.execute(
-                """UPDATE expenses SET paid = ?, balance = unit_price - ?, payment = ?, description = ?
+                """UPDATE expenses SET date = COALESCE(?, date), paid = ?, balance = unit_price - ?,
+                                       payment = ?, description = ?
                    WHERE id = ?""",
-                (paid or 0, paid or 0, payment or None, description or None, entry_id),
+                (date or None, paid or 0, paid or 0, payment or None, description or None, entry_id),
             )
             await db.commit()
             return RedirectResponse(url=f"/ship/expenses/{entry_id}", status_code=303)
@@ -5961,9 +5968,12 @@ async def update_stopover(
         except ValueError:
             pass
     async with connect() as db:
-        cursor = await db.execute("SELECT route_id FROM stopovers WHERE id = ?", (stopover_id,))
+        cursor = await db.execute(
+            "SELECT route_id, substr(COALESCE(departure_date, arrival_date, ''), 1, 10) FROM stopovers WHERE id = ?",
+            (stopover_id,))
         row = await cursor.fetchone()
         route_id = row[0] if row else None
+        old_date = (row[1] or None) if row else None
         await db.execute(
             """UPDATE stopovers SET locality=?, name=?, type=?, arrival_date=?, departure_date=?,
                cost_per_night=?, cost=?, notes=?, position_lat=?, position_lon=?, parking=? WHERE id=?""",
@@ -5973,7 +5983,7 @@ async def update_stopover(
              *_stopover_position(lat_deg, lat_min, lat_hem, lon_deg, lon_min, lon_hem),
              _stopover_parking(parking, arrival_date, departure_date), stopover_id),
         )
-        await _sync_stopover_expense(db, stopover_id)
+        await _sync_stopover_expense(db, stopover_id, old_date)
         await db.commit()
         # Enregistrement automatique (un champ quitté, stopover_form.html) :
         # la page reste, elle reçoit seulement de quoi tenir à jour le lien
@@ -6086,9 +6096,12 @@ async def delete_stopover_document(doc_id: int):
 @app.post("/stopovers/{stopover_id}/delete")
 async def delete_stopover(stopover_id: int):
     async with connect() as db:
-        cursor = await db.execute("SELECT route_id FROM stopovers WHERE id = ?", (stopover_id,))
+        cursor = await db.execute(
+            "SELECT route_id, substr(COALESCE(departure_date, arrival_date, ''), 1, 10) FROM stopovers WHERE id = ?",
+            (stopover_id,))
         row = await cursor.fetchone()
         route_id = row[0] if row else None
+        old_date = (row[1] or None) if row else None
         await db.execute("DELETE FROM stopovers WHERE id = ?", (stopover_id,))
         await db.commit()
     if route_id:
