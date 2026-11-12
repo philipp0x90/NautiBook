@@ -57,6 +57,13 @@
         background: #e8f4f9; border-color: transparent; color: inherit;
         font-weight: 600; opacity: 1;
     }
+    /* Champs figés (dépense d'escale : ce qui vient de l'escale) : grisés.
+       Safari ne grise de lui-même que les listes et la date ; un champ texte
+       ou nombre désactivé gardait son texte noir. -webkit-text-fill-color :
+       sans lui, Safari ignore color sur un champ désactivé. */
+    .expense-form :is(input, select, textarea):disabled:not(#solde) {
+        color: #9aa5b1; -webkit-text-fill-color: #9aa5b1; opacity: 1;
+    }
     .expense-form .actions { display: flex; gap: 10px; margin-top: 4px; }
 
     /* Le formulaire, puis ses documents dessous. */
