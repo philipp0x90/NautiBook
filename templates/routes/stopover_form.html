@@ -90,12 +90,16 @@
                    (l'iPad n'a pas de survol). Les contacts du navire sont proposés :
                    un nom identique rattache la dépense de l'escale à leur fiche. #}
                 {% set aide = "Pour un stationnement, inscrivez plutôt le fournisseur : d'autres services seront sans doute facturés (carénage, entretien…), et sa fiche en fera le total." %}
-                <label for="escale-nom">Nom du port ou du fournisseur
+                {# Champ nommé port_search, pas « name » : Safari y proposait les
+                   contacts du Mac (Remplissage automatique), et ignore
+                   autocomplete="off" ; un champ de « search » n'est jamais
+                   prérempli. Le serveur le lit sous l'alias port_search. #}
+                <label for="escale-port-search">Nom du port ou du fournisseur
                     <button type="button" title="{{ aide }}" aria-label="{{ aide }}"
                             onclick="const t = document.getElementById('aide-fournisseur'); t.hidden = !t.hidden"
                             style="border:0;background:none;padding:0 4px;font-size:15px;line-height:0;color:var(--accent);cursor:pointer;vertical-align:-1px">ⓘ</button>
                 </label>
-                <input type="text" name="name" id="escale-nom" value="{{ stopover.name or '' }}" list="fournisseurs" autocomplete="off">
+                <input type="text" name="port_search" id="escale-port-search" value="{{ stopover.name or '' }}" list="fournisseurs" autocomplete="off">
                 <datalist id="fournisseurs">{% for n in suppliers %}<option value="{{ n }}">{% endfor %}</datalist>
                 <div id="aide-fournisseur" class="meta" hidden>{{ aide }}</div>
             </div>

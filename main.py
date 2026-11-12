@@ -5832,7 +5832,7 @@ async def new_stopover_form(request: Request, route_id: int):
 async def create_stopover(
     route_id: int,
     locality: Optional[str] = Form(None),
-    name: Optional[str] = Form(None),
+    name: Optional[str] = Form(None, alias="port_search"),  # nom du champ : voir stopover_form.html
     type: Optional[str] = Form(None),
     arrival_date: Optional[str] = Form(None),
     departure_date: Optional[str] = Form(None),
@@ -5916,7 +5916,7 @@ async def edit_stopover_form(request: Request, stopover_id: int):
 async def update_stopover(
     stopover_id: int,
     locality: Optional[str] = Form(None),
-    name: Optional[str] = Form(None),
+    name: Optional[str] = Form(None, alias="port_search"),  # nom du champ : voir stopover_form.html
     type: Optional[str] = Form(None),
     arrival_date: Optional[str] = Form(None),
     departure_date: Optional[str] = Form(None),
