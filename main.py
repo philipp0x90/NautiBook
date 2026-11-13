@@ -5544,7 +5544,13 @@ async def cruise_list(request: Request, ordre: Optional[str] = None):
 
 
 @app.get("/cruises/stopovers", response_class=HTMLResponse)
-async def all_stopovers(request: Request):
+async def all_stopovers(request: Request, ordre: Optional[str] = None):
+    """?ordre=desc : les plus récentes d'abord (croisières, puis escales dans
+    chacune) ; ?ordre=asc l'inverse. Le choix est gardé dans un cookie, pour
+    que le retour depuis une escale (lien « Escales ») retrouve le même ordre."""
+    if ordre not in ("asc", "desc"):
+        ordre = request.cookies.get("escales_ordre")
+    descendant = ordre == "desc"
     ship_id = get_current_ship_id(request)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
@@ -5584,15 +5590,23 @@ async def all_stopovers(request: Request):
                            "start": s["cruise_start"], "end": s["cruise_end"], "stopovers": [], "total": 0})
         groups[-1]["stopovers"].append(s)
         groups[-1]["total"] += s["cost"] or 0
-    return templates.TemplateResponse(
+    if descendant:
+        groups.reverse()
+        for g in groups:
+            g["stopovers"].reverse()
+    response = templates.TemplateResponse(
         "cruises/stopovers.html",
         {
             "request": request,
             "active_section": "cruises",
             "groups": groups,
             "total": sum(g["total"] for g in groups),
+            "descendant": descendant,
         },
     )
+    response.set_cookie("escales_ordre", "desc" if descendant else "asc",
+                        max_age=10 * 365 * 24 * 3600, samesite="lax")
+    return response
 
 
 @app.get("/cruises/new", response_class=HTMLResponse)
