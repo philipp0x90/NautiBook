@@ -590,6 +590,22 @@ async def init_db():
             )
         """)
 
+        # Règlements d'une dépense payée en plusieurs fois (un acompte, puis
+        # le solde). Dès qu'une dépense en a, son paid est leur somme et son
+        # payment le mode du dernier (_refresh_expense_paid) ; sans
+        # règlement, Payé se saisit comme avant.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS expense_payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                expense_id INTEGER NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,
+                date TEXT,
+                amount REAL NOT NULL,
+                payment TEXT,
+                note TEXT,
+                created_at DATETIME
+            )
+        """)
+
         # Remarques des nuits supplémentaires d'une étape (les lignes grises de
         # l'itinéraire, calculées et non stockées) : une par étape et par nuit
         # (night = 1 pour la 2e nuit sur place, 2 pour la 3e…).
@@ -1017,7 +1033,9 @@ async def _sync_stopover_expense(db, stopover_id: int, old_date: Optional[str] =
     cursor = await db.execute(
         """UPDATE expenses SET date = CASE WHEN date IS NULL OR date = ? THEN ? ELSE date END,
                                designation = ?, supplier = ?, expense_type = ?, ship_id = ?,
-                               paid = CASE WHEN paid IS NULL OR ABS(paid - COALESCE(unit_price, 0)) < 0.005
+                               paid = CASE WHEN NOT EXISTS (SELECT 1 FROM expense_payments p
+                                                            WHERE p.expense_id = expenses.id)
+                                            AND (paid IS NULL OR ABS(paid - COALESCE(unit_price, 0)) < 0.005)
                                            THEN ? ELSE paid END,
                                unit_price = ?
            WHERE stopover_id = ?""",
@@ -2399,12 +2417,17 @@ async def _expense_form(request: Request, entry: Optional[dict], supplier: Optio
             (ship_id,),
         )
         contacts = await cursor.fetchall()
-        documents = []
+        documents, payments, candidates = [], [], []
         if entry:
             cursor = await db.execute(
                 "SELECT * FROM expense_documents WHERE expense_id = ? ORDER BY id", (entry["id"],)
             )
             documents = [dict(d) for d in await cursor.fetchall()]
+            cursor = await db.execute(
+                "SELECT * FROM expense_payments WHERE expense_id = ? ORDER BY date IS NULL, date, id",
+                (entry["id"],))
+            payments = [dict(p) for p in await cursor.fetchall()]
+            candidates = await _payment_candidates(db, entry)
         # Dépense d'une escale : l'escale (pour y renvoyer) et ses reçus.
         stopover, stopover_docs = None, []
         if entry and entry.get("stopover_id"):
@@ -2435,6 +2458,8 @@ async def _expense_form(request: Request, entry: Optional[dict], supplier: Optio
             "doc_max_bytes": DOC_MAX_BYTES,
             "stopover": stopover,
             "stopover_docs": stopover_docs,
+            "payments": payments,
+            "payment_candidates": candidates,
         },
     )
 
@@ -2869,8 +2894,18 @@ async def update_expense(
     supplier: Optional[str] = Form(None),
     auto: Optional[str] = Form(None),
 ):
-    balance, paid = _expense_balance(unit_price, paid)
     async with connect() as db:
+        # Payée en plusieurs règlements : Payé et Mode de paiement en sont
+        # tirés (_refresh_expense_paid) — figés dans le formulaire, donc
+        # absents de l'envoi ; on garde ceux de la base.
+        cursor = await db.execute(
+            """SELECT paid, payment FROM expenses
+               WHERE id = ? AND EXISTS (SELECT 1 FROM expense_payments WHERE expense_id = ?)""",
+            (entry_id, entry_id))
+        row = await cursor.fetchone()
+        if row:
+            paid, payment = row
+        balance, paid = _expense_balance(unit_price, paid)
         # La dépense d'une escale : montant, objet, fournisseur et catégorie
         # viennent de l'escale (_sync_stopover_expense) et se modifient
         # là-bas ; ici, la date, le payé, le mode de paiement et la
@@ -2962,6 +2997,114 @@ async def delete_expense_document(doc_id: int):
         await db.commit()
     return RedirectResponse(url=f"/ship/expenses/{row[0]}#documents" if row else "/ship/expenses",
                             status_code=303)
+
+
+async def _refresh_expense_paid(db, expense_id: int):
+    """Payé = la somme des règlements de la dépense, Mode de paiement celui
+    du dernier (par date), Solde = Montant − Payé. Appelé après chaque
+    ajout ou retrait de règlement ; le dernier retiré, Payé revient à 0."""
+    await db.execute(
+        """UPDATE expenses SET
+               paid = (SELECT COALESCE(SUM(amount), 0) FROM expense_payments WHERE expense_id = expenses.id),
+               payment = COALESCE((SELECT payment FROM expense_payments WHERE expense_id = expenses.id
+                                   ORDER BY date IS NULL, date DESC, id DESC LIMIT 1), payment)
+           WHERE id = ?""",
+        (expense_id,))
+    await db.execute(
+        """UPDATE expenses SET balance = CASE WHEN unit_price IS NULL THEN NULL
+                                              ELSE unit_price - COALESCE(paid, 0) END
+           WHERE id = ?""",
+        (expense_id,))
+
+
+@app.post("/ship/expenses/{entry_id}/payments/new")
+async def add_expense_payment(
+    entry_id: int,
+    date: Optional[str] = Form(None),
+    amount: Optional[str] = Form(None),
+    payment: Optional[str] = Form(None),
+    note: Optional[str] = Form(None),
+):
+    try:
+        value = _import_amount(amount)
+    except ValueError:
+        value = None
+    async with connect() as db:
+        if value:
+            await db.execute(
+                """INSERT INTO expense_payments (expense_id, date, amount, payment, note, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (entry_id, date or None, value, payment or None, (note or "").strip() or None,
+                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            await _refresh_expense_paid(db, entry_id)
+            await db.commit()
+    return RedirectResponse(url=f"/ship/expenses/{entry_id}#reglements", status_code=303)
+
+
+@app.post("/ship/expenses/payments/{payment_id}/delete")
+async def delete_expense_payment(payment_id: int):
+    async with connect() as db:
+        cursor = await db.execute("SELECT expense_id FROM expense_payments WHERE id = ?", (payment_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            return RedirectResponse(url="/ship/expenses", status_code=303)
+        await db.execute("DELETE FROM expense_payments WHERE id = ?", (payment_id,))
+        await _refresh_expense_paid(db, row[0])
+        await db.commit()
+    return RedirectResponse(url=f"/ship/expenses/{row[0]}#reglements", status_code=303)
+
+
+async def _payment_candidates(db, entry: dict) -> list:
+    """Dépenses qu'on peut reprendre comme règlement de celle-ci (un acompte
+    saisi à part) : du même navire, ordinaires (pas d'escale), sans
+    règlements à elles, d'un montant au plus égal, datées dans l'année qui
+    entoure celle-ci ; les plus proches en date d'abord."""
+    cursor = await db.execute(
+        """SELECT e.id, e.date, e.designation, COALESCE(e.paid, e.unit_price) AS amount
+           FROM expenses e
+           WHERE e.ship_id = ? AND e.id != ? AND e.stopover_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM expense_payments p WHERE p.expense_id = e.id)
+             AND COALESCE(e.paid, e.unit_price) > 0
+             AND (? IS NULL OR COALESCE(e.paid, e.unit_price) <= ? + 0.005)
+             AND (? IS NULL OR e.date IS NULL
+                  OR date(e.date) BETWEEN date(?, '-1 year') AND date(?, '+1 year'))
+           ORDER BY ABS(julianday(e.date) - julianday(COALESCE(?, e.date))), e.id DESC""",
+        (entry["ship_id"], entry["id"], entry.get("unit_price"), entry.get("unit_price"),
+         entry.get("date"), entry.get("date"), entry.get("date"), entry.get("date")))
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+@app.post("/ship/expenses/{entry_id}/payments/absorb")
+async def absorb_expense_as_payment(request: Request, entry_id: int, source_id: int = Form(...)):
+    """Une dépense saisie à part (un acompte) devient un règlement de
+    celle-ci : sa date, son montant payé, son mode, et son objet en note ;
+    ses documents passent à celle-ci ; elle quitte les Comptes. Supprimer
+    une dépense : il faut le droit de suppression des comptes."""
+    if not can(_template_user(request), "comptes.supprimer"):
+        return RedirectResponse(url=f"/ship/expenses/{entry_id}#reglements", status_code=303)
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM expenses WHERE id = ?", (entry_id,))
+        entry = await cursor.fetchone()
+        if entry is None:
+            return RedirectResponse(url="/ship/expenses", status_code=303)
+        allowed = {c["id"]: c for c in await _payment_candidates(db, dict(entry))}
+        src = allowed.get(source_id)
+        if src:
+            cursor = await db.execute("SELECT payment, description FROM expenses WHERE id = ?", (source_id,))
+            extra = await cursor.fetchone()
+            note = " — ".join(x for x in (src["designation"], extra["description"]) if x) or None
+            await db.execute(
+                """INSERT INTO expense_payments (expense_id, date, amount, payment, note, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (entry_id, (src["date"] or "")[:10] or None, src["amount"], extra["payment"], note,
+                 datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            await db.execute("UPDATE expense_documents SET expense_id = ? WHERE expense_id = ?",
+                             (entry_id, source_id))
+            await db.execute("DELETE FROM expenses WHERE id = ?", (source_id,))
+            await _refresh_expense_paid(db, entry_id)
+            await db.commit()
+    return RedirectResponse(url=f"/ship/expenses/{entry_id}#reglements", status_code=303)
 
 
 @app.post("/ship/expenses/{entry_id}/delete")

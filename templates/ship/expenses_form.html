@@ -71,6 +71,15 @@
     .expense-docs { max-width: 980px; }
     /* Le style en ligne l'emportait sur hidden : le texte restait affiché. */
     #aide-escale[hidden] { display: none !important; }
+    /* Règlements : sous le formulaire, à sa largeur. */
+    .reglements { max-width: 980px; }
+    .reglements h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .reglements .num { text-align: right; white-space: nowrap; }
+    .reglements tfoot td { font-weight: 700; }
+    .reglement-ajout { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+    .reglement-ajout input, .reglement-ajout select { height: 32px; width: auto; }
+    .reglement-ajout input[type="number"] { width: 120px; text-align: right; }
+    .reglement-ajout input[name="note"] { flex: 1 1 180px; }
 </style>
 {% endblock %}
 
@@ -175,8 +184,11 @@
             </select>
         </div>
 
+        {# Payée en plusieurs règlements (section Règlements, plus bas) : Payé
+           en est la somme et Mode de paiement celui du dernier — figés. #}
+        {% set par_reglements = edition and payments %}
         <div style="grid-area:paye">
-            <label>Payé (€)</label>
+            <label>Payé (€){% if par_reglements %} <span class="meta" style="font-weight:400">· {{ payments | length }} règlement{{ 's' if payments | length > 1 else '' }}</span>{% endif %}</label>
             <input type="number" name="paid" class="money" step="0.01" min="0" placeholder="0.00" oninput="majSolde()"
                    value="{{ '%.2f'|format(entry.paid) if edition and entry.paid is not none else '' }}">
         </div>
@@ -255,6 +267,68 @@
                      'de la dépense', doc_max_bytes, doc_accept, classe='expense-docs') }}
 {% endif %}
 
+{# Règlements : une dépense payée en plusieurs fois (acompte, puis solde).
+   Hors du formulaire de la fiche, qui s'enregistre seul : chaque ajout et
+   chaque ✕ est son propre envoi. #}
+{% if edition %}
+<section class="card reglements" id="reglements" style="margin-top:16px">
+    <h3>Règlements</h3>
+    {% if payments %}
+    <table class="data-table titres-legers">
+        <thead><tr><th>Date</th><th class="num">Montant</th><th>Mode</th><th>Note</th><th></th></tr></thead>
+        <tbody>
+        {% for p in payments %}
+        <tr>
+            <td>{{ p.date | datefr }}</td>
+            <td class="num">{{ p.amount | euros }}</td>
+            <td>{{ p.payment or '—' }}</td>
+            <td>{{ p.note or '' }}</td>
+            <td style="text-align:right">
+                <form method="POST" action="/ship/expenses/payments/{{ p.id }}/delete" style="display:inline"
+                      onsubmit="return confirm('Retirer ce règlement ?')">
+                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px">✕</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot><tr><td>Total payé</td><td class="num">{{ payments | sum(attribute='amount') | euros }}</td><td colspan="3"></td></tr></tfoot>
+    </table>
+    {% else %}
+    <div class="meta" style="margin-bottom:10px">Payée en plusieurs fois (un acompte, puis le solde) ? Ajoutez chaque versement : Payé en fera la somme.</div>
+    {% endif %}
+    {# Montant proposé : ce qui reste à payer — tout le montant tant qu'aucun
+       règlement n'est saisi, puisque le premier remplace Payé. #}
+    {% set reste = (entry.unit_price or 0) - (payments | sum(attribute='amount')) %}
+    <form method="POST" action="/ship/expenses/{{ entry.id }}/payments/new" class="reglement-ajout">
+        <input type="date" name="date" value="{{ today }}" aria-label="Date du règlement">
+        <input type="number" name="amount" class="money" step="0.01" min="0.01" required placeholder="Montant"
+               aria-label="Montant du règlement" value="{{ '%.2f' | format(reste) if reste > 0 else '' }}">
+        <select name="payment" aria-label="Mode de paiement">
+            <option value="">—</option>
+            {% for opt in payment_modes %}<option value="{{ opt }}" {{ 'selected' if opt == entry.payment else '' }}>{{ opt }}</option>{% endfor %}
+        </select>
+        <input type="text" name="note" placeholder="Note (acompte, solde…)" aria-label="Note">
+        <button type="submit" class="btn btn-primary">+ Règlement</button>
+    </form>
+    {% if payment_candidates and peut(request, 'comptes.supprimer') %}
+    {# Un acompte déjà saisi comme dépense à part : il devient un règlement
+       de celle-ci (date, montant, mode, objet en note, documents) et quitte
+       les Comptes, où il était compté deux fois. #}
+    <form method="POST" action="/ship/expenses/{{ entry.id }}/payments/absorb" class="reglement-ajout"
+          onsubmit="return confirm('Cette dépense deviendra un règlement de celle-ci et disparaîtra des Comptes (ses documents passent ici). Continuer ?')">
+        <select name="source_id" required aria-label="Dépense à reprendre">
+            <option value="">Reprendre une dépense saisie à part (acompte…)</option>
+            {% for c in payment_candidates %}
+            <option value="{{ c.id }}">{{ c.date | datefr }} — {{ c.designation or 'Sans objet' }} — {{ c.amount | euros }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn">Reprendre comme règlement</button>
+    </form>
+    {% endif %}
+</section>
+{% endif %}
+
 <script>
 // Même règle que _expense_balance : sans montant pas de solde, payé vide = 0.
 function majSolde() {
@@ -266,6 +340,11 @@ function majSolde() {
         (parseFloat(montant) - paye).toLocaleString('de-DE', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
 majSolde();
+{% if edition and payments %}
+// Payée par règlements : Payé et Mode de paiement en viennent.
+document.querySelectorAll('#expense-form [name=paid], #expense-form [name=payment]')
+    .forEach(champ => { champ.disabled = true; champ.title = 'Tiré des règlements, plus bas'; });
+{% endif %}
 {% if verrou %}
 // Dépense d'escale : figés, les champs qui viennent de l'escale ; restent
 // modifiables la date, le payé, le mode de paiement et la description.
