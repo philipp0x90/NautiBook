@@ -5486,8 +5486,20 @@ async def cruise_gpx_confirm(request: Request, cruise_id: int):
         points = 0
         for route_id, liste in par_route.items():
             await db.execute("DELETE FROM track_points WHERE route_id = ?", (route_id,))
-            # Deux traces pour une même route : la plus ancienne d'abord.
-            liste.sort(key=lambda t: t["debut"] or "")
+            # Deux traces pour une même route : la plus ancienne d'abord. Une
+            # trace dont les heures tiennent dans celles d'une autre (un
+            # enregistrement arrêté en route, puis celui de toute la
+            # navigation) est écartée : tracée à la suite, elle revenait au
+            # port de départ par une ligne droite (Split-Sibenik, 2026).
+            liste.sort(key=lambda t: (t["debut"] or "", -len(t["points"])))
+            gardees = []
+            for t in liste:
+                if t["debut"] and t["fin"] and any(
+                        g["debut"] and g["fin"] and g["debut"] <= t["debut"] and t["fin"] <= g["fin"]
+                        for g in gardees):
+                    continue
+                gardees.append(t)
+            liste = gardees
             defaut = routes[route_id]["start_time"] or datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
             for t in liste:
                 lignes = import_gpx.simplifier(import_gpx.remplir_heures(t["points"], defaut))
