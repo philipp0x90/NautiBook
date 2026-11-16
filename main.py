@@ -225,10 +225,30 @@ def _euros(value):
     return f"{text}\u00a0€"
 
 
+def _add_months(d, k):
+    """d + k mois du calendrier ; un jour qui n'existe pas dans le mois
+    d'arrivée (31 janvier + 1 mois) devient le dernier de ce mois."""
+    y, m = divmod(d.month - 1 + k, 12)
+    y, m = d.year + y, m + 1
+    last = (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)).day
+    return date(y, m, min(d.day, last))
+
+
+def _duree_parts(a, d):
+    """(années, mois, semaines, nuits) de a à d : mois du calendrier
+    (21/07 → 21/08 = 1 mois), puis les jours qui restent en semaines et
+    nuits. La même découpe que dureeSejour() dans stopover_form.html."""
+    months = (d.year - a.year) * 12 + d.month - a.month
+    while months > 0 and _add_months(a, months) > d:
+        months -= 1
+    rest = (d - _add_months(a, months)).days
+    return months // 12, months % 12, rest // 7, rest % 7
+
+
 def _sejour(arrival, departure):
-    """Durée d'une escale : « 3 nuits », ou au-delà d'un mois « 7 mois et 29
-    nuits » — mois du calendrier (09/09 → 09/04 = 7 mois), puis les nuits qui
-    restent. '' sans les deux dates ou sans nuit."""
+    """Durée d'une escale découpée en années, mois, semaines et nuits :
+    « 3 nuits », « 1 mois, 2 semaines et 1 nuit ». '' sans les deux dates
+    ou sans nuit."""
     try:
         a = date.fromisoformat(str(arrival)[:10])
         d = date.fromisoformat(str(departure)[:10])
@@ -236,20 +256,11 @@ def _sejour(arrival, departure):
         return ""
     if d <= a:
         return ""
-    def nuits(n):
-        return f"{n} nuit{'s' if n > 1 else ''}"
-    months = (d.year - a.year) * 12 + d.month - a.month
-    while months > 0:
-        y, m = divmod(a.month - 1 + months, 12)
-        try:
-            pivot = date(a.year + y, m + 1, a.day)
-        except ValueError:   # 31 janvier + 1 mois : fin février
-            pivot = date(a.year + y, m + 2, 1) - timedelta(days=1) if m + 1 < 12 else date(a.year + y, 12, 31)
-        if pivot <= d:
-            rest = (d - pivot).days
-            return f"{months} mois" + (f" et {nuits(rest)}" if rest else "")
-        months -= 1
-    return nuits((d - a).days)
+    ans, mois, semaines, nuits = _duree_parts(a, d)
+    parts = [f"{n} {un if n == 1 else plusieurs}" for n, un, plusieurs in (
+        (ans, "an", "ans"), (mois, "mois", "mois"),
+        (semaines, "semaine", "semaines"), (nuits, "nuit", "nuits")) if n]
+    return parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " et " + parts[-1]
 
 
 templates.env.filters["datefr"] = _datefr

@@ -32,7 +32,8 @@
     .escale-types input:checked + label { background: var(--accent); border-color: var(--accent); color: #fff; }
     .escale-types input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
     /* Nombre de nuits : au bout de la ligne des types, à droite. */
-    .escale-nuits { margin-left: auto; font-size: 14px; font-weight: 600; color: #0f3a4a; white-space: nowrap; }
+    .escale-nuits { margin-left: auto; font-size: 14px; font-weight: 600; color: #0f3a4a; white-space: nowrap; text-align: right; }
+    .escale-nuits-total { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
     .escale-carte textarea { font: inherit; font-size: 14px; }
     /* Nom du jour de la date, à côté de son libellé (un champ date ne peut pas
        l'afficher lui-même). */
@@ -234,6 +235,26 @@
         const n = Math.round((new Date(dep.value) - new Date(arr.value)) / 86400000);
         return n > 0 ? n : 0;
     }
+    // Même découpe que _sejour (main.py) : mois du calendrier, puis les
+    // jours restants en semaines et nuits.
+    function dureeSejour(va, vd) {
+        if (!va || !vd) return '';
+        const loc = v => new Date(+v.slice(0, 4), +v.slice(5, 7) - 1, +v.slice(8, 10));
+        const a = loc(va), d = loc(vd);
+        if (isNaN(a) || isNaN(d) || d <= a) return '';
+        const plus = k => {   // a + k mois, jour ramené au dernier du mois s'il n'existe pas
+            const y = a.getFullYear(), m = a.getMonth() + k;
+            const fin = new Date(y, m + 1, 0).getDate();
+            return new Date(y, m, Math.min(a.getDate(), fin));
+        };
+        let mois = (d.getFullYear() - a.getFullYear()) * 12 + d.getMonth() - a.getMonth();
+        while (mois > 0 && plus(mois) > d) mois--;
+        const reste = Math.round((d - plus(mois)) / 86400000);
+        const parts = [[Math.floor(mois / 12), 'an', 'ans'], [mois % 12, 'mois', 'mois'],
+                       [Math.floor(reste / 7), 'semaine', 'semaines'], [reste % 7, 'nuit', 'nuits']]
+            .filter(p => p[0]).map(p => p[0] + ' ' + (p[0] === 1 ? p[1] : p[2]));
+        return parts.length < 2 ? (parts[0] || '') : parts.slice(0, -1).join(', ') + ' et ' + parts[parts.length - 1];
+    }
     const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
     function jours() {
         document.querySelectorAll('.escale-jour').forEach(function (span) {
@@ -247,7 +268,17 @@
     function maj() {
         jours();
         const n = nuits();
-        nuitsEl.textContent = n ? n + (n > 1 ? ' nuits' : ' nuit') : '';
+        // Découpé en années, mois, semaines et nuits ; le nombre total de
+        // nuits, qui sert au prix, dessous quand la découpe ne le dit pas.
+        const duree = dureeSejour(arr.value, dep.value), total = n ? n + (n > 1 ? ' nuits' : ' nuit') : '';
+        nuitsEl.innerHTML = '';
+        nuitsEl.append(duree);
+        if (duree && duree !== total) {
+            const sous = document.createElement('span');
+            sous.className = 'escale-nuits-total';
+            sous.textContent = total;
+            nuitsEl.append(sous);
+        }
         // Même seuil que PARKING_MIN_NIGHTS (main.py).
         stationnement.hidden = !(n > 7);
         const prix = parseFloat(cpn.value);
