@@ -42,7 +42,9 @@ if not DB.is_absolute():
 PHOTOS = REPO / "IMG"
 # Le disque, réglable dans config.yaml (backup_dir) ; les sauvegardes vont
 # dans un sous-dossier, pour ne pas se mêler au reste du disque.
-DISQUE_DEFAUT = "~/Desktop/T7_Pi"
+# Chemin complet : le service tourne sous le compte pi, le disque est monté
+# dans le dossier de bmansion.
+DISQUE_DEFAUT = "/home/bmansion/Desktop/T7_Pi"
 SOUS_DOSSIER = Path("NautiBook") / "Sauvegardes"
 
 
