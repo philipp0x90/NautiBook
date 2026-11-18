@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Importer depuis Diarly — NautiBook{% endblock %}
+
+{# Import d'un journal Diarly (export Markdown, zip) dans le carnet : envoi du
+   zip, aperçu des entrées avec la croisière proposée (à corriger ou
+   ignorer), puis écriture. Voir import_diarly.py et carnet_import_* (main.py). #}
+{% block head %}
+<style>
+    .diarly { display: grid; gap: 16px; max-width: 980px; margin: 0 auto; }
+    .diarly h3 { margin: 0 0 8px; font-size: 15px; }
+    .diarly ul { margin: 6px 0 0; padding-left: 22px; font-size: 14px; }
+    .diarly li { margin: 4px 0; }
+    .diarly-erreur { background: #fee2e2; color: #991b1b; border-radius: 8px; padding: 10px 14px; }
+    .diarly-ok { background: #dcfce7; color: #166534; border-radius: 8px; padding: 10px 14px; }
+    .diarly-entrees td { vertical-align: top; }
+    .diarly-entrees select { width: 100%; min-width: 180px; }
+    .diarly-entrees .deja td { color: var(--muted); }
+    .diarly-extrait { font-size: 13px; line-height: 1.4; }
+    .diarly-lieu { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+    .diarly-jour { white-space: nowrap; }
+    .diarly-attente { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+                      background: rgba(15, 58, 74, .45); }
+    .diarly-attente[hidden] { display: none; }
+    .diarly-attente .boite { background: #fff; border-radius: 12px; padding: 24px 28px; min-width: 260px; text-align: center;
+                             box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .diarly-attente .titre { font-weight: 700; font-size: 16px; margin-top: 14px; }
+    .diarly-roue { width: 40px; height: 40px; margin: 0 auto; border-radius: 50%;
+                   border: 4px solid #d6eef6; border-top-color: var(--accent); animation: diarly-tourne 1s linear infinite; }
+    @keyframes diarly-tourne { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="section-bar">
+    <div class="section-bar-left"><a href="/carnet" style="color:#fff;text-decoration:none">← Carnet</a></div>
+    <div class="section-bar-title">Importer depuis Diarly</div>
+    <div class="section-bar-left" style="visibility:hidden" aria-hidden="true">← Carnet</div>
+</div>
+
+<div class="diarly">
+
+    {% if resultat %}
+    <section class="diarly-ok">
+        <strong>{{ resultat.entrees }} publication{{ 's' if resultat.entrees > 1 }} importée{{ 's' if resultat.entrees > 1 }}</strong>,
+        avec {{ resultat.photos }} photo{{ 's' if resultat.photos > 1 }}.
+        {% if resultat.deja %}{{ resultat.deja }} déjà dans le carnet, laissée{{ 's' if resultat.deja > 1 }} de côté.{% endif %}
+        <div style="margin-top:10px"><a href="/carnet?croisiere=tout" class="btn btn-blue">Ouvrir le carnet</a></div>
+    </section>
+    {% endif %}
+
+    {% if erreur %}<div class="diarly-erreur">{{ erreur }} Rien n'a été importé.</div>{% endif %}
+
+    {% if entrees %}
+    <form method="POST" action="/carnet/import/confirm" class="card diarly-entrees" data-attente="Import des publications…">
+        <h3>Vérifier les entrées ({{ entrees | length }}) — {{ nom_fichier }}</h3>
+        <p style="font-size:14px;margin:0 0 10px">Chaque entrée est proposée pour la croisière qui la contient, sinon pour celle
+            qui suit. Corrigez ou ignorez si besoin, puis importez. Les entrées sans heure sont datées de 20:00 ;
+            l'Amiral peut corriger l'heure ensuite dans le carnet.</p>
+        <input type="hidden" name="jeton" value="{{ jeton }}">
+        <table class="data-table titres-legers">
+            <thead><tr><th>Jour</th>{% if journaux | length > 1 %}<th>Journal</th>{% endif %}<th>Entrée</th><th>Photos</th><th style="width:30%">Croisière</th></tr></thead>
+            <tbody>
+            {% for e in entrees %}
+                <tr{% if e.deja %} class="deja"{% endif %}>
+                    <td class="diarly-jour">{{ e.jour | jourmois }} {{ e.jour[:4] }}{% if e.horodatage[11:16] != '20:00' %}<div style="font-size:12px;color:var(--muted)">{{ e.horodatage[11:16] }}</div>{% endif %}</td>
+                    {% if journaux | length > 1 %}<td>{{ e.journal }}</td>{% endif %}
+                    <td>
+                        {% if e.lieu %}<div class="diarly-lieu">📍 {{ e.lieu }}</div>{% endif %}
+                        <div class="diarly-extrait">{{ e.extrait[:extrait_max] }}{% if e.extrait | length > extrait_max %}…{% endif %}</div>
+                        {% if e.deja %}<div style="font-size:12px">déjà dans le carnet</div>{% endif %}
+                    </td>
+                    <td>{{ e.photos | length or '—' }}</td>
+                    <td>
+                        <select name="cruise_{{ loop.index0 }}">
+                            <option value="">— ignorer —</option>
+                            {% for c in cruises %}
+                            <option value="{{ c.id }}"{% if c.id == e.cruise_id %} selected{% endif %}>
+                                {{ c.name or 'Croisière sans nom' }}{% if c.start %} · {{ c.start | datefr }}{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top:12px"><button type="submit" class="btn btn-yellow">Importer dans le carnet</button></div>
+    </form>
+    {% endif %}
+
+    <form method="POST" action="/carnet/import" enctype="multipart/form-data" class="card" data-attente="Lecture de l'export…">
+        <h3>{{ "Un autre export" if entrees else "Choisir l'export" }}</h3>
+        <ul>
+            <li>Dans Diarly, exporter le journal au format Markdown (.zip)</li>
+            <li>Les publications sont retranscrites dans les carnets du navire, à votre nom.</li>
+            <li>Rien n'est écrit avant l'écran de vérification. Une entrée déjà importée n'est pas doublée.</li>
+        </ul>
+        {# Pas d'attribut accept : sur iPad, Safari grise sinon les fichiers
+           d'un type qu'il ne connaît pas (voir cruises/import.html). #}
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+            <input type="file" name="fichier" required>
+            <button type="submit" class="btn btn-blue">Lire l'export</button>
+        </div>
+    </form>
+
+</div>
+
+<div class="diarly-attente" id="diarly-attente" hidden role="status" aria-live="polite">
+    <div class="boite"><div class="diarly-roue"></div><div class="titre" id="diarly-attente-titre"></div></div>
+</div>
+
+<script>
+// Pendant l'envoi : un écran d'attente, le temps que la page suivante arrive
+// (un gros export met un moment à monter sur le wifi du bord).
+(function () {
+    const ecran = document.getElementById('diarly-attente');
+    document.querySelectorAll('form[data-attente]').forEach(function (form) {
+        form.addEventListener('submit', function () {
+            document.getElementById('diarly-attente-titre').textContent = form.dataset.attente;
+            ecran.hidden = false;
+            form.querySelectorAll('button[type=submit]').forEach(b => { b.disabled = true; });
+        });
+    });
+    window.addEventListener('pageshow', function (e) { if (e.persisted) ecran.hidden = true; });
+})();
+</script>
+
+{% endblock %}

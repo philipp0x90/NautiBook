@@ -298,6 +298,13 @@
         {% if voir_tout %}Rien encore dans le carnet de ce navire.{% else %}Rien encore dans le carnet de cette croisière.{% endif %}
     </div>
     {% endfor %}
+
+    {# Pied de page : l'import d'un journal Diarly (zip), pour qui a le droit d'importer. #}
+    {% if voit(request, '/carnet/import') %}
+    <div style="margin-top:12px;padding-top:16px;border-top:1px solid #dde5ee;display:flex;justify-content:center">
+        <a href="/carnet/import" class="btn btn-blue">Importer depuis Diarly (zip)</a>
+    </div>
+    {% endif %}
 </div>
 
 <script>

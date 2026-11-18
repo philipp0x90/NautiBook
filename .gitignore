@@ -16,3 +16,4 @@ logbook.db.backup-*
 IMG/*
 !IMG/.gitkeep
 import_filemaker/
+imports_diarly/

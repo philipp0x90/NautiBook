@@ -15,6 +15,7 @@ import io
 import json
 import re
 import unicodedata
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,12 +23,13 @@ import aiosqlite
 import requests
 from contextlib import asynccontextmanager
 from markupsafe import Markup, escape
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import List, Optional
 from urllib.parse import quote, unquote
 from utils import get_sensor_data, get_position, get_awa, _get_signalk_http_url, mdns_name, resolve_host
 import import_filemaker
 import import_gpx
+import import_diarly
 import backup
 import passwords
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured, get_recent_hosts, remember_host, forget_host
@@ -1680,6 +1682,7 @@ SECTION_RULES = [
     (r"^/crew/\d+/become-admiral$", None),             # premier Amiral : libre
     (r"^/ship/(expenses|contacts)/import", "imports"),
     (r"^/cruises/import$", "imports"),
+    (r"^/carnet/import(/|$)", "imports"),
     (r"^/ship/(info|documents|new)(/|$)", "navire"),
     (r"^/ship/todo(/|$)", "todo"),
     (r"^/ship/fuel(/|$)", "gasoil"),
@@ -7244,6 +7247,147 @@ async def carnet(request: Request, croisiere: Optional[str] = None, edit: Option
          "my_crew_id": user["crew_member_id"] if user else None,
          "max_photos": CARNET_MAX_PHOTOS, "max_bytes": DOC_MAX_BYTES},
     )
+
+
+# ── Import d'un journal Diarly dans le carnet ──
+# Voir import_diarly. Le zip envoyé attend dans DIARLY_TMP/<jeton>.zip entre
+# l'aperçu (croisière proposée pour chaque entrée, à corriger ou ignorer) et
+# la confirmation, comme les fichiers GPX. Sur le navire courant ; l'auteur
+# est la fiche de celui qui importe. Une entrée déjà dans le carnet (même
+# navire, même jour, même texte) est proposée « ignorée » et sautée à
+# l'écriture : réimporter le même export ne double rien.
+DIARLY_TMP = Path(tempfile.gettempdir()) / "nautibook-diarly"
+DIARLY_MAX_BYTES = 2 * 1024 * 1024 * 1024
+DIARLY_EXTRAIT = 160
+
+
+async def _diarly_cruises(db, ship_id: int) -> list:
+    db.row_factory = aiosqlite.Row
+    cursor = await db.execute(
+        "SELECT id, name, start_time AS start, end_time AS end FROM cruises c WHERE ship_id = ? "
+        f"ORDER BY {CRUISE_ORDER}", (ship_id,))
+    return [dict(c) for c in await cursor.fetchall()]
+
+
+async def _diarly_deja(db, ship_id: int, entree: dict) -> bool:
+    cursor = await db.execute(
+        "SELECT 1 FROM carnet_entries WHERE ship_id = ? AND substr(created_at, 1, 10) = ? "
+        "AND COALESCE(text, '') = ? LIMIT 1", (ship_id, entree["jour"], entree["texte"] or ""))
+    return await cursor.fetchone() is not None
+
+
+async def _diarly_page(request, **context):
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        ship = await _fetch_ship(db, ship_id)
+        cruises = await _diarly_cruises(db, ship_id)
+    return templates.TemplateResponse("carnet/import.html", {
+        "request": request, "active_section": "gallery", "current_ship": dict(ship) if ship else None,
+        "cruises": cruises, **context})
+
+
+def _diarly_menage():
+    """Les exports d'un aperçu jamais confirmé, au-delà d'un jour."""
+    DIARLY_TMP.mkdir(exist_ok=True)
+    for vieux in DIARLY_TMP.iterdir():
+        if time.time() - vieux.stat().st_mtime > 86400:
+            vieux.unlink(missing_ok=True)
+
+
+@app.get("/carnet/import", response_class=HTMLResponse)
+async def carnet_import_form(request: Request):
+    return await _diarly_page(request)
+
+
+@app.post("/carnet/import", response_class=HTMLResponse)
+async def carnet_import_check(request: Request, fichier: Optional[UploadFile] = File(None)):
+    """Lit l'export et montre l'aperçu : rien n'est écrit."""
+    if not (fichier and fichier.filename):
+        return await _diarly_page(request, erreur="Choisissez le zip exporté de Diarly.")
+    await asyncio.to_thread(_diarly_menage)
+    jeton = secrets.token_hex(16)
+    chemin = DIARLY_TMP / f"{jeton}.zip"
+
+    def copier():
+        with open(chemin, "wb") as sortie:
+            shutil.copyfileobj(fichier.file, sortie, 1024 * 1024)
+    await asyncio.to_thread(copier)
+    if chemin.stat().st_size > DIARLY_MAX_BYTES:
+        chemin.unlink(missing_ok=True)
+        return await _diarly_page(request, erreur="Ce fichier est trop volumineux.")
+    try:
+        entrees = await asyncio.to_thread(import_diarly.lire, chemin)
+    except import_diarly.DiarlyErreur as e:
+        chemin.unlink(missing_ok=True)
+        return await _diarly_page(request, erreur=str(e))
+    ship_id = get_current_ship_id(request)
+    async with connect() as db:
+        cruises = await _diarly_cruises(db, ship_id)
+        for e in entrees:
+            e["deja"] = await _diarly_deja(db, ship_id, e)
+            e["cruise_id"] = None if e["deja"] else import_diarly.proposer(e["jour"], cruises)
+            sans_lieu = "\n".join(l for l in (e["texte"] or "").splitlines() if not l.startswith("📍"))
+            e["extrait"] = re.sub(r"\s+", " ", sans_lieu.replace("**", "")).strip()
+            e["lieu"] = next((l[2:].strip() for l in (e["texte"] or "").splitlines() if l.startswith("📍")), None)
+    journaux = sorted({e["journal"] for e in entrees})
+    return await _diarly_page(request, entrees=entrees, jeton=jeton, journaux=journaux,
+                              nom_fichier=fichier.filename, extrait_max=DIARLY_EXTRAIT)
+
+
+@app.post("/carnet/import/confirm", response_class=HTMLResponse)
+async def carnet_import_confirm(request: Request):
+    """Écrit les entrées retenues, chacune dans la croisière choisie, avec ses
+    photos copiées dans IMG/Carnet/."""
+    form = await request.form()
+    jeton = form.get("jeton") or ""
+    chemin = DIARLY_TMP / f"{jeton}.zip"
+    if not GPX_TOKEN_RE.match(jeton) or not chemin.is_file():
+        return await _diarly_page(request, erreur="L'export n'est plus disponible : envoyez-le de nouveau.")
+    entrees = await asyncio.to_thread(import_diarly.lire, chemin)
+    ship_id = get_current_ship_id(request)
+    user = _template_user(request)
+    auteur = user["crew_member_id"] if user else None
+    dossier = IMG_DIR / CARNET_SUBDIR
+    dossier.mkdir(parents=True, exist_ok=True)
+    resultat = {"entrees": 0, "photos": 0, "deja": 0}
+    async with connect() as db:
+        cruises = {c["id"] for c in await _diarly_cruises(db, ship_id)}
+        for i, e in enumerate(entrees):
+            try:
+                cid = int(form.get(f"cruise_{i}") or 0)
+            except ValueError:
+                continue
+            if cid not in cruises:
+                continue
+            if await _diarly_deja(db, ship_id, e):
+                resultat["deja"] += 1
+                continue
+            cursor = await db.execute(
+                "INSERT INTO carnet_entries (ship_id, cruise_id, crew_member_id, text, created_at) VALUES (?, ?, ?, ?, ?)",
+                (ship_id, cid, auteur, e["texte"], e["horodatage"]))
+            entry_id = cursor.lastrowid
+            for position, p in enumerate(e["photos"]):
+                source = PurePosixPath(p["chemin"])
+                stem = re.sub(r"[^A-Za-z0-9_-]+", "-", source.stem).strip("-")[:40] or "photo"
+                nom = f"{e['jour'].replace('-', '')}-diarly_{stem}{source.suffix.lower()}"
+                n = 1
+                while (dossier / nom).exists():
+                    nom = f"{e['jour'].replace('-', '')}-diarly_{stem}-{n}{source.suffix.lower()}"
+                    n += 1
+                data = await asyncio.to_thread(import_diarly.photo, chemin, p["chemin"])
+                await asyncio.to_thread((dossier / nom).write_bytes, data)
+                await db.execute(
+                    "INSERT INTO carnet_photos (entry_id, photo_path, lat, lon, geo_source, taken_at, position, place) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (entry_id, f"{IMG_URL}/{CARNET_SUBDIR}/{nom}", p["lat"], p["lon"],
+                     "photo" if p["lat"] is not None else None, e["jour"], position, p["lieu"]))
+                resultat["photos"] += 1
+            resultat["entrees"] += 1
+        await db.commit()
+    chemin.unlink(missing_ok=True)
+    _start_place_lookup()
+    return await _diarly_page(request, resultat=resultat)
 
 
 @app.post("/carnet/new")
