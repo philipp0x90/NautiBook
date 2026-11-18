@@ -296,6 +296,18 @@
         /* Texte qui grandit avec ce qu'on écrit (script plus bas), jusqu'aux
            deux tiers de l'écran : au-delà il défile. */
         textarea[data-grandit] { max-height: 66vh; overflow-y: auto; resize: vertical; }
+        /* Texte à liens (data-liens, script plus bas) : au repos, le texte avec
+           ses adresses web, courriels et téléphones cliquables, dans l'allure
+           d'une zone de texte ; un clic hors lien la rouvre en saisie. */
+        .texte-liens {
+            padding: 7px 10px; border: 1px solid #dde5ee; border-radius: 6px; background: #f8fafc;
+            font: inherit; font-size: 14px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere;
+            min-height: 3.2em; cursor: text;
+        }
+        .texte-liens:hover { border-color: #cfe3ef; }
+        .texte-liens.vide { color: #9aa7b4; }
+        .texte-liens a { color: var(--accent); }
+        .texte-liens[hidden], textarea[data-liens][hidden] { display: none !important; }
         /* Œil des champs mot de passe, posé par le script plus bas. */
         .mdp { position: relative; display: block; }
         .mdp input { padding-right: 38px; }
@@ -1026,6 +1038,62 @@ document.querySelectorAll('textarea[data-grandit]').forEach(function (texte) {
     texte.addEventListener('focus', ajuster);
     ajuster();
 });
+
+// Texte à liens : <textarea data-liens> s'affiche au repos comme du texte où
+// les adresses web, les courriels et les numéros de téléphone sont des liens
+// (tel: compose le numéro sur l'iPhone). Un clic ailleurs que sur un lien
+// ouvre la zone de saisie ; la quitter rend le texte, liens refaits. Le
+// texte est posé en nœuds texte, jamais en HTML : rien de ce qui est saisi
+// ne s'interprète.
+(function () {
+    const MOTIF = new RegExp([
+        /(https?:\/\/[^\s<>"]+|www\.[^\s<>"]+)/.source,                          // 1 web
+        /([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/.source,                                  // 2 courriel
+        /(\+\d[\d\u00a0 .-]{6,}\d|\b0\d(?:[ .\u00a0]?\d\d){4}\b)/.source       // 3 téléphone
+    ].join('|'), 'g');
+    function remplir(vue, texte) {
+        vue.replaceChildren();
+        vue.classList.toggle('vide', !texte);
+        if (!texte) { vue.textContent = vue.dataset.vide || ''; return; }
+        let fin = 0, m;
+        MOTIF.lastIndex = 0;
+        while ((m = MOTIF.exec(texte))) {
+            let brut = m[0];
+            // Ponctuation collée à la fin d'une adresse : elle reste du texte.
+            const queue = m[1] ? (brut.match(/[.,;:!?)\]»']+$/) || [''])[0] : '';
+            brut = brut.slice(0, brut.length - queue.length);
+            vue.append(texte.slice(fin, m.index));
+            const a = document.createElement('a');
+            a.textContent = brut;
+            if (m[1]) { a.href = /^www\./.test(brut) ? 'https://' + brut : brut; a.target = '_blank'; a.rel = 'noopener'; }
+            else if (m[2]) a.href = 'mailto:' + brut;
+            else a.href = 'tel:' + brut.replace(/[^\d+]/g, '');
+            vue.append(a);
+            fin = m.index + brut.length;
+        }
+        vue.append(texte.slice(fin));
+    }
+    // Aussi pour un aperçu qui a son propre mécanisme (notes d'un contact).
+    window.remplirLiens = remplir;
+    document.querySelectorAll('textarea[data-liens]').forEach(function (zone) {
+        const vue = document.createElement('div');
+        vue.className = 'texte-liens';
+        vue.dataset.vide = zone.placeholder || '';
+        zone.before(vue);
+        remplir(vue, zone.value);
+        zone.hidden = true;
+        vue.addEventListener('click', function (e) {
+            if (e.target.closest('a') || zone.disabled || zone.readOnly) return;
+            vue.hidden = true; zone.hidden = false;
+            zone.focus();
+            zone.setSelectionRange(zone.value.length, zone.value.length);
+        });
+        zone.addEventListener('blur', function () {
+            remplir(vue, zone.value);
+            zone.hidden = true; vue.hidden = false;
+        });
+    });
+})();
 
 // Recadrage des photos (navire, équipier). Dans un [data-recadrage] : la zone
 // [data-recadrage-zone] tient l'<img> (overflow caché), [data-cadrage-ouvrir]

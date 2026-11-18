@@ -53,6 +53,7 @@
         display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden;
     }
     .notes-apercu:hover { border-color: #cfe3ef; background: #f8fbfd; }
+    .notes-apercu a { color: var(--accent); }
     .notes-apercu.vide { color: #b8c4d0; }
     .notes-apercu[hidden], .contact-notes[hidden] { display: none !important; }
     .contact-notes {
@@ -159,7 +160,7 @@
         <form method="POST" action="/ship/contacts/{{ contact.id }}/field/notes" style="margin-top:10px">
             <div class="contact-titre">Notes</div>
             <div class="notes-apercu{{ ' vide' if not contact.notes }}" title="{{ contact.notes or '' }}"
-                 onclick="deplierNotes(this)">{{ contact.notes or 'Horaires, services, remarques…' }}</div>
+                 onclick="deplierNotes(this, event)">{{ contact.notes or 'Horaires, services, remarques…' }}</div>
             <textarea name="value" class="contact-notes" rows="1" placeholder="Horaires, services, remarques…" hidden
                       onchange="this.form.submit()" oninput="ajusterNotes(this)" onblur="replierNotes(this)">{{ contact.notes or '' }}</textarea>
         </form>
@@ -266,11 +267,19 @@ function ajusterNotes(zone) {
     zone.style.height = 'auto';
     zone.style.height = zone.scrollHeight + 2 + 'px';
 }
-function deplierNotes(apercu) {
+function deplierNotes(apercu, event) {
+    if (event && event.target.closest('a')) return;   // un lien s'ouvre, la note reste repliée
     const zone = apercu.nextElementSibling;
     apercu.hidden = true; zone.hidden = false;
     ajusterNotes(zone); zone.focus();
 }
+// Adresses web, courriels et téléphones cliquables dans l'aperçu (remplirLiens,
+// base.html, dont le script vient après celui-ci : d'où DOMContentLoaded).
+document.addEventListener('DOMContentLoaded', function () {
+    const apercu = document.querySelector('.notes-apercu');
+    if (apercu && !apercu.classList.contains('vide') && window.remplirLiens)
+        remplirLiens(apercu, apercu.nextElementSibling.value);
+});
 function replierNotes(zone) {
     if (zone.value !== zone.defaultValue) return;
     zone.hidden = true; zone.previousElementSibling.hidden = false;
