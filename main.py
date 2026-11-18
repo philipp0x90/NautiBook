@@ -8052,8 +8052,6 @@ async def settings_form(
             # Toute autre valeur que 'ok' ou 'erreur' n'affiche rien.
             "sauvegarde": sauvegarde if sauvegarde in ("ok", "erreur") else "",
             "sauvegarde_message": message_sauvegarde,
-            # Où va la sauvegarde (backup.py) : affiché sous le bouton.
-            "sauvegarde_disque": str(backup.disque()),
             "copies": copies,
             "copies_erreur": copies_erreur,
             "signalk": signalk if signalk in ("ok", "erreur") else "",
