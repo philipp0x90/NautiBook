@@ -1,5 +1,5 @@
 """Sauvegarde du journal de bord (la base) et des photos (IMG/) sur le disque
-externe branché au Pi — un Samsung T7, monté sur ~/Desktop/T7_Pi.
+externe branché au Pi — un Samsung T7, monté sur /mnt/t7.
 
 Lancé par le bouton « Sauvegarder maintenant » des Réglages, ou à la main :
     .venv/bin/python backup.py
@@ -42,9 +42,10 @@ if not DB.is_absolute():
 PHOTOS = REPO / "IMG"
 # Le disque, réglable dans config.yaml (backup_dir) ; les sauvegardes vont
 # dans un sous-dossier, pour ne pas se mêler au reste du disque.
-# Chemin complet : le service tourne sous le compte pi, le disque est monté
-# dans le dossier de bmansion.
-DISQUE_DEFAUT = "/home/bmansion/Desktop/T7_Pi"
+# Le point de montage lui-même (ext4, /mnt/t7), pas le raccourci
+# ~bmansion/Desktop/T7_Pi qui y mène : le service tourne sous le compte pi,
+# qui ne peut pas entrer dans le dossier de bmansion (drwx------).
+DISQUE_DEFAUT = "/mnt/t7"
 SOUS_DOSSIER = Path("NautiBook") / "Sauvegardes"
 
 
