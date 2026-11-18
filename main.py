@@ -8031,6 +8031,16 @@ async def settings_form(
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         ship = await _fetch_ship(db, get_current_ship_id(request))
+    # Les copies du disque, pour « Restaurer une sauvegarde » : seulement
+    # pour qui peut restaurer, et sans disque, le motif à la place.
+    copies, copies_erreur = None, ""
+    if can(_template_user(request), "parametres.modifier"):
+        try:
+            copies = await asyncio.to_thread(backup.liste)
+        except backup.Echec as exc:
+            copies_erreur = str(exc)
+        except OSError as exc:
+            copies_erreur = str(exc)
     return templates.TemplateResponse(
         "settings.html",
         {
@@ -8044,6 +8054,8 @@ async def settings_form(
             "sauvegarde_message": message_sauvegarde,
             # Où va la sauvegarde (backup.py) : affiché sous le bouton.
             "sauvegarde_disque": str(backup.disque()),
+            "copies": copies,
+            "copies_erreur": copies_erreur,
             "signalk": signalk if signalk in ("ok", "erreur") else "",
             "signalk_message": message_signalk,
         },
@@ -8096,11 +8108,6 @@ async def settings_signalk_forget(oublier: Optional[str] = Form(None)):
     return RedirectResponse(url="/settings", status_code=303)
 
 
-# Le script vit à côté de main.py. Il sait se repérer seul, mais on le désigne
-# par son chemin absolu : le dossier courant d'uvicorn n'est pas garanti.
-BACKUP_SCRIPT = Path(__file__).resolve().parent / "backup.py"
-
-
 def _retour_settings(cle: str, etat: str, message: str) -> RedirectResponse:
     """Renvoie sur /settings avec l'état et le message en clair dans l'URL.
 
@@ -8116,53 +8123,36 @@ def _retour_settings(cle: str, etat: str, message: str) -> RedirectResponse:
 
 @app.post("/settings/backup")
 async def settings_backup():
-    """Lance backup.py depuis le bouton du pied de page des paramètres.
-
-    Rien n'est dupliqué ici : le script reste la seule définition de ce qu'est
-    une sauvegarde (destination, vérification, élagage), et ce handler ne fait
-    que le lancer et rapporter ce qu'il a dit. Il tourne aussi bien à la main
-    dans un terminal.
-    """
-    if not BACKUP_SCRIPT.exists():
-        return _retour_settings("sauvegarde", "erreur", "backup.py est introuvable à côté de main.py.")
-
-    # subprocess.run bloque, et le script copie la base puis synchronise les
-    # photos — quelques secondes, davantage au premier lancement. Même raison
-    # que get_position() dans le traqueur : on le sort de la boucle d'événements.
-    def _lancer():
-        return subprocess.run(
-            # Le Python de l'app (celui du venv) : backup.py lit config.yaml.
-            [sys.executable, str(BACKUP_SCRIPT)],
-            cwd=str(BACKUP_SCRIPT.parent),
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-
+    """« Sauvegarder maintenant » : backup.py fait tout (destination,
+    vérification, élagage) ; ce handler le lance hors de la boucle
+    d'événements (copie de la base, puis des photos) et rapporte. Il ne
+    renvoie jamais une page d'erreur : tout échec se raconte sous le bouton."""
     try:
-        resultat = await asyncio.to_thread(_lancer)
-    except subprocess.TimeoutExpired:
-        return _retour_settings("sauvegarde", "erreur", "La sauvegarde a dépassé 5 minutes et a été interrompue.")
-    # Un bouton ne doit jamais renvoyer une page d'erreur 500 : même un script
-    # non exécutable ou absent du disque se raconte dans le pied de page.
+        lignes = await asyncio.to_thread(backup.sauvegarder)
+    except backup.Echec as exc:
+        return _retour_settings("sauvegarde", "erreur", f"ERREUR : {exc}")
     except Exception as exc:
-        return _retour_settings("sauvegarde", "erreur", f"Lancement impossible : {exc}")
+        return _retour_settings("sauvegarde", "erreur", f"Sauvegarde impossible : {exc}")
+    # Les lignes « base : » et « photos : » sont le résumé utile.
+    return _retour_settings("sauvegarde", "ok",
+                            " · ".join(l for l in lignes if l.startswith(("base", "photos"))))
 
-    lignes = [ligne.strip() for ligne in resultat.stdout.splitlines() if ligne.strip()]
 
-    if resultat.returncode == 0:
-        # Les lignes « base : » et « photos : » sont le résumé utile ; le reste
-        # (en-tête, élagage) n'apprend rien à qui vient de cliquer.
-        resume = " · ".join(l for l in lignes if l.startswith(("base", "photos")))
-        return _retour_settings("sauvegarde", "ok", resume or "Sauvegarde effectuée.")
-
-    # Le script annonce ses échecs sur la sortie standard, préfixés ERREUR.
-    echec = next((l for l in lignes if l.startswith("ERREUR")), "")
-    return _retour_settings(
-        "sauvegarde",
-        "erreur",
-        echec or resultat.stderr.strip() or f"Échec sans message (code {resultat.returncode}).",
-    )
+@app.post("/settings/restore")
+async def settings_restore(nom: str = Form(...)):
+    """Remet une copie du disque à la place de la base (backup.restaurer :
+    la base actuelle est d'abord sauvegardée), puis init_db() met à jour le
+    schéma d'une copie plus ancienne que le code. Réservé à qui a
+    parametres.modifier — l'Amiral seul (SECTION_RULES). Les sessions sont
+    celles de la copie : on peut se retrouver déconnecté."""
+    try:
+        lignes = await asyncio.to_thread(backup.restaurer, nom)
+        await init_db()
+    except backup.Echec as exc:
+        return _retour_settings("sauvegarde", "erreur", f"ERREUR : {exc}")
+    except Exception as exc:
+        return _retour_settings("sauvegarde", "erreur", f"Restauration impossible : {exc}")
+    return _retour_settings("sauvegarde", "ok", " · ".join(lignes))
 
 
 # Étiquettes françaises des mesures, pour nommer celles que le serveur ne

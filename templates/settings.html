@@ -165,6 +165,14 @@
         line-height: 1.5;
         text-align: left;
     }
+    /* Restaurer une sauvegarde : sous le bouton, fermé par défaut. */
+    .restauration { margin: 16px auto 0; max-width: 640px; text-align: left; font-size: 13px; }
+    .restauration summary { cursor: pointer; color: var(--accent-dark); font-weight: 600; text-align: center; }
+    .restauration p { margin: 10px 0; }
+    .restauration .num { text-align: right; }
+    .btn-restaurer { padding: 3px 10px; font-size: 12px; border-radius: 8px; cursor: pointer;
+                     background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+    .btn-restaurer:hover { background: #ffedd5; }
     .backup-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
     .backup-err { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
 </style>
@@ -263,6 +271,48 @@
         {% if sauvegarde == 'ok' %}✓{% else %}✕{% endif %}
         {{ sauvegarde_message }}
     </div>
+    {% endif %}
+
+    {# Restaurer : seulement pour qui en a le droit (copies n'est pas None,
+       ou le disque manque et copies_erreur dit pourquoi). Fermé par défaut :
+       on n'y vient qu'exprès. #}
+    {% if copies is not none or copies_erreur %}
+    <details class="restauration">
+        <summary>Restaurer une sauvegarde</summary>
+        {% if copies_erreur %}
+        <div class="meta">{{ copies_erreur[:1] | upper }}{{ copies_erreur[1:] }}</div>
+        {% elif not copies %}
+        <div class="meta">Aucune sauvegarde sur le disque.</div>
+        {% else %}
+        <p class="meta">La copie choisie remplace toute la base — tous les navires, comptes compris.
+            La base actuelle est d'abord sauvegardée sur le disque (« avant restauration ») :
+            on peut y revenir. Les photos manquantes sont remises depuis le disque.</p>
+        <table class="data-table titres-legers">
+            <thead><tr><th>Date</th><th class="num">Navires</th><th class="num">Croisières</th>
+                <th class="num">Routes</th><th class="num">Lignes</th><th class="num">Taille</th><th></th></tr></thead>
+            <tbody>
+            {% for c in copies %}
+            <tr>
+                <td>{{ c.date.strftime('%d/%m/%Y %H:%M') if c.date else c.nom }}
+                    {% if c.avant_restauration %}<div class="meta">avant restauration</div>{% endif %}</td>
+                <td class="num">{{ c.navires if c.navires is not none else '—' }}</td>
+                <td class="num">{{ c.croisieres if c.croisieres is not none else '—' }}</td>
+                <td class="num">{{ c.routes if c.routes is not none else '—' }}</td>
+                <td class="num">{{ c.lignes if c.lignes is not none else '—' }}</td>
+                <td class="num">{{ '%.1f' | format(c.mo) | replace('.', ',') }} Mo</td>
+                <td>
+                    <form method="post" action="/settings/restore" style="display:inline"
+                          onsubmit="return confirm('Remplacer toute la base par la sauvegarde du {{ c.date.strftime('%d/%m/%Y à %H:%M') if c.date else c.nom }} ?\n\nTout ce qui a été saisi depuis sera remplacé (la base actuelle est d\'abord sauvegardée sur le disque). Vous serez peut-être déconnecté.')">
+                        <input type="hidden" name="nom" value="{{ c.nom }}">
+                        <button type="submit" class="btn-restaurer">Restaurer</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </details>
     {% endif %}
 </footer>
 
