@@ -16,6 +16,7 @@ import json
 import re
 import unicodedata
 import subprocess
+import sys
 import tempfile
 import aiosqlite
 import requests
@@ -26,6 +27,7 @@ from urllib.parse import quote, unquote
 from utils import get_sensor_data, get_position, get_awa, _get_signalk_http_url, mdns_name, resolve_host
 import import_filemaker
 import import_gpx
+import backup
 import passwords
 from config import get_ikommunicate_url, get_ikommunicate_host, save_config, is_configured, get_recent_hosts, remember_host, forget_host
 
@@ -1181,7 +1183,7 @@ async def apple_touch_icon():
 
 
 # Factures et reçus des comptes : un sous-dossier d'IMG/, et non un dossier à
-# part, pour que backup.sh (rsync de tout IMG/) et copy_db.sh (scp -r IMG/)
+# part, pour que backup.py (miroir de tout IMG/) et copy_db.sh (scp -r IMG/)
 # les emportent sans changement, et que le montage /IMG les serve déjà.
 # Comme les photos, rien ne les supprime : remplacer le document d'une dépense
 # ou supprimer la dépense laisse le fichier, qu'une base restaurée peut encore
@@ -2048,7 +2050,7 @@ async def set_ship_document_valid_from(doc_id: int, value: Optional[str] = Form(
 async def delete_ship_document(doc_id: int):
     """Retire le document de la fiche, mais laisse le fichier dans
     IMG/Documents/ : rien n'efface un fichier d'IMG/, pour qu'une base
-    restaurée retrouve les siens (voir backup.sh)."""
+    restaurée retrouve les siens (voir backup.py)."""
     async with connect() as db:
         await db.execute("DELETE FROM ship_documents WHERE id = ?", (doc_id,))
         await db.commit()
@@ -4375,7 +4377,7 @@ async def crop_crew_photo(crew_id: int, x: float = Form(50), y: float = Form(35)
 async def remove_crew_photo(crew_id: int):
     """Retire la photo de la fiche, et efface son fichier s'il est dans IMG/
     et qu'aucune autre fiche ne l'utilise. Sans risque pour les sauvegardes :
-    le miroir des photos de backup.sh garde les fichiers effacés ici.
+    le miroir des photos de backup.py garde les fichiers effacés ici.
     « remove » et non « delete » : un …/delete exigerait equipiers.supprimer
     (l'Amiral seul), alors que les Capitaines aussi retirent une photo."""
     async with connect() as db:
@@ -8040,6 +8042,8 @@ async def settings_form(
             # Toute autre valeur que 'ok' ou 'erreur' n'affiche rien.
             "sauvegarde": sauvegarde if sauvegarde in ("ok", "erreur") else "",
             "sauvegarde_message": message_sauvegarde,
+            # Où va la sauvegarde (backup.py) : affiché sous le bouton.
+            "sauvegarde_disque": str(backup.disque()),
             "signalk": signalk if signalk in ("ok", "erreur") else "",
             "signalk_message": message_signalk,
         },
@@ -8094,7 +8098,7 @@ async def settings_signalk_forget(oublier: Optional[str] = Form(None)):
 
 # Le script vit à côté de main.py. Il sait se repérer seul, mais on le désigne
 # par son chemin absolu : le dossier courant d'uvicorn n'est pas garanti.
-BACKUP_SCRIPT = Path(__file__).resolve().parent / "backup.sh"
+BACKUP_SCRIPT = Path(__file__).resolve().parent / "backup.py"
 
 
 def _retour_settings(cle: str, etat: str, message: str) -> RedirectResponse:
@@ -8112,7 +8116,7 @@ def _retour_settings(cle: str, etat: str, message: str) -> RedirectResponse:
 
 @app.post("/settings/backup")
 async def settings_backup():
-    """Lance backup.sh depuis le bouton du pied de page des paramètres.
+    """Lance backup.py depuis le bouton du pied de page des paramètres.
 
     Rien n'est dupliqué ici : le script reste la seule définition de ce qu'est
     une sauvegarde (destination, vérification, élagage), et ce handler ne fait
@@ -8120,14 +8124,15 @@ async def settings_backup():
     dans un terminal.
     """
     if not BACKUP_SCRIPT.exists():
-        return _retour_settings("sauvegarde", "erreur", "backup.sh est introuvable à côté de main.py.")
+        return _retour_settings("sauvegarde", "erreur", "backup.py est introuvable à côté de main.py.")
 
     # subprocess.run bloque, et le script copie la base puis synchronise les
     # photos — quelques secondes, davantage au premier lancement. Même raison
     # que get_position() dans le traqueur : on le sort de la boucle d'événements.
     def _lancer():
         return subprocess.run(
-            [str(BACKUP_SCRIPT)],
+            # Le Python de l'app (celui du venv) : backup.py lit config.yaml.
+            [sys.executable, str(BACKUP_SCRIPT)],
             cwd=str(BACKUP_SCRIPT.parent),
             capture_output=True,
             text=True,
