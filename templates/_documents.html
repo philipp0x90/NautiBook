@@ -1,5 +1,5 @@
 {# Section « Documents » d'une fiche : la liste des fichiers joints (titre
-   modifiable sur place, type, ✕ Supprimer), l'ajout d'un ou plusieurs
+   modifiable sur place, type ou vignette, ✕ pour supprimer), l'ajout d'un ou plusieurs
    fichiers, et le glisser-déposer sur toute la section. Partagée par les
    dépenses (/ship/expenses, expense_documents) et les escales (/stopovers,
    stopover_documents), dont les routes suivent le même modèle :
@@ -8,14 +8,17 @@
    owner_id vaut none à la création : les fichiers partent alors avec le
    formulaire principal (form_id, attribut form=), champs doc_title et
    document_file. `de` : « de la dépense », « de l'escale ». #}
+{% from "carnet/_icone.html" import icone_photo %}
 {% macro section_documents(documents, base, owner_id, form_id, de, doc_max_bytes, doc_accept, titre='Documents', classe='') %}
 <style>
     .docs-section { margin-top: 16px; }
-    .docs-section h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .docs-section h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
     .docs-section table { margin-bottom: 12px; }
     .doc-type { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 1px 8px; color: #fff; }
     .doc-type.doc-pdf { background: #c0392b; }
-    .doc-type.doc-img { background: #2980b9; }
+    /* Image : sa vignette, à la place d'une pastille « Image ». */
+    .doc-vignette { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; display: block;
+                    border: 1px solid #dde5ee; background: #f0f4f8; }
     /* Titre d'un document : du texte au repos, un champ au survol. */
     .doc-titre { margin: 0; }
     .doc-titre input {
@@ -26,12 +29,24 @@
     .doc-titre input:focus { border-color: var(--accent); background: #fff; outline: none; }
     /* Fichiers glissés sur la section : un cadre pointillé pendant le survol. */
     .docs-section.survol { outline: 2px dashed var(--accent); outline-offset: -6px; background: #e8f4f9; }
+    /* Appareil photo à côté du titre : choisir ou prendre des photos, qui
+       suivent le chemin d'un dépôt (réduites, puis envoyées). */
+    .doc-photo { background: #e8f4f9; color: #0f3a4a; cursor: pointer; margin: 0; flex: none;
+                 width: 32px; height: 32px; display: inline-flex; align-items: center;
+                 justify-content: center; border-radius: 50%; }
+    .doc-photo:hover { background: #d6ecf5; }
+    .doc-photo .icone-photo { width: 18px; height: 18px; display: block; }
     .doc-ajout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .doc-ajout input[type=text] { flex: 3 1 260px; min-width: 0; height: 32px; }
     .doc-ajout input[type=file] { flex: 2 1 200px; min-width: 0; font-size: 13px; }
 </style>
 <section class="card docs-section {{ classe }}" id="documents">
-    <h3>{{ titre }}</h3>
+    <h3>{{ titre }}
+        <label class="doc-photo" title="Ajouter des photos" aria-label="Ajouter des photos">
+            {{ icone_photo() }}
+            <input type="file" accept="image/*" multiple hidden class="doc-photo-choix">
+        </label>
+    </h3>
     {% if documents %}
     <table class="data-table">
         <thead><tr><th>Titre</th><th>Type</th><th></th></tr></thead>
@@ -51,13 +66,13 @@
                 </td>
                 <td>
                     {% if pdf %}<span class="doc-type doc-pdf">PDF</span>
-                    {% else %}<span class="doc-type doc-img">Image</span>{% endif %}
+                    {% else %}<img class="doc-vignette" src="{{ d.path }}" alt="Image" loading="lazy">{% endif %}
                 </td>
                 <td style="text-align:right">
                     <form method="POST" action="{{ base }}/documents/{{ d.id }}/delete" style="margin:0"
                           onsubmit="return confirm('Retirer « {{ (d.title or 'ce document') | replace("'", "’") }} » {{ de }} ?')">
-                        <button type="submit" class="btn" title="Retirer ce document {{ de }}"
-                                style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px;white-space:nowrap">✕ Supprimer</button>
+                        <button type="submit" class="btn" title="Retirer ce document {{ de }}" aria-label="Supprimer"
+                                style="background:#fee2e2;color:#991b1b;width:26px;height:26px;padding:0;font-size:12px;border-radius:50%">✕</button>
                     </form>
                 </td>
             </tr>
@@ -72,21 +87,22 @@
     <form method="POST" action="{{ base }}/{{ owner_id }}/documents/new" enctype="multipart/form-data"
           class="doc-ajout" onsubmit="return verifierDocument(this.elements.document_file)">
         <input type="text" name="title" placeholder="Titre du document (sinon, le nom du fichier)">
-        <input type="file" name="document_file" accept="image/*,application/pdf,{{ doc_accept }}" multiple required>
+        <input type="file" name="document_file" accept="image/*,application/pdf,{{ doc_accept }}" multiple required
+               data-photo-reduite="2000">
         <button type="submit" class="btn btn-yellow">+ Ajouter document</button>
     </form>
     {% else %}
     <div class="doc-ajout">
         <input type="text" name="doc_title" form="{{ form_id }}" placeholder="Titre du document (sinon, le nom du fichier)">
         <input type="file" name="document_file" form="{{ form_id }}" accept="image/*,application/pdf,{{ doc_accept }}"
-               multiple onchange="verifierDocument(this)">
+               multiple data-photo-reduite="2000" onchange="verifierDocument(this)">
     </div>
     <div class="meta" style="margin-top:4px">Enregistré avec la fiche ; d'autres pourront s'ajouter ensuite.</div>
     {% endif %}
     <div class="meta" style="margin-top:4px">PDF ou image (ou photo prise sur place), max. {{ doc_max_bytes // 1048576 }} Mo — ou glisser les fichiers ici</div>
 </section>
 <script>
-// Clic sur une ligne, hors bouton « Supprimer » : un PDF dans la visionneuse
+// Clic sur une ligne, hors bouton ✕ : un PDF dans la visionneuse
 // (base.html), une image en plein écran comme les photos.
 function ouvrirDocument(event, url, pdf) {
     if (event.target.closest('button, form')) return;
@@ -98,6 +114,8 @@ function ouvrirDocument(event, url, pdf) {
 // Refus avant l'envoi plutôt qu'une page d'erreur après : un gros fichier
 // prend du temps sur le wifi du bord.
 function verifierDocument(champ) {
+    // Photos en cours de réduction (base.html) : l'envoi attendrait l'original.
+    if (champ.dataset.reduction) { alert('Préparation des photos… un instant.'); return false; }
     const trop = [...champ.files].find(f => f.size > {{ doc_max_bytes }});
     if (trop) {
         alert('« ' + trop.name + ' » est trop volumineux (plus de {{ doc_max_bytes // 1048576 }} Mo).');
@@ -111,18 +129,31 @@ function verifierDocument(champ) {
 // création, ils partiront avec la fiche, au bouton Enregistrer.
 (function () {
     const section = document.getElementById('documents');
-    const champ = section.querySelector('input[type=file]');
+    const champ = section.querySelector('input[name=document_file]');
     const ok = f => /^(image\/|application\/pdf)/.test(f.type) || /\.(pdf|jpe?g|png|heic|gif|webp)$/i.test(f.name);
     ['dragenter', 'dragover'].forEach(t => section.addEventListener(t, e => { e.preventDefault(); section.classList.add('survol'); }));
     section.addEventListener('dragleave', e => { if (!section.contains(e.relatedTarget)) section.classList.remove('survol'); });
+    function deposer(fichiers) {
+        const dt = new DataTransfer();
+        fichiers.filter(ok).forEach(f => dt.items.add(f));
+        if (!dt.files.length) { alert('Seuls les PDF et les images peuvent être joints.'); return; }
+        // Le change fait réduire les photos (base.html) ; il revient ici une
+        // fois les fichiers prêts. Sur une fiche existante, ils partent alors.
+        {% if owner_id %}champ.dataset.envoyer = '1';{% endif %}
+        champ.files = dt.files;
+        champ.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     section.addEventListener('drop', e => {
         e.preventDefault(); section.classList.remove('survol');
-        const dt = new DataTransfer();
-        [...e.dataTransfer.files].filter(ok).forEach(f => dt.items.add(f));
-        if (!dt.files.length) { alert('Seuls les PDF et les images peuvent être joints.'); return; }
-        champ.files = dt.files;
-        if (!verifierDocument(champ)) return;
-        {% if owner_id %}champ.form.requestSubmit();{% endif %}
+        deposer([...e.dataTransfer.files]);
+    });
+    // L'appareil photo du titre : les photos choisies sont déposées de même.
+    const choix = section.querySelector('.doc-photo-choix');
+    choix.addEventListener('change', () => { deposer([...choix.files]); choix.value = ''; });
+    champ.addEventListener('change', function () {
+        if (!champ.dataset.envoyer) return;
+        delete champ.dataset.envoyer;
+        if (verifierDocument(champ)) champ.form.requestSubmit();
     });
 })();
 </script>

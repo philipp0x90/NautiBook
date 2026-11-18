@@ -293,6 +293,9 @@
             background: #f8fafc;
         }
         input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); background: #fff; }
+        /* Texte qui grandit avec ce qu'on écrit (script plus bas), jusqu'aux
+           deux tiers de l'écran : au-delà il défile. */
+        textarea[data-grandit] { max-height: 66vh; overflow-y: auto; resize: vertical; }
         /* Œil des champs mot de passe, posé par le script plus bas. */
         .mdp { position: relative; display: block; }
         .mdp input { padding-right: 38px; }
@@ -923,7 +926,10 @@ document.addEventListener('DOMContentLoaded', function () {
 // Chrome) part telle quelle.
 // <input type="file" data-photo-reduite="1600"> suit le même chemin sans
 // recadrage : la photo garde son cadre, son grand côté ramené à 1600 px
-// (photo du navire, affichée en bandeau).
+// (photo du navire, affichée en bandeau). Sur un champ multiple (documents
+// des escales et des dépenses), chaque image est réduite et les autres
+// fichiers (PDF) passent tels quels ; data-reduction est posé pendant le
+// travail, pour qu'un envoi trop rapide puisse attendre.
 (function () {
     const COTE = 400;
     async function reduite(fichier, max) {
@@ -956,12 +962,19 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!champ.matches || !champ.matches('input[type=file][data-photo-carree], input[type=file][data-photo-reduite]')) return;
         if (champ.dataset.pret) { delete champ.dataset.pret; return; }   // relance : on laisse passer
         if (!champ.files.length) return;
+        const image = f => f.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp)$/i.test(f.name);
+        if (![...champ.files].some(image)) return;   // que des PDF : rien à réduire
         e.stopImmediatePropagation();
+        champ.dataset.reduction = '1';
         const dt = new DataTransfer();
-        dt.items.add(champ.dataset.photoReduite
-            ? await reduite(champ.files[0], parseInt(champ.dataset.photoReduite, 10) || 1600)
-            : await carre(champ.files[0]));
+        if (champ.dataset.photoReduite) {
+            const max = parseInt(champ.dataset.photoReduite, 10) || 1600;
+            for (const f of [...champ.files]) dt.items.add(image(f) ? await reduite(f, max) : f);
+        } else {
+            dt.items.add(await carre(champ.files[0]));
+        }
         champ.files = dt.files;
+        delete champ.dataset.reduction;
         champ.dataset.pret = '1';
         champ.dispatchEvent(new Event('change', { bubbles: true }));
     }, true);
@@ -986,6 +999,21 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 })();
+
+// Texte qui grandit : <textarea data-grandit> prend la hauteur de son texte
+// à l'ouverture (texte existant) et à chaque frappe ; le plafond est dans le
+// style (max-height). Une boîte encore cachée garde sa hauteur et s'ajuste
+// quand on y entre.
+document.querySelectorAll('textarea[data-grandit]').forEach(function (texte) {
+    function ajuster() {
+        if (!texte.offsetParent) return;
+        texte.style.height = 'auto';
+        texte.style.height = (texte.scrollHeight + texte.offsetHeight - texte.clientHeight) + 'px';
+    }
+    texte.addEventListener('input', ajuster);
+    texte.addEventListener('focus', ajuster);
+    ajuster();
+});
 
 // Recadrage des photos (navire, équipier). Dans un [data-recadrage] : la zone
 // [data-recadrage-zone] tient l'<img> (overflow caché), [data-cadrage-ouvrir]

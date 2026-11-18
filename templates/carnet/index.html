@@ -12,7 +12,7 @@
     /* hidden doit l'emporter sur le display de .btn : « Publier » n'apparaît
        que s'il y a quelque chose à publier. */
     .composer [hidden] { display: none !important; }
-    /* Le texte grandit avec ce qu'on écrit (ajuster(), plus bas), jusqu'aux
+    /* Le texte grandit avec ce qu'on écrit (data-grandit, base.html), jusqu'aux
        deux tiers de l'écran : au-delà il défile, et sur iPhone le bouton
        photo et « Publier » restent visibles au-dessus du clavier. */
     .composer textarea { min-height: 70px; max-height: 66vh; overflow-y: auto; resize: vertical;
@@ -90,7 +90,7 @@
 </style>
 {% endblock %}
 
-{% from "carnet/_icone.html" import icone_carnet %}
+{% from "carnet/_icone.html" import icone_carnet, icone_photo %}
 {% block content %}
 
 {# Une publication en cours d'écriture : la même zone sert à publier (en tête
@@ -104,7 +104,7 @@
 <form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer"
       {% if existantes is not none %}data-correction="1"{% endif %}>
     <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
-    <textarea name="text" placeholder="Quoi de neuf à bord ?" maxlength="20000">{{ texte }}</textarea>
+    <textarea name="text" placeholder="Quoi de neuf à bord ?" maxlength="20000" data-grandit>{{ texte }}</textarea>
     <div class="deja">{% for ph in existantes or [] %}<div class="apercu">
             {% if fichier_visible(request, ph.photo_path) %}<img src="{{ ph.photo_path }}" alt="">{% endif %}
             <button type="submit" form="retirer-{{ ph.id }}" class="retirer" title="Retirer cette photo">✕</button>
@@ -112,14 +112,7 @@
     <div class="apercus"></div>
     <div class="composer-bas">
         <label class="btn bouton-photo" title="Ajouter des photos" aria-label="Ajouter des photos">
-            {# Appareil photo au trait, dessiné d'après l'icône fournie par
-               l'utilisateur ; currentColor, comme les autres icônes de l'app. #}
-            <svg class="icone-photo" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
-                 stroke-width="1.8" stroke-linejoin="round">
-                <path d="M4.5 7H7.6l.6-1.7C8.6 4.5 9.2 4 10.1 4h3.8c.9 0 1.5.5 1.9 1.3l.6 1.7h3.1A2.5 2.5 0 0 1 22 9.5v8A2.5 2.5 0 0 1 19.5 20h-15A2.5 2.5 0 0 1 2 17.5v-8A2.5 2.5 0 0 1 4.5 7z"/>
-                <circle cx="12" cy="13.2" r="3.7"/>
-                <circle cx="5.6" cy="10" r=".95" fill="currentColor" stroke="none"/>
-            </svg>
+            {{ icone_photo() }}
             <input type="file" accept="image/*" multiple hidden class="choix-photos">
         </label>
         {# Le champ réellement envoyé : rempli par le script avec les photos
@@ -412,13 +405,7 @@ document.querySelectorAll('.composer').forEach(function (form) {
         }
     }
     choix.addEventListener('change', function () { ajouter([...choix.files]); choix.value = ''; });
-    function ajuster() {
-        texte.style.height = 'auto';
-        texte.style.height = (texte.scrollHeight + texte.offsetHeight - texte.clientHeight) + 'px';
-    }
     texte.addEventListener('input', maj);
-    texte.addEventListener('input', ajuster);
-    ajuster();     // en modification, la boîte s'ouvre à la taille du texte existant
     ['dragenter', 'dragover'].forEach(t => form.addEventListener(t, e => { e.preventDefault(); form.classList.add('survol'); }));
     ['dragleave', 'drop'].forEach(t => form.addEventListener(t, () => form.classList.remove('survol')));
     form.addEventListener('drop', function (e) { e.preventDefault(); ajouter([...e.dataTransfer.files]); });
