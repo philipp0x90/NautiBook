@@ -73,7 +73,18 @@
     .pub-qui .quand { font-size: 12px; color: var(--muted); }
     .pub-actions { display: flex; gap: 6px; align-items: center; }
     .pub-actions a, .pub-actions button { font-size: 12px; }
-    .pub-texte { white-space: pre-wrap; font-size: 15px; line-height: 1.5; }
+    /* Texte mis en forme par le filtre mise_en_forme (main.py) : paragraphes,
+       listes, gras, italique, liens. */
+    .pub-texte { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+    .pub-texte p, .pub-texte ul { margin: 0 0 .6em; }
+    .pub-texte ul { padding-left: 1.3em; }
+    .pub-texte > :last-child { margin-bottom: 0; }
+    .pub-texte a { color: var(--accent); }
+    /* Barre de mise en forme, au-dessus du texte : gras, italique, liste. */
+    .barre-forme { display: flex; gap: 6px; margin-bottom: -4px; }
+    .barre-forme button { width: 34px; height: 30px; padding: 0; border: 1px solid #dde5ee; border-radius: 6px;
+                          background: #f8fafc; color: #0f3a4a; font: inherit; font-size: 15px; cursor: pointer; }
+    .barre-forme button:hover { background: #e8f4f9; }
     .pub-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
     .pub-photos.une { grid-template-columns: 1fr; }
     .pub-photo { position: relative; border-radius: 8px; overflow: hidden; background: #e8eef3; }
@@ -106,6 +117,13 @@
 <form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer"
       {% if existantes is not none %}data-correction="1"{% endif %}>
     <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+    {# Mise en forme : les boutons posent les marques que le filtre
+       mise_en_forme (main.py) interprète à l'affichage. #}
+    <div class="barre-forme">
+        <button type="button" data-marque="**" title="Gras (sélectionner le texte d'abord)" aria-label="Gras"><b>G</b></button>
+        <button type="button" data-marque="*" title="Italique (sélectionner le texte d'abord)" aria-label="Italique"><i>I</i></button>
+        <button type="button" data-puce title="Liste à puces" aria-label="Liste à puces">•</button>
+    </div>
     <textarea name="text" placeholder="Quoi de neuf à bord ?" maxlength="20000" data-grandit>{{ texte }}</textarea>
     <div class="deja">{% for ph in existantes or [] %}<div class="apercu">
             {% if fichier_visible(request, ph.photo_path) %}<img src="{{ ph.photo_path }}" alt="">{% endif %}
@@ -230,7 +248,7 @@
                 </form>
             </div>
         </div>
-        {% if e.text %}<div class="pub-texte">{{ e.text }}</div>{% endif %}
+        {% if e.text %}<div class="pub-texte">{{ e.text | mise_en_forme }}</div>{% endif %}
         {% if e.photos %}
         <div class="pub-photos{{ ' une' if e.photos | length == 1 else '' }}">
             {% for ph in e.photos %}
@@ -414,6 +432,38 @@ document.querySelectorAll('.composer').forEach(function (form) {
     }
     choix.addEventListener('change', function () { ajouter([...choix.files]); choix.value = ''; });
     texte.addEventListener('input', maj);
+    // Barre de mise en forme : entoure la sélection de la marque (sans
+    // sélection, un « texte » sélectionné à remplacer) ; • met un tiret en
+    // tête de la ligne du curseur. L'input relancé met à jour « Publier » et
+    // la hauteur de la boîte.
+    form.querySelectorAll('[data-marque]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            const m = b.dataset.marque, d = texte.selectionStart, f = texte.selectionEnd;
+            const choisi = texte.value.slice(d, f) || 'texte';
+            texte.focus();
+            texte.setRangeText(m + choisi + m, d, f, 'end');
+            texte.setSelectionRange(d + m.length, d + m.length + choisi.length);
+            texte.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    });
+    form.querySelector('[data-puce]').addEventListener('click', function () {
+        const debut = texte.value.lastIndexOf('\n', texte.selectionStart - 1) + 1;
+        texte.focus();
+        if (!/^[-•]\s/.test(texte.value.slice(debut))) texte.setRangeText('- ', debut, debut, 'end');
+        texte.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // Dans une liste, Entrée ouvre la puce suivante ; sur une puce vide, elle
+    // termine la liste (le tiret s'efface).
+    texte.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || e.shiftKey || e.isComposing || texte.selectionStart !== texte.selectionEnd) return;
+        const pos = texte.selectionStart, debut = texte.value.lastIndexOf('\n', pos - 1) + 1;
+        const ligne = texte.value.slice(debut, pos), puce = ligne.match(/^\s*[-•]\s+/);
+        if (!puce) return;
+        e.preventDefault();
+        if (ligne.trim() === puce[0].trim()) texte.setRangeText('', debut, pos, 'end');
+        else texte.setRangeText('\n' + puce[0], pos, pos, 'end');
+        texte.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     ['dragenter', 'dragover'].forEach(t => form.addEventListener(t, e => { e.preventDefault(); form.classList.add('survol'); }));
     ['dragleave', 'drop'].forEach(t => form.addEventListener(t, () => form.classList.remove('survol')));
     form.addEventListener('drop', function (e) { e.preventDefault(); ajouter([...e.dataTransfer.files]); });

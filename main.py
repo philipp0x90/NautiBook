@@ -21,6 +21,7 @@ import tempfile
 import aiosqlite
 import requests
 from contextlib import asynccontextmanager
+from markupsafe import Markup, escape
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote, unquote
@@ -287,6 +288,76 @@ def _dec(value, decimals=1, maximum=None):
 
 
 templates.env.filters["dec"] = _dec
+
+
+# Mise en forme légère du carnet : le texte reste stocké tel que tapé, et
+# seules quelques marques sont interprétées à l'affichage — **gras**,
+# *italique*, une ligne commençant par « - » ou « • » pour une liste — plus
+# les adresses web, courriels et téléphones rendus cliquables comme dans les
+# notes (base.html, data-liens). Le texte est échappé d'abord : rien de ce
+# qui est saisi ne devient du HTML. Une adresse web exclut « * », pour qu'un
+# lien en gras garde ses marques hors du lien.
+_LIEN_RE = re.compile(
+    r"(https?://(?:[^\s<>&*]|&amp;)+|www\.(?:[^\s<>&*]|&amp;)+)"      # 1 web
+    r"|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)"                                # 2 courriel
+    r"|(\+\d[\d\u00a0 .-]{6,}\d|\b0\d(?:[ .\u00a0]?\d\d){4}\b)")    # 3 téléphone
+_PONCTUATION_FIN = re.compile(r"[.,;:!?)\]»]+$")
+
+
+def _liens(match):
+    texte = match.group(0)
+    if match.group(1):
+        queue = _PONCTUATION_FIN.search(texte)
+        queue = queue.group(0) if queue else ""
+        url = texte[:len(texte) - len(queue)]
+        href = url if url.startswith("http") else "https://" + url
+        return f'<a href="{href}" target="_blank" rel="noopener">{url}</a>{queue}'
+    if match.group(2):
+        return f'<a href="mailto:{texte}">{texte}</a>'
+    return f'<a href="tel:{re.sub(r"[^0-9+]", "", texte)}">{texte}</a>'
+
+
+def _en_ligne(ligne: str) -> str:
+    html = _LIEN_RE.sub(_liens, str(escape(ligne)))
+    html = re.sub(r"\*\*(?=\S)(.+?)(?<=\S)\*\*", r"<strong>\1</strong>", html)
+    return re.sub(r"(?<!\*)\*(?=\S)(.+?)(?<=\S)\*(?!\*)", r"<em>\1</em>", html)
+
+
+def _mise_en_forme(texte) -> Markup:
+    """Texte d'une publication du carnet → HTML : paragraphes (ligne vide),
+    retours à la ligne, listes, gras, italique, liens."""
+    if not texte:
+        return Markup("")
+    html, paragraphe, liste = [], [], False
+
+    def fermer_paragraphe():
+        if paragraphe:
+            html.append("<p>" + "<br>".join(_en_ligne(l) for l in paragraphe) + "</p>")
+            paragraphe.clear()
+
+    for ligne in str(texte).splitlines():
+        puce = re.match(r"\s*[-•]\s+(.*)", ligne)
+        if puce:
+            fermer_paragraphe()
+            if not liste:
+                html.append("<ul>")
+                liste = True
+            html.append("<li>" + _en_ligne(puce.group(1)) + "</li>")
+            continue
+        if liste:
+            html.append("</ul>")
+            liste = False
+        if ligne.strip():
+            paragraphe.append(ligne)
+        else:
+            fermer_paragraphe()
+    fermer_paragraphe()
+    if liste:
+        html.append("</ul>")
+    return Markup("".join(html))
+
+
+templates.env.filters["mise_en_forme"] = _mise_en_forme
 templates.env.filters["jourfr"] = _jourfr
 templates.env.filters["jourmois"] = _jourmois
 templates.env.filters["datelongue"] = _datelongue
