@@ -27,7 +27,7 @@
     .bouton-photo:hover { background: #d6ecf5; }
     .icone-photo { width: 22px; height: 22px; display: block; }
     .composer-bas .dans { font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
-    .composer-bas .dans select { width: auto; height: 30px; font-size: 13px; }
+    .composer-bas .dans select, .composer-bas .dans input { width: auto; height: 30px; font-size: 13px; }
     .composer-bas .espace { flex: 1; }
     .apercus, .deja { display: flex; gap: 8px; flex-wrap: wrap; }
     .deja:empty { display: none; }
@@ -100,7 +100,9 @@
    form=), un formulaire ne pouvant en contenir un autre. #}
 {# croisiere : celle de la publication corrigée ; à la création, celle affichée,
    sinon celle en cours. #}
-{% macro composer(action, texte='', bouton='Publier', croisiere=none, existantes=none) %}
+{# horodatage : la date et l'heure de la publication corrigée, passées
+   seulement à l'Amiral, seul à pouvoir les changer. #}
+{% macro composer(action, texte='', bouton='Publier', croisiere=none, existantes=none, horodatage=none) %}
 <form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer"
       {% if existantes is not none %}data-correction="1"{% endif %}>
     <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
@@ -126,6 +128,11 @@
                 <option value="{{ c.id }}" {{ 'selected' if c.id == (croisiere or selected or default_cruise) else '' }}>{{ c.name or 'Croisière sans nom' }}</option>
                 {% endfor %}
             </select>
+        </span>
+        {% endif %}
+        {% if horodatage %}
+        <span class="dans">Le
+            <input type="datetime-local" name="created_at" value="{{ horodatage[:16] | replace(' ', 'T') }}" required>
         </span>
         {% endif %}
         <span class="espace"></span>
@@ -186,7 +193,8 @@
     {% set corrige = auteur or (utilisateur(request) and utilisateur(request).rank == 'amiral') %}
     {% if editing == e.id and corrige %}
     <div id="publication-{{ e.id }}">
-        {{ composer('/carnet/' ~ e.id ~ '/edit', e.text or '', 'Enregistrer', e.cruise_id, e.photos or []) }}
+        {{ composer('/carnet/' ~ e.id ~ '/edit', e.text or '', 'Enregistrer', e.cruise_id, e.photos or [],
+                    e.created_at if utilisateur(request) and utilisateur(request).rank == 'amiral' else none) }}
         {% for ph in e.photos or [] %}
         <form method="POST" action="/carnet/photos/{{ ph.id }}/remove" id="retirer-{{ ph.id }}" hidden
               onsubmit="return confirm('Retirer cette photo ?')">
@@ -426,7 +434,9 @@ document.querySelectorAll('.composer').forEach(function (form) {
     // dans la zone (sélection de texte glissée au-dehors) ne compte pas.
     if (form.dataset.correction) {
         const choixCroisiere = form.querySelector('select[name=cruise_id]');
-        const depart = { texte: texte.value, croisiere: choixCroisiere ? choixCroisiere.value : null };
+        const horodatage = form.querySelector('input[name=created_at]');
+        const depart = { texte: texte.value, croisiere: choixCroisiere ? choixCroisiere.value : null,
+                         horodatage: horodatage ? horodatage.value : null };
         const annuler = form.parentElement.querySelector('.annuler-modif');
         const dedans = cible => form.contains(cible) || (annuler && annuler.contains(cible));
         let pressionDehors = false;
@@ -437,7 +447,8 @@ document.querySelectorAll('.composer').forEach(function (form) {
             e.preventDefault(); e.stopPropagation();
             if (enCours || publier.disabled) return;      // photos en préparation, ou déjà en route
             const change = texte.value !== depart.texte || photos.length ||
-                           (choixCroisiere && choixCroisiere.value !== depart.croisiere);
+                           (choixCroisiere && choixCroisiere.value !== depart.croisiere) ||
+                           (horodatage && horodatage.value !== depart.horodatage);
             if (change) form.requestSubmit();
             else if (annuler) location.href = annuler.href;
         }, true);

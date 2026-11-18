@@ -7228,11 +7228,22 @@ async def carnet_edit(request: Request, entry_id: int, text: Optional[str] = For
                       photo_files: List[UploadFile] = File(default=[]),
                       photo_lat: List[str] = Form(default=[]), photo_lon: List[str] = Form(default=[]),
                       photo_taken: List[str] = Form(default=[]), cruise_id: Optional[str] = Form(None),
-                      back: Optional[str] = Form(None)):
+                      created_at: Optional[str] = Form(None), back: Optional[str] = Form(None)):
     """Correction par son auteur : le texte, la croisière, et des photos en
-    plus. Retirer une photo passe par carnet_photo_remove."""
+    plus. Retirer une photo passe par carnet_photo_remove. L'Amiral seul
+    corrige aussi l'horodatage (created_at, case datetime-local : son « T »
+    redevient l'espace des valeurs stockées) ; une case vide ou illisible
+    le laisse tel quel."""
     async with connect() as db:
         await _own_entry(db, request, entry_id)
+        user = _template_user(request)
+        if created_at and user and user["rank"] == "amiral":
+            try:
+                stamp = datetime.fromisoformat(created_at.strip()).strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                stamp = None
+            if stamp:
+                await db.execute("UPDATE carnet_entries SET created_at = ? WHERE id = ?", (stamp, entry_id))
         # La croisière doit être une du navire de la publication ; sinon elle
         # ne change pas.
         cursor = await db.execute(
