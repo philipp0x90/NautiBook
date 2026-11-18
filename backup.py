@@ -213,6 +213,20 @@ def restaurer(nom: str) -> list:
     return lignes
 
 
+def supprimer(nom: str) -> str:
+    """Efface une copie de la base du disque ; le miroir des photos n'est
+    jamais touché. Renvoie la ligne du compte rendu."""
+    dest = _dossier_pret()
+    copie = dest / nom
+    if not NOM_COPIE.fullmatch(nom) or not copie.is_file():
+        raise Echec("cette copie est introuvable sur le disque.")
+    try:
+        copie.unlink()
+    except OSError as exc:
+        raise Echec(f"impossible d'effacer {nom} ({exc.strerror}).")
+    return f"copie effacée : {nom}"
+
+
 def main():
     print(f"NautiBook — sauvegarde du {datetime.now():%d/%m/%Y à %H:%M}")
     try:

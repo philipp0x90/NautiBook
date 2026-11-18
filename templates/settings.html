@@ -173,6 +173,9 @@
     .btn-restaurer { padding: 3px 10px; font-size: 12px; border-radius: 8px; cursor: pointer;
                      background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
     .btn-restaurer:hover { background: #ffedd5; }
+    .btn-effacer { padding: 3px 9px; font-size: 12px; border-radius: 8px; cursor: pointer; margin-left: 4px;
+                   background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .restauration td:last-child { white-space: nowrap; }
     .backup-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
     .backup-err { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
 </style>
@@ -277,7 +280,9 @@
        ou le disque manque et copies_erreur dit pourquoi). Fermé par défaut :
        on n'y vient qu'exprès. #}
     {% if copies is not none or copies_erreur %}
-    <details class="restauration">
+    {# Ouvert au retour d'une restauration ou d'un effacement, pour voir la
+       liste à jour sous le compte rendu. #}
+    <details class="restauration"{% if 'restaur' in sauvegarde_message or 'effacée' in sauvegarde_message %} open{% endif %}>
         <summary>Restaurer une sauvegarde</summary>
         {% if copies_erreur %}
         <div class="meta">{{ copies_erreur[:1] | upper }}{{ copies_erreur[1:] }}</div>
@@ -306,6 +311,13 @@
                         <input type="hidden" name="nom" value="{{ c.nom }}">
                         <button type="submit" class="btn-restaurer">Restaurer</button>
                     </form>
+                    {% if peut(request, 'parametres.supprimer') %}
+                    <form method="post" action="/settings/restore/delete" style="display:inline"
+                          onsubmit="return confirm('Effacer la sauvegarde du {{ c.date.strftime('%d/%m/%Y à %H:%M') if c.date else c.nom }} ?\n\nLe fichier est supprimé du disque, sans retour possible. Les photos du disque ne sont pas touchées.')">
+                        <input type="hidden" name="nom" value="{{ c.nom }}">
+                        <button type="submit" class="btn-effacer" title="Effacer cette sauvegarde">✕</button>
+                    </form>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

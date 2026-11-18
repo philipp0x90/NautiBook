@@ -8153,6 +8153,19 @@ async def settings_restore(nom: str = Form(...)):
     return _retour_settings("sauvegarde", "ok", " · ".join(lignes))
 
 
+@app.post("/settings/restore/delete")
+async def settings_backup_delete(nom: str = Form(...)):
+    """Efface une copie de la base du disque (backup.supprimer). Un POST en
+    …/delete : il faut parametres.supprimer, l'Amiral seul."""
+    try:
+        ligne = await asyncio.to_thread(backup.supprimer, nom)
+    except backup.Echec as exc:
+        return _retour_settings("sauvegarde", "erreur", f"ERREUR : {exc}")
+    except Exception as exc:
+        return _retour_settings("sauvegarde", "erreur", f"Suppression impossible : {exc}")
+    return _retour_settings("sauvegarde", "ok", ligne)
+
+
 # Étiquettes françaises des mesures, pour nommer celles que le serveur ne
 # publie pas. Les clés sont celles de get_sensor_data ; lat et long en sont
 # absentes, la position étant rapportée à part.
