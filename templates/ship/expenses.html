@@ -193,7 +193,11 @@
         <tfoot>
             {# Total général : la somme des montants de toutes les dépenses du
                navire, avec en regard ce qui reste dû. Filtré, le total des
-               seules dépenses affichées (recalculé par le script du filtre). #}
+               seules dépenses affichées (recalculé par le script du filtre).
+               Les totaux, général ou filtré, ne sont montrés qu'à l'Amiral :
+               pour les autres, la ligne n'est pas écrite dans la page. #}
+            {% set amiral = utilisateur(request) and utilisateur(request).rank == 'amiral' %}
+            {% if amiral %}
             <tr>
                 <td style="white-space:nowrap" id="total-libelle">Total général</td>
                 <td style="text-align:right;white-space:nowrap" id="total-montant">{{ ((entries | selectattr('unit_price', 'ne', none) | sum(attribute='unit_price')) or 0) | euros }}</td>
@@ -201,6 +205,7 @@
                 <td style="text-align:right;white-space:nowrap" id="total-solde">{{ ((entries | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
                 <td></td>
             </tr>
+            {% endif %}
         </tfoot>
     </table>
 </div>
@@ -211,7 +216,8 @@
     const lignes = [...document.querySelectorAll('.ligne-depense')];
     const libelle = document.getElementById('total-libelle'), montant = document.getElementById('total-montant'),
           solde = document.getElementById('total-solde');
-    const totaux = [libelle.textContent, montant.textContent, solde.textContent];
+    // Pas de ligne de total hors Amiral : rien à écrire.
+    const totaux = libelle && [libelle.textContent, montant.textContent, solde.textContent];
     const CLE = 'nb-filtre-comptes';
     // Même format que le filtre euros : 1.234,56 €.
     const euros = v => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -229,10 +235,10 @@
         });
         if (cat.value || annee.value) {
             compte.textContent = n + ' dépense' + (n > 1 ? 's' : '') + ' sur ' + lignes.length;
-            libelle.textContent = 'Total'; montant.textContent = euros(m); solde.textContent = euros(s);
+            if (libelle) { libelle.textContent = 'Total'; montant.textContent = euros(m); solde.textContent = euros(s); }
         } else {
             compte.textContent = '';
-            [libelle.textContent, montant.textContent, solde.textContent] = totaux;
+            if (libelle) [libelle.textContent, montant.textContent, solde.textContent] = totaux;
         }
         try { localStorage.setItem(CLE, JSON.stringify({ categorie: cat.value, annee: annee.value })); } catch (e) {}
     }
