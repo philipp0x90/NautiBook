@@ -64,7 +64,7 @@
             </form>
             <form method="POST" action="/ship/todo/{{ item.id }}/delete"
                   onsubmit="return confirm('Supprimer cette tâche ?')">
-                <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b">Supprimer</button>
+                <button type="submit" class="btn todo-suppr" title="Supprimer cette tâche" aria-label="Supprimer">✕</button>
             </form>
         </div>
     </div>
@@ -97,7 +97,7 @@
                 </form>
                 <form method="POST" action="/ship/todo/{{ item.id }}/delete"
                       onsubmit="return confirm('Supprimer cette tâche ?')">
-                    <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b">Supprimer</button>
+                    <button type="submit" class="btn todo-suppr" title="Supprimer cette tâche" aria-label="Supprimer">✕</button>
                 </form>
             </div>
         </div>
@@ -123,12 +123,15 @@
 .todo-row { display: flex; align-items: stretch; gap: 10px; }
 .todo-card { flex: 1; min-width: 0; cursor: pointer; }
 .todo-card:hover { background: #f7fbfd; }
-/* Côte à côte : « Fait » (ou « Annuler ») à gauche, « Supprimer » à droite,
-   dans l'ordre où les formulaires sont écrits. */
+/* Côte à côte : « Fait » (ou « Annuler ») à gauche, le ✕ de suppression à
+   droite, dans l'ordre où les formulaires sont écrits. */
 .todo-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .todo-actions form { display: flex; }
 /* Coins du cadre plutôt que la pilule du .btn : une pastille de 100 px de haut. */
 .todo-actions .btn { height: 100%; min-width: 84px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+/* Supprimer : un ✕ rose pâle, comme dans les Comptes et les Escales — une
+   colonne étroite plutôt qu'un second gros bouton. */
+.todo-actions .todo-suppr { min-width: 36px; padding: 0; font-size: 13px; background: #fee2e2; color: #991b1b; }
 
 details summary::-webkit-details-marker { display: none; }
 details[open] summary span:first-child { transform: rotate(90deg); display:inline-block; }
