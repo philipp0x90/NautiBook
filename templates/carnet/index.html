@@ -38,6 +38,14 @@
         border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 13px; line-height: 22px; padding: 0; cursor: pointer;
     }
     .apercu .geo { position: absolute; left: 4px; bottom: 3px; font-size: 12px; text-shadow: 0 0 3px #fff; }
+    /* Numéro de la photo, celui de sa marque « [photo N] » : toucher la
+       vignette la place dans le texte, au curseur. Bleu une fois placée. */
+    .apercu[data-numero] img { cursor: copy; }
+    .apercu .numero { position: absolute; left: 3px; top: 3px; min-width: 20px; height: 20px; padding: 0 5px;
+                      border-radius: 10px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; font-weight: 700;
+                      line-height: 20px; text-align: center; pointer-events: none; }
+    .apercu.placee .numero { background: var(--accent); }
+    .aide-placer { font-size: 12px; color: var(--muted); margin-top: -4px; }
     .composer-etat { font-size: 12px; color: var(--muted); }
     /* Photo en préparation : vignette grise et cercle qui tourne, jusqu'à ce
        que l'image réduite la remplace. */
@@ -79,6 +87,14 @@
     .pub-texte p, .pub-texte ul { margin: 0 0 .6em; }
     .pub-texte ul { padding-left: 1.3em; }
     .pub-texte > :last-child { margin-bottom: 0; }
+    /* Photo placée dans le texte par « [photo N] ». */
+    .pub-texte > .pub-photos { margin: .2em 0 .8em; }
+    /* Séparateur temporel « --- 14:32 » : un trait, l'heure au milieu. */
+    .separateur-heure { display: flex; align-items: center; gap: 10px; margin: 1em 0 .8em;
+                        color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+    .separateur-heure::before, .separateur-heure::after { content: ""; flex: 1; border-top: 1px solid #dde5ee; }
+    .separateur-heure span:empty { display: none; }
+    .pub-texte > .separateur-heure:first-child { margin-top: 0; }
     .pub-texte a { color: var(--accent); }
     /* Barre de mise en forme, au-dessus du texte : gras, italique, liste. */
     .barre-forme { display: flex; gap: 6px; margin-bottom: -4px; }
@@ -98,6 +114,37 @@
                              background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
     .verrou { display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; font-size: 28px; color: #7d8fa3; }
     .vide { text-align: center; color: var(--muted); padding: 30px 0; }
+    /* Nouveaux commentaires depuis la dernière visite : l'encart en tête, et
+       le commentaire lui-même, surligné un moment. */
+    .nouveaux { display: grid; gap: 6px; border-left: 4px solid #e11d48; }
+    .nouveaux .titre { font-weight: 700; font-size: 14px; }
+    .nouveaux a { display: block; color: inherit; text-decoration: none; font-size: 13px; padding: 4px 6px;
+                  border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .nouveaux a:hover { background: #f3f6f9; }
+    .nouveaux .extrait { color: var(--muted); }
+    .commentaire.nouveau .bulle { animation: nouveau 6s ease-out; }
+    @keyframes nouveau { 0%, 40% { background: #fde68a; } 100% { background: #f3f6f9; } }
+    /* Commentaires des équipiers, sous la publication. */
+    .commentaires { border-top: 1px solid #eef2f6; padding-top: 10px; display: grid; gap: 10px; }
+    .commentaire { display: flex; gap: 8px; align-items: flex-start; }
+    .commentaire .pub-avatar { width: 28px; height: 28px; flex: 0 0 28px; font-size: 12px; }
+    .commentaire .bulle { flex: 1; min-width: 0; background: #f3f6f9; border-radius: 10px; padding: 6px 10px; }
+    .commentaire .qui { font-size: 12px; color: var(--muted); }
+    .commentaire .qui b { color: var(--text, #1f2d3a); }
+    .commentaire .pub-texte { font-size: 14px; }
+    .commentaire .corriger textarea { width: 100%; min-height: 34px; resize: none; font: inherit; font-size: 14px;
+                                      line-height: 1.4; padding: 4px 6px; margin-top: 2px; }
+    .commentaire .corriger .meta { font-size: 11px; }
+    .commentaire .outils { display: flex; flex-direction: column; align-items: center; }
+    .commentaire .outils button { border: 0; background: none; color: #b4c0cc; cursor: pointer; font-size: 13px; padding: 2px 4px; }
+    .commentaire .outils button:hover { color: var(--accent); }
+    .commentaire .outils form button:hover { color: #991b1b; }
+    .commentaire form button { border: 0; background: none; color: #b4c0cc; cursor: pointer; font-size: 13px; padding: 2px 4px; }
+    .commentaire form button:hover { color: #991b1b; }
+    .commenter { display: flex; gap: 8px; align-items: flex-end; }
+    .commenter textarea { flex: 1; min-height: 34px; height: 34px; resize: none; font: inherit; font-size: 14px;
+                          line-height: 1.4; padding: 6px 10px; border-radius: 17px; }
+    .commenter button { height: 34px; padding: 0 12px; }
 </style>
 {% endblock %}
 
@@ -113,8 +160,11 @@
    sinon celle en cours. #}
 {# horodatage : la date et l'heure de la publication corrigée, passées
    seulement à l'Amiral, seul à pouvoir les changer. #}
+{# data-debut : la position que prendra la première photo ajoutée (comme
+   _store_carnet_photos), d'où le numéro de sa marque. #}
 {% macro composer(action, texte='', bouton='Publier', croisiere=none, existantes=none, horodatage=none) %}
 <form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer"
+      data-debut="{{ (existantes | map(attribute='position') | select('number') | max + 1) if existantes else 0 }}"
       {% if existantes is not none %}data-correction="1"{% endif %}>
     <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
     {# Mise en forme : les boutons posent les marques que le filtre
@@ -123,13 +173,23 @@
         <button type="button" data-marque="**" title="Gras (sélectionner le texte d'abord)" aria-label="Gras"><b>G</b></button>
         <button type="button" data-marque="*" title="Italique (sélectionner le texte d'abord)" aria-label="Italique"><i>I</i></button>
         <button type="button" data-puce title="Liste à puces" aria-label="Liste à puces">•</button>
+        {# Séparateur temporel, comme dans Diarly : un trait avec l'heure du
+           moment, pour compléter la publication au fil de la journée. #}
+        <button type="button" data-heure title="Séparateur avec l'heure" aria-label="Séparateur avec l'heure">
+            {# Horloge au trait, redessinée d'après l'icône fournie par l'utilisateur. #}
+            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor"
+                 stroke-width="1.5" style="display:block;margin:auto"><circle cx="12" cy="12" r="10.9"/><path d="M12 4.5V12l4.5 4.5"/></svg>
+        </button>
     </div>
     <textarea name="text" placeholder="Quoi de neuf à bord ?" maxlength="20000" data-grandit>{{ texte }}</textarea>
-    <div class="deja">{% for ph in existantes or [] %}<div class="apercu">
-            {% if fichier_visible(request, ph.photo_path) %}<img src="{{ ph.photo_path }}" alt="">{% endif %}
+    <div class="deja">{% for ph in existantes or [] %}<div class="apercu"{% if ph.position is not none %} data-numero="{{ ph.position + 1 }}"{% endif %}>
+            {% if fichier_visible(request, ph.photo_path) %}<img src="{{ ph.photo_path }}" alt="" title="Placer dans le texte, au curseur">{% endif %}
+            {% if ph.position is not none %}<span class="numero">{{ ph.position + 1 }}</span>{% endif %}
             <button type="submit" form="retirer-{{ ph.id }}" class="retirer" title="Retirer cette photo">✕</button>
         </div>{% endfor %}</div>
     <div class="apercus"></div>
+    <div class="aide-placer" hidden>Touchez une photo pour la placer dans le texte, à l'endroit du curseur ;
+        les autres restent en dessous.</div>
     <div class="composer-bas">
         <label class="btn bouton-photo" title="Ajouter des photos" aria-label="Ajouter des photos">
             {{ icone_photo() }}
@@ -176,6 +236,45 @@
 </form>
 {% endmacro %}
 
+{# Une photo publiée : dans la grille sous le texte, ou à sa place dans le
+   texte (« [photo N] »). auteur : la publication est de qui regarde. #}
+{% macro tuile(ph, auteur) %}
+            <div class="pub-photo">
+                {% if fichier_visible(request, ph.photo_path) %}
+                {# data-legende / data-coords / data-carte : la légende de la vue
+                   agrandie (base.html), où les coordonnées tiennent en clair. #}
+                {% set lieu = ph.place or ('Position de la photo' if ph.geo_source == 'photo' else 'Position du bateau') if ph.lat is not none else none %}
+                <img src="{{ ph.photo_path }}" alt="" loading="lazy" onclick="agrandirPhoto(event, this)" title="Agrandir"
+                     data-legende="{{ [ph.taken_at | datefr if ph.taken_at else none, lieu] | select | join(' · ') }}"
+                     {% if ph.lat is not none %}data-coords="{{ ph.lat | lat }}  {{ ph.lon | lon }}"
+                     data-carte="https://www.openstreetmap.org/?mlat={{ ph.lat }}&mlon={{ ph.lon }}#map=13/{{ ph.lat }}/{{ ph.lon }}"{% endif %}>
+                {% else %}
+                <div class="verrou" title="Connectez-vous pour voir les photos">🔒</div>
+                {% endif %}
+                {% if ph.lat is not none or ph.taken_at %}
+                <div class="legende">
+                    {% if ph.taken_at %}{{ ph.taken_at | datefr }}{% if ph.lat is not none %} · {% endif %}{% endif %}
+                    {% if ph.lat is not none %}
+                    {# Position de la photo, sinon du bateau au moment de publier. Le nom du
+                       lieu arrive après coup (_fill_carnet_places) ; d'ici là,
+                       ou en mer, la source de la position en tient lieu. #}
+                    {# Les coordonnées dans l'info-bulle et le lien de carte : en
+                       clair, elles ne tiennent pas sur une vignette. #}
+                    <a href="https://www.openstreetmap.org/?mlat={{ ph.lat }}&mlon={{ ph.lon }}#map=13/{{ ph.lat }}/{{ ph.lon }}"
+                       target="_blank" rel="noopener" title="{{ 'Position de la photo' if ph.geo_source == 'photo' else 'Position du bateau à la publication' }} : {{ ph.lat | lat }} {{ ph.lon | lon }}">{{ ph.place or ('photo' if ph.geo_source == 'photo' else 'bateau') }}</a>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {# Ses propres photos, ou toutes avec carnet.supprimer (l'Amiral). #}
+                {% if auteur or peut(request, 'carnet.supprimer') %}
+                <form method="POST" action="/carnet/photos/{{ ph.id }}/remove" onsubmit="return confirm('Retirer cette photo ?')">
+                    <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+                    <button type="submit" title="Retirer cette photo">✕</button>
+                </form>
+                {% endif %}
+            </div>
+{% endmacro %}
+
 <div class="section-bar">
     <div class="section-bar-title" style="display:flex;align-items:center;justify-content:center;gap:10px">
         {{ icone_carnet(28, 'icone-carnet-titre') }} Carnets de voyage
@@ -194,6 +293,20 @@
             <option value="tout" {{ 'selected' if voir_tout else '' }}>Voir tout</option>
         </select>
     </form>
+
+    {% if nouveaux %}
+    <div class="card nouveaux">
+        <div class="titre">{{ nouveaux | length }} nouveau{{ 'x' if nouveaux | length > 1 }} commentaire{{ 's' if nouveaux | length > 1 }} depuis votre dernière visite</div>
+        {% for k in nouveaux %}
+        <a href="/carnet?croisiere={{ k.cruise_id or 'tout' }}#commentaires-{{ k.entry_id }}">
+            <b>{{ k.first_name or k.last_name or 'Équipage' }}</b>
+            {{ 'a modifié son commentaire' if k.updated_at else 'a commenté' }}
+            {{ 'votre publication' if k.entry_author == my_crew_id else 'la publication' }} du {{ k.entry_at | jourmois }}
+            <span class="extrait">— {{ k.text | truncate(80) }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     {% if peut(request, 'carnet.modifier') %}
     {{ composer('/carnet/new') }}
@@ -248,45 +361,63 @@
                 </form>
             </div>
         </div>
-        {% if e.text %}<div class="pub-texte">{{ e.text | mise_en_forme }}</div>{% endif %}
-        {% if e.photos %}
-        <div class="pub-photos{{ ' une' if e.photos | length == 1 else '' }}">
-            {% for ph in e.photos %}
-            <div class="pub-photo">
-                {% if fichier_visible(request, ph.photo_path) %}
-                {# data-legende / data-coords / data-carte : la légende de la vue
-                   agrandie (base.html), où les coordonnées tiennent en clair. #}
-                {% set lieu = ph.place or ('Position de la photo' if ph.geo_source == 'photo' else 'Position du bateau') if ph.lat is not none else none %}
-                <img src="{{ ph.photo_path }}" alt="" loading="lazy" onclick="agrandirPhoto(event, this)" title="Agrandir"
-                     data-legende="{{ [ph.taken_at | datefr if ph.taken_at else none, lieu] | select | join(' · ') }}"
-                     {% if ph.lat is not none %}data-coords="{{ ph.lat | lat }}  {{ ph.lon | lon }}"
-                     data-carte="https://www.openstreetmap.org/?mlat={{ ph.lat }}&mlon={{ ph.lon }}#map=13/{{ ph.lat }}/{{ ph.lon }}"{% endif %}>
+        {% if e.morceaux %}<div class="pub-texte">
+            {%- for m in e.morceaux %}{% if m.photo %}<div class="pub-photos une">{{ tuile(m.photo, auteur) }}</div>{% else %}{{ m.html }}{% endif %}{% endfor -%}
+        </div>{% endif %}
+        {% if e.photos_libres %}
+        <div class="pub-photos{{ ' une' if e.photos_libres | length == 1 else '' }}">
+            {% for ph in e.photos_libres %}
+            {{ tuile(ph, auteur) }}
+            {% endfor %}
+        </div>
+        {% endif %}
+        {# Commentaires : qui, quand, quoi ; le ✕ pour son auteur et l'Amiral.
+           Le champ pour en ajouter, à qui écrit dans le carnet. #}
+        {% set moi = utilisateur(request) %}
+        {% if e.comments or (moi and peut(request, 'carnet.modifier')) %}
+        <div class="commentaires" id="commentaires-{{ e.id }}">
+            {% for k in e.comments %}
+            <div class="commentaire{{ ' nouveau' if k.id in nouveaux_ids }}">
+                {% if k.author_photo and fichier_visible(request, k.author_photo) %}
+                <span class="pub-avatar"><img src="{{ k.author_photo }}" alt="" style="display:block;width:100%;height:100%;{{ k.author_crop | cadrage_equipier }}"></span>
                 {% else %}
-                <div class="verrou" title="Connectez-vous pour voir les photos">🔒</div>
+                <div class="pub-avatar">{{ (k.first_name or k.last_name or '?')[0] | upper }}</div>
                 {% endif %}
-                {% if ph.lat is not none or ph.taken_at %}
-                <div class="legende">
-                    {% if ph.taken_at %}{{ ph.taken_at | datefr }}{% if ph.lat is not none %} · {% endif %}{% endif %}
-                    {% if ph.lat is not none %}
-                    {# Position de la photo, sinon du bateau au moment de publier. Le nom du
-                       lieu arrive après coup (_fill_carnet_places) ; d'ici là,
-                       ou en mer, la source de la position en tient lieu. #}
-                    {# Les coordonnées dans l'info-bulle et le lien de carte : en
-                       clair, elles ne tiennent pas sur une vignette. #}
-                    <a href="https://www.openstreetmap.org/?mlat={{ ph.lat }}&mlon={{ ph.lon }}#map=13/{{ ph.lat }}/{{ ph.lon }}"
-                       target="_blank" rel="noopener" title="{{ 'Position de la photo' if ph.geo_source == 'photo' else 'Position du bateau à la publication' }} : {{ ph.lat | lat }} {{ ph.lon | lon }}">{{ ph.place or ('photo' if ph.geo_source == 'photo' else 'bateau') }}</a>
+                <div class="bulle">
+                    <div class="qui"><b>{{ k.first_name or '' }} {{ (k.last_name or '') | upper }}{% if not k.first_name and not k.last_name %}Équipage{% endif %}</b>
+                        · {{ k.created_at | jourmois }} {{ (k.created_at or '')[11:16] }}{% if k.updated_at %} · modifié{% endif %}</div>
+                    <div class="pub-texte">{{ k.text | mise_en_forme }}</div>
+                    {# Correction : quitter la case enregistre si le texte a changé,
+                       Échap rend l'original — comme les notes du Journal. #}
+                    {% set corrige_k = (my_crew_id and k.crew_member_id == my_crew_id) or (moi and moi.rank == 'amiral') %}
+                    {% if corrige_k %}
+                    <form method="POST" action="/carnet/comments/{{ k.id }}/edit" class="corriger" hidden>
+                        <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+                        <textarea name="text" maxlength="5000" rows="1" data-grandit>{{ k.text }}</textarea>
+                        <div class="meta">Enregistré en quittant la case · Échap pour annuler</div>
+                    </form>
                     {% endif %}
                 </div>
-                {% endif %}
-                {# Ses propres photos, ou toutes avec carnet.supprimer (l'Amiral). #}
-                {% if auteur or peut(request, 'carnet.supprimer') %}
-                <form method="POST" action="/carnet/photos/{{ ph.id }}/remove" onsubmit="return confirm('Retirer cette photo ?')">
-                    <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
-                    <button type="submit" title="Retirer cette photo">✕</button>
-                </form>
-                {% endif %}
+                <div class="outils">
+                    {% if corrige_k %}
+                    <button type="button" class="modifier-commentaire" title="Modifier ce commentaire" aria-label="Modifier ce commentaire">✎</button>
+                    {% endif %}
+                    {% if (my_crew_id and k.crew_member_id == my_crew_id) or peut(request, 'carnet.supprimer') %}
+                    <form method="POST" action="/carnet/comments/{{ k.id }}/remove" onsubmit="return confirm('Retirer ce commentaire ?')">
+                        <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+                        <button type="submit" title="Retirer ce commentaire">✕</button>
+                    </form>
+                    {% endif %}
+                </div>
             </div>
             {% endfor %}
+            {% if moi and peut(request, 'carnet.modifier') %}
+            <form method="POST" action="/carnet/{{ e.id }}/comments" class="commenter">
+                <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
+                <textarea name="text" placeholder="Commenter…" maxlength="5000" rows="1" required data-grandit></textarea>
+                <button type="submit" class="btn btn-primary">Envoyer</button>
+            </form>
+            {% endif %}
         </div>
         {% endif %}
     </article>
@@ -308,6 +439,29 @@
 </div>
 
 <script>
+// ── Correction d'un commentaire ──────────────────────────────────────────────
+// ✎ remplace le texte par sa case ; la quitter enregistre s'il a changé (et
+// n'est pas vide), sinon la referme. Échap rend l'original et referme.
+document.querySelectorAll('.modifier-commentaire').forEach(function (bouton) {
+    const k = bouton.closest('.commentaire'), form = k.querySelector('.corriger');
+    const vue = k.querySelector('.bulle > .pub-texte'), boite = form.querySelector('textarea');
+    const original = boite.value;
+    const fermer = () => { boite.value = original; form.hidden = true; vue.hidden = false; bouton.hidden = false; };
+    bouton.addEventListener('click', function () {
+        form.hidden = false; vue.hidden = true; bouton.hidden = true;
+        boite.dispatchEvent(new Event('input', { bubbles: true }));   // hauteur (data-grandit)
+        boite.focus(); boite.setSelectionRange(boite.value.length, boite.value.length);
+    });
+    boite.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); fermer(); boite.blur(); }
+    });
+    boite.addEventListener('blur', function () {
+        if (form.hidden) return;
+        if (boite.value.trim() && boite.value !== original) form.submit();
+        else fermer();
+    });
+});
+
 // ── Photos du carnet ─────────────────────────────────────────────────────────
 // Chaque photo choisie est d'abord lue — position GPS et heure de prise de vue,
 // dans ses données EXIF — puis réduite à 2000 px de côté (environ 400 Ko au
@@ -382,11 +536,45 @@ document.querySelectorAll('.composer').forEach(function (form) {
     const envoi = form.querySelector('.envoi-photos'), geo = form.querySelector('.geo-champs');
     const apercus = form.querySelector('.apercus'), publier = form.querySelector('.publier');
     const etat = form.querySelector('.composer-etat');
+    const aide = form.querySelector('.aide-placer'), deja = form.querySelectorAll('.deja .apercu');
     const photos = [];     // { fichier, lat, lon, taken, url, attente }
     let enCours = 0;
+    // Numéro d'une photo ajoutée, celui de sa marque « [photo N] » : sa
+    // position une fois enregistrée (data-debut + rang), plus un.
+    const debut = parseInt(form.dataset.debut, 10) || 0;
+    const numero = n => debut + n + 1;
+
+    // Une ligne à part (marque de photo, séparateur) à l'endroit du curseur ;
+    // tant que la zone n'a pas eu le curseur, à la fin du texte.
+    let curseurConnu = false;
+    texte.addEventListener('focus', () => { curseurConnu = true; });
+    function insererLigne(ligne) {
+        const v = texte.value;
+        const d = curseurConnu ? texte.selectionStart : v.length, f = curseurConnu ? texte.selectionEnd : v.length;
+        const avant = d > 0 && v[d - 1] !== '\n' ? '\n' : '';
+        texte.focus();
+        texte.setRangeText(avant + ligne + '\n', d, f, 'end');
+        texte.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    function placees() {
+        return new Set([...texte.value.matchAll(/^[ \t]*\[photo (\d+)\][ \t]*$/gm)].map(m => +m[1]));
+    }
+    // Une photo ajoutée qu'on retire : sa marque s'efface, celles des photos
+    // ajoutées après elle descendent d'un cran, comme leurs positions.
+    function retirerMarque(num) {
+        const v = texte.value
+            .replace(new RegExp('^[ \\t]*\\[photo ' + num + '\\][ \\t]*(\\n|$)', 'gm'), '')
+            .replace(/\[photo (\d+)\]/g, (m, k) => +k > num ? '[photo ' + (k - 1) + ']' : m);
+        if (v !== texte.value) { texte.value = v; texte.dispatchEvent(new Event('input', { bubbles: true })); }
+    }
+    deja.forEach(function (d) {
+        const img = d.querySelector('img');
+        if (img && d.dataset.numero) img.addEventListener('click', () => insererLigne('[photo ' + d.dataset.numero + ']'));
+    });
 
     function maj() {
         // Le champ envoyé et ses champs de position, dans l'ordre des aperçus.
+        const places = placees();
         const dt = new DataTransfer();
         geo.replaceChildren();
         photos.forEach(function (p) {
@@ -400,12 +588,21 @@ document.querySelectorAll('.composer').forEach(function (form) {
         apercus.replaceChildren(...photos.map(function (p, n) {
             const d = document.createElement('div'); d.className = 'apercu';
             if (p.attente) { d.classList.add('attente'); d.title = 'Préparation…'; return d; }
-            d.innerHTML = '<img alt=""><button type="button" class="retirer" title="Retirer">✕</button>' +
+            d.innerHTML = '<img alt="" title="Placer dans le texte, au curseur"><span class="numero"></span>' +
+                          '<button type="button" class="retirer" title="Retirer">✕</button>' +
                           (p.lat != null ? '<span class="geo" title="Position lue dans la photo">📍</span>' : '');
+            d.dataset.numero = numero(n);
+            d.querySelector('.numero').textContent = numero(n);
+            d.classList.toggle('placee', places.has(numero(n)));
             d.querySelector('img').src = p.url;
-            d.querySelector('.retirer').onclick = function () { URL.revokeObjectURL(p.url); photos.splice(n, 1); maj(); };
+            d.querySelector('img').onclick = () => insererLigne('[photo ' + numero(n) + ']');
+            d.querySelector('.retirer').onclick = function () {
+                URL.revokeObjectURL(p.url); photos.splice(n, 1); retirerMarque(numero(n)); maj();
+            };
             return d;
         }));
+        deja.forEach(d => d.classList.toggle('placee', places.has(+d.dataset.numero)));
+        aide.hidden = !(photos.length || deja.length);
         // En correction, Enregistrer reste visible : vider le texte est une correction.
         publier.hidden = !(texte.value.trim() || photos.length || form.dataset.correction) || enCours > 0;
         etat.textContent = enCours ? 'Préparation des photos… (' + enCours + ' restante' + (enCours > 1 ? 's' : '') + ')' : '';
@@ -430,7 +627,8 @@ document.querySelectorAll('.composer').forEach(function (form) {
             enCours--;
             if (petit.size > MAX_OCTETS) {
                 alert('« ' + f.name + ' » est trop volumineuse.');
-                photos.splice(photos.indexOf(p), 1); maj(); continue;
+                const n = photos.indexOf(p);
+                photos.splice(n, 1); retirerMarque(numero(n)); maj(); continue;
             }
             Object.assign(p, { attente: false, fichier: petit, lat: exif.lat, lon: exif.lon, taken: exif.taken,
                                url: URL.createObjectURL(petit) });
@@ -458,6 +656,11 @@ document.querySelectorAll('.composer').forEach(function (form) {
         texte.focus();
         if (!/^[-•]\s/.test(texte.value.slice(debut))) texte.setRangeText('- ', debut, debut, 'end');
         texte.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // Bouton horloge : le séparateur temporel « --- 14:32 », à l'heure du moment.
+    form.querySelector('[data-heure]').addEventListener('click', function () {
+        const t = new Date();
+        insererLigne('--- ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0'));
     });
     // Dans une liste, Entrée ouvre la puce suivante ; sur une puce vide, elle
     // termine la liste (le tiret s'efface).

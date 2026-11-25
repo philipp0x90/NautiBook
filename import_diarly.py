@@ -14,7 +14,9 @@ Correspondances retenues avec l'utilisateur (18/11/2026) :
   « 📍 Lieu » en tête de publication ;
 - un lien de lieu sous des photos devient le nom de lieu de ces photos ;
 - les titres « # … » deviennent une ligne en gras, les autres marques
-  Markdown sont ramenées à celles du carnet (main._mise_en_forme).
+  Markdown sont ramenées à celles du carnet (main._morceaux) ;
+- une photo garde sa place dans le texte, par une ligne « [photo N] »
+  (25/11/2026 ; avant, toutes allaient en grille sous le texte).
 
 Ce module ne touche pas à la base : lire() renvoie les entrées, main.py
 propose, montre l'aperçu et écrit.
@@ -91,6 +93,9 @@ def _convertir(md: str, dossier: PurePosixPath, fichiers_zip: set, meta_fichiers
             photo = {"chemin": chemin, "lat": lat, "lon": lon, "lieu": None}
             photos.append(photo)
             sans_lieu.append(photo)
+            # À sa place dans le texte : la position écrite à la confirmation
+            # est son rang dans la liste, la marque vaut ce rang + 1.
+            lignes.append(f"[photo {len(photos)}]")
         reste = _IMAGE_RE.sub("", brute).strip()
         if not reste:
             if not images:

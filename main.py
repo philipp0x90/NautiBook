@@ -325,22 +325,58 @@ def _en_ligne(ligne: str) -> str:
     return re.sub(r"(?<!\*)\*(?=\S)(.+?)(?<=\S)\*(?!\*)", r"<em>\1</em>", html)
 
 
-def _mise_en_forme(texte) -> Markup:
-    """Texte d'une publication du carnet → HTML : paragraphes (ligne vide),
-    retours à la ligne, listes, gras, italique, liens."""
-    if not texte:
-        return Markup("")
-    html, paragraphe, liste = [], [], False
+# Deux marques de plus, chacune seule sur sa ligne (comme dans Diarly) :
+# « [photo N] » place à cet endroit du texte la photo de la publication dont
+# la position (carnet_photos.position) vaut N − 1 — les positions ne sont
+# jamais renumérotées, un retrait laisse un trou, donc la marque reste juste ;
+# « --- 14:32 » est le séparateur temporel, un trait avec l'heure qui découpe
+# une publication au fil de la journée (« --- » seul : un trait sans heure).
+_PHOTO_MARQUE_RE = re.compile(r"[ \t]*\[photo (\d+)\][ \t]*")
+_SEPARATEUR_RE = re.compile(r"\s*[-—–]{3,}\s*(\d{1,2}[:h]\d{2})?\s*")
 
-    def fermer_paragraphe():
+
+def _morceaux(texte, photos=()) -> list:
+    """Texte d'une publication du carnet → morceaux à afficher dans l'ordre :
+    {"html": Markup} (paragraphes, retours à la ligne, listes, gras, italique,
+    liens, séparateurs) et {"photo": la photo placée par « [photo N] »}. Une
+    marque dont la photo a été retirée ne montre rien."""
+    if not texte:
+        return []
+    par_numero = {p["position"] + 1: p for p in photos if p.get("position") is not None}
+    morceaux, html, paragraphe = [], [], []
+    liste = False
+
+    def fermer():
+        nonlocal liste
         if paragraphe:
             html.append("<p>" + "<br>".join(_en_ligne(l) for l in paragraphe) + "</p>")
             paragraphe.clear()
+        if liste:
+            html.append("</ul>")
+            liste = False
 
     for ligne in str(texte).splitlines():
+        marque = _PHOTO_MARQUE_RE.fullmatch(ligne)
+        if marque:
+            fermer()
+            if html:
+                morceaux.append({"html": Markup("".join(html))})
+                html.clear()
+            photo = par_numero.get(int(marque.group(1)))
+            if photo:
+                morceaux.append({"photo": photo})
+            continue
+        separateur = _SEPARATEUR_RE.fullmatch(ligne)
+        if separateur:
+            fermer()
+            heure = (separateur.group(1) or "").replace("h", ":")
+            html.append(f'<div class="separateur-heure"><span>{heure}</span></div>')
+            continue
         puce = re.match(r"\s*[-•]\s+(.*)", ligne)
         if puce:
-            fermer_paragraphe()
+            if paragraphe:
+                html.append("<p>" + "<br>".join(_en_ligne(l) for l in paragraphe) + "</p>")
+                paragraphe.clear()
             if not liste:
                 html.append("<ul>")
                 liste = True
@@ -352,11 +388,23 @@ def _mise_en_forme(texte) -> Markup:
         if ligne.strip():
             paragraphe.append(ligne)
         else:
-            fermer_paragraphe()
-    fermer_paragraphe()
-    if liste:
-        html.append("</ul>")
-    return Markup("".join(html))
+            fermer()
+    fermer()
+    if html:
+        morceaux.append({"html": Markup("".join(html))})
+    return morceaux
+
+
+def _mise_en_forme(texte) -> Markup:
+    """Le texte mis en forme, sans les photos placées (voir _morceaux)."""
+    return Markup("".join(m["html"] for m in _morceaux(texte) if "html" in m))
+
+
+def _sans_marques_photo(texte) -> str:
+    """Le texte sans ses lignes « [photo N] » : ce que l'import Diarly
+    écrivait avant de placer les photos, pour reconnaître une entrée déjà importée."""
+    texte = re.sub(r"^[ \t]*\[photo \d+\][ \t]*(\n|$)", "", texte or "", flags=re.M)
+    return re.sub(r"\n{3,}", "\n\n", texte).strip()
 
 
 templates.env.filters["mise_en_forme"] = _mise_en_forme
@@ -592,6 +640,29 @@ async def init_db():
                 taken_at DATETIME,
                 position INTEGER,
                 place TEXT
+            )
+        """)
+        # Commentaire d'un équipier sous une publication du carnet. Son auteur
+        # est une fiche équipier, comme celui de la publication : repasser
+        # quelqu'un Mousse garde ce qu'il a écrit.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS carnet_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entry_id INTEGER NOT NULL REFERENCES carnet_entries(id) ON DELETE CASCADE,
+                crew_member_id INTEGER REFERENCES crew_members(id) ON DELETE SET NULL,
+                text TEXT NOT NULL,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+        """)
+        # Dernière visite du carnet d'un navire par un équipier : ce qui a été
+        # commenté depuis est « nouveau » (pastille de l'onglet Carnets).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS carnet_seen (
+                crew_member_id INTEGER NOT NULL REFERENCES crew_members(id) ON DELETE CASCADE,
+                ship_id INTEGER NOT NULL REFERENCES ship_info(id) ON DELETE CASCADE,
+                seen_at DATETIME,
+                PRIMARY KEY (crew_member_id, ship_id)
             )
         """)
 
@@ -1043,6 +1114,11 @@ async def _migrate(db):
     if "place" not in {row[1] for row in await cursor.fetchall()}:
         await db.execute("ALTER TABLE carnet_photos ADD COLUMN place TEXT")
         print("Migration: carnet_photos.place added")
+
+    cursor = await db.execute("PRAGMA table_info(carnet_comments)")
+    if "updated_at" not in {row[1] for row in await cursor.fetchall()}:
+        await db.execute("ALTER TABLE carnet_comments ADD COLUMN updated_at DATETIME")
+        print("Migration: carnet_comments.updated_at added")
 
     # Position posée à la main (ancre glissée sur la carte, ou saisie sur la
     # fiche) ; vide, l'ancre se place en fin de route (_stopover_markers).
@@ -1870,6 +1946,10 @@ async def require_login_to_write(request: Request, call_next):
             {"request": request, "active_section": None, "rang": RANK_LABELS[user["rank"]]},
             status_code=403,
         )
+    # La pastille de l'onglet Carnets, pour les pages (pas les fichiers ni l'API).
+    if user and request.method == "GET" and not path.startswith((IMG_URL, "/api", "/vendor")):
+        request.state.carnet_nouveaux = await _carnet_nouveaux_compte(
+            user["crew_member_id"], get_current_ship_id(request))
     return await call_next(request)
 
 
@@ -1925,6 +2005,7 @@ def _template_user(request) -> Optional[dict]:
 
 # Pour les templates : qui est connecté, ses droits, et le menu qu'il voit.
 templates.env.globals["utilisateur"] = _template_user
+templates.env.globals["carnet_nouveaux"] = lambda request: getattr(request.state, "carnet_nouveaux", 0)
 templates.env.globals["peut"] = lambda request, permission: can(_template_user(request), permission)
 def _voit(request, href: str, method: str = "GET") -> bool:
     """Cette adresse est-elle permise à l'utilisateur ? Sert au menu."""
@@ -7407,6 +7488,11 @@ async def carnet(request: Request, croisiere: Optional[str] = None, edit: Option
                 LEFT JOIN crew_members m ON e.crew_member_id = m.id
                 WHERE {where} ORDER BY e.created_at DESC, e.id DESC""", args)
         entries = [dict(e) for e in await cursor.fetchall()]
+        # Les nouveaux commentaires depuis la dernière visite, puis la visite
+        # notée : la pastille de cette page est déjà à zéro.
+        user = _template_user(request)
+        nouveaux = await _carnet_nouveaux(db, user["crew_member_id"] if user else None, ship_id)
+        request.state.carnet_nouveaux = 0
         if entries:
             ids = [e["id"] for e in entries]
             cursor = await db.execute(
@@ -7417,6 +7503,21 @@ async def carnet(request: Request, croisiere: Optional[str] = None, edit: Option
                 photos.setdefault(p["entry_id"], []).append(dict(p))
             for e in entries:
                 e["photos"] = photos.get(e["id"], [])
+            cursor = await db.execute(
+                f"""SELECT k.*, m.first_name, m.last_name, m.photo_path AS author_photo, m.photo_crop AS author_crop
+                    FROM carnet_comments k LEFT JOIN crew_members m ON k.crew_member_id = m.id
+                    WHERE k.entry_id IN ({','.join('?' * len(ids))}) ORDER BY k.created_at, k.id""", ids)
+            comments = {}
+            for k in await cursor.fetchall():
+                comments.setdefault(k["entry_id"], []).append(dict(k))
+            for e in entries:
+                e["comments"] = comments.get(e["id"], [])
+    # Le texte en morceaux, photos placées par « [photo N] » comprises ; les
+    # autres restent en grille sous le texte.
+    for e in entries:
+        e["morceaux"] = _morceaux(e["text"], e.get("photos", []))
+        placees = {m["photo"]["id"] for m in e["morceaux"] if "photo" in m}
+        e["photos_libres"] = [p for p in e.get("photos", []) if p["id"] not in placees]
     # Regroupées par jour, dans l'ordre de la liste.
     days = []
     for e in entries:
@@ -7431,6 +7532,7 @@ async def carnet(request: Request, croisiere: Optional[str] = None, edit: Option
          "current_ship": dict(ship) if ship else None,
          "cruises": cruises, "current_cruise": current, "default_cruise": default, "selected": selected, "voir_tout": voir_tout,
          "days": days, "editing": edit,
+         "nouveaux": nouveaux, "nouveaux_ids": {k["id"] for k in nouveaux},
          "my_crew_id": user["crew_member_id"] if user else None,
          "max_photos": CARNET_MAX_PHOTOS, "max_bytes": DOC_MAX_BYTES},
     )
@@ -7457,10 +7559,13 @@ async def _diarly_cruises(db, ship_id: int) -> list:
 
 
 async def _diarly_deja(db, ship_id: int, entree: dict) -> bool:
+    """Même navire, même jour, même texte — marques « [photo N] » mises à
+    part, l'import d'avant ne les écrivant pas."""
     cursor = await db.execute(
-        "SELECT 1 FROM carnet_entries WHERE ship_id = ? AND substr(created_at, 1, 10) = ? "
-        "AND COALESCE(text, '') = ? LIMIT 1", (ship_id, entree["jour"], entree["texte"] or ""))
-    return await cursor.fetchone() is not None
+        "SELECT text FROM carnet_entries WHERE ship_id = ? AND substr(created_at, 1, 10) = ?",
+        (ship_id, entree["jour"]))
+    cible = _sans_marques_photo(entree["texte"])
+    return any(_sans_marques_photo(r[0]) == cible for r in await cursor.fetchall())
 
 
 async def _diarly_page(request, **context):
@@ -7682,6 +7787,107 @@ async def carnet_delete(entry_id: int, back: Optional[str] = Form(None)):
     return RedirectResponse(url=_safe_next(back, "/carnet"), status_code=303)
 
 
+# ── Nouveaux commentaires ──
+# Ceux qui concernent quelqu'un (choix de l'utilisateur, 25/11/2026) : sous
+# ses propres publications, ou sous celles qu'il a déjà commentées ; postés ou
+# modifiés par un autre depuis sa dernière visite du carnet de ce navire. Leur
+# nombre est la pastille de l'onglet Carnets (calculée par
+# require_login_to_write pour chaque page), la liste s'affiche en tête du
+# carnet, qui remet le compte à zéro.
+CARNET_NOUVEAUX_SQL = """
+    FROM carnet_comments k
+    JOIN carnet_entries e ON e.id = k.entry_id
+    WHERE e.ship_id = :ship AND k.crew_member_id IS NOT :moi
+      AND (e.crew_member_id = :moi OR EXISTS (
+            SELECT 1 FROM carnet_comments k2 WHERE k2.entry_id = e.id AND k2.crew_member_id = :moi))
+      AND COALESCE(k.updated_at, k.created_at) > COALESCE(
+            (SELECT seen_at FROM carnet_seen WHERE crew_member_id = :moi AND ship_id = :ship), '')"""
+
+
+async def _carnet_nouveaux_compte(crew_id, ship_id) -> int:
+    if not crew_id:
+        return 0
+    async with connect() as db:
+        cursor = await db.execute("SELECT COUNT(*) " + CARNET_NOUVEAUX_SQL, {"moi": crew_id, "ship": ship_id})
+        return (await cursor.fetchone())[0]
+
+
+async def _carnet_nouveaux(db, crew_id, ship_id) -> list:
+    """La liste, puis la visite notée : le compte repart de zéro."""
+    if not crew_id:
+        return []
+    cursor = await db.execute(
+        """SELECT k.id, k.entry_id, k.text, k.created_at, k.updated_at, e.cruise_id,
+                  e.created_at AS entry_at, e.crew_member_id AS entry_author,
+                  m.first_name, m.last_name
+           """ + CARNET_NOUVEAUX_SQL.replace("WHERE", "LEFT JOIN crew_members m ON m.id = k.crew_member_id\n    WHERE", 1)
+        + " ORDER BY COALESCE(k.updated_at, k.created_at) DESC", {"moi": crew_id, "ship": ship_id})
+    nouveaux = [dict(r) for r in await cursor.fetchall()]
+    await db.execute(
+        "INSERT INTO carnet_seen (crew_member_id, ship_id, seen_at) VALUES (?, ?, ?) "
+        "ON CONFLICT (crew_member_id, ship_id) DO UPDATE SET seen_at = excluded.seen_at",
+        (crew_id, ship_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    await db.commit()
+    return nouveaux
+
+
+@app.post("/carnet/{entry_id}/comments")
+async def carnet_comment_new(request: Request, entry_id: int, text: Optional[str] = Form(None),
+                             back: Optional[str] = Form(None)):
+    """Commentaire sous une publication, par tout équipier qui écrit dans le
+    carnet (carnet.modifier) ; son auteur est la fiche de qui est connecté."""
+    text = (text or "").strip()[:5000]
+    user = _template_user(request)
+    if text and user:
+        async with connect() as db:
+            cursor = await db.execute("SELECT 1 FROM carnet_entries WHERE id = ?", (entry_id,))
+            if not await cursor.fetchone():
+                raise HTTPException(status_code=404, detail="Publication introuvable")
+            await db.execute(
+                "INSERT INTO carnet_comments (entry_id, crew_member_id, text, created_at) VALUES (?, ?, ?, ?)",
+                (entry_id, user["crew_member_id"], text, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            await db.commit()
+    return RedirectResponse(url=_safe_next(back, "/carnet") + f"#commentaires-{entry_id}", status_code=303)
+
+
+@app.post("/carnet/comments/{comment_id}/edit")
+async def carnet_comment_edit(request: Request, comment_id: int, text: Optional[str] = Form(None),
+                              back: Optional[str] = Form(None)):
+    """Correction d'un commentaire par son auteur (l'Amiral : tous, comme les
+    publications). Un texte vidé ne l'efface pas : retirer passe par le ✕."""
+    text = (text or "").strip()[:5000]
+    async with connect() as db:
+        cursor = await db.execute("SELECT entry_id, crew_member_id, text FROM carnet_comments WHERE id = ?", (comment_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Commentaire introuvable")
+        user = _template_user(request)
+        if not (user and (user["rank"] == "amiral" or user["crew_member_id"] == row[1])):
+            raise HTTPException(status_code=403, detail="Seul son auteur peut corriger ce commentaire")
+        if text and text != row[2]:
+            await db.execute("UPDATE carnet_comments SET text = ?, updated_at = ? WHERE id = ?",
+                             (text, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), comment_id))
+            await db.commit()
+    return RedirectResponse(url=_safe_next(back, "/carnet") + f"#commentaires-{row[0]}", status_code=303)
+
+
+@app.post("/carnet/comments/{comment_id}/remove")
+async def carnet_comment_remove(request: Request, comment_id: int, back: Optional[str] = Form(None)):
+    """Retire un commentaire : son auteur, ou l'Amiral (carnet.supprimer).
+    « remove » et non « delete », pour la même raison que les photos."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT entry_id, crew_member_id FROM carnet_comments WHERE id = ?", (comment_id,))
+        row = await cursor.fetchone()
+        if row:
+            user = _template_user(request)
+            if not (can(user, "carnet.supprimer") or (user and user["crew_member_id"] == row[1])):
+                raise HTTPException(status_code=403, detail="Seul son auteur peut retirer ce commentaire")
+            await db.execute("DELETE FROM carnet_comments WHERE id = ?", (comment_id,))
+            await db.commit()
+    anchor = f"#commentaires-{row[0]}" if row else ""
+    return RedirectResponse(url=_safe_next(back, "/carnet") + anchor, status_code=303)
+
+
 @app.post("/carnet/photos/{photo_id}/remove")
 async def carnet_photo_remove(request: Request, photo_id: int, back: Optional[str] = Form(None)):
     """Retire une photo d'une publication ; le fichier reste. Son auteur le
@@ -7690,7 +7896,7 @@ async def carnet_photo_remove(request: Request, photo_id: int, back: Optional[st
     de tous (required_permission), et c'est ici que l'auteur est vérifié."""
     async with connect() as db:
         cursor = await db.execute(
-            "SELECT p.entry_id, e.crew_member_id FROM carnet_photos p "
+            "SELECT p.entry_id, e.crew_member_id, p.position, e.text FROM carnet_photos p "
             "JOIN carnet_entries e ON e.id = p.entry_id WHERE p.id = ?", (photo_id,))
         row = await cursor.fetchone()
         if row:
@@ -7698,6 +7904,12 @@ async def carnet_photo_remove(request: Request, photo_id: int, back: Optional[st
             if not (can(user, "carnet.supprimer") or (user and user["crew_member_id"] == row[1])):
                 raise HTTPException(status_code=403, detail="Seul son auteur peut retirer cette photo")
             await db.execute("DELETE FROM carnet_photos WHERE id = ?", (photo_id,))
+            # Sa marque « [photo N] » part avec elle : elle ne montrerait plus rien.
+            if row[2] is not None and row[3]:
+                texte = re.sub(rf"^[ \t]*\[photo {row[2] + 1}\][ \t]*(\n|$)", "", row[3], flags=re.M)
+                texte = re.sub(r"\n{3,}", "\n\n", texte).strip() or None
+                if texte != row[3]:
+                    await db.execute("UPDATE carnet_entries SET text = ? WHERE id = ?", (texte, row[0]))
             await db.commit()
     anchor = f"#publication-{row[0]}" if row else ""
     return RedirectResponse(url=_safe_next(back, "/carnet") + anchor, status_code=303)

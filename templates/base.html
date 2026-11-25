@@ -142,6 +142,11 @@
         nav > ul > li.active > a { color: var(--accent-dark); border-bottom-color: var(--accent-dark); }
         .nav-ic, nav .icone-carnet { width: 24px; height: 24px; display: block; flex-shrink: 0; }
         .nav-lib { font-size: 13px; font-weight: 600; line-height: 1.1; white-space: nowrap; }
+        /* Pastille rouge sur l'icône d'un onglet (Carnets : nouveaux commentaires). */
+        .nav-a-pastille { position: relative; }
+        .nav-pastille { position: absolute; top: 1px; left: calc(50% + 6px); min-width: 18px; height: 18px; padding: 0 5px;
+                        border-radius: 9px; background: #e11d48; color: #fff; font-size: 11px; font-weight: 700;
+                        line-height: 18px; text-align: center; box-shadow: 0 0 0 2px #fff; }
 
 
         /* Dropdown */
@@ -789,7 +794,9 @@
                 </div>
             </li>
             <li class="{{ 'active' if active_section == 'gallery' else '' }}">
-                <a href="/carnet" title="Carnets de voyage">{{ icone_carnet(24, 'nav-carnet-decoupe') }}<span class="nav-lib">Carnets</span></a>
+                {# Pastille : les nouveaux commentaires qui concernent l'utilisateur (main.py, _carnet_nouveaux). #}
+                {% set n_carnet = carnet_nouveaux(request) %}
+                <a href="/carnet" title="Carnets de voyage{{ ' — ' ~ n_carnet ~ ' nouveau(x) commentaire(s)' if n_carnet }}" class="nav-a-pastille">{{ icone_carnet(24, 'nav-carnet-decoupe') }}<span class="nav-lib">Carnets</span>{% if n_carnet %}<span class="nav-pastille">{{ n_carnet if n_carnet < 100 else '99+' }}</span>{% endif %}</a>
             </li>
         </ul>
     </nav>
