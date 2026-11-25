@@ -8,8 +8,17 @@
     <div class="section-bar-title">Modifier tâche</div>
 </div>
 
-<form method="POST" action="/ship/todo/{{ item.id }}/edit" enctype="multipart/form-data" class="todo-form">
+<form method="POST" action="/ship/todo/{{ item.id }}/edit" enctype="multipart/form-data" class="todo-form" id="todo-form">
 {% include "ship/_todo_form.html" %}
 </form>
+
+{# Documents de la tâche (todo_documents, fichiers dans IMG/To-Do/) : devis,
+   notices, schémas… PDF ou images, autant qu'il en faut. À la création, ils
+   partent avec la tâche (form=todo-form). #}
+{% from "_documents.html" import section_documents %}
+<div style="max-width:980px">
+{{ section_documents(documents, '/ship/todo', item.id if item else none, 'todo-form',
+                     'de la tâche', doc_max_bytes, doc_accept, retirer='remove') }}
+</div>
 
 {% endblock %}

@@ -7,9 +7,12 @@
      {base}/documents/{doc}/delete.
    owner_id vaut none à la création : les fichiers partent alors avec le
    formulaire principal (form_id, attribut form=), champs doc_title et
-   document_file. `de` : « de la dépense », « de l'escale ». #}
+   document_file. `de` : « de la dépense », « de l'escale ».
+   `retirer` : le dernier mot de l'adresse du ✕. `delete` demande le droit
+   « supprimer » (l'Amiral) ; les tâches passent `remove`, qui ne demande que
+   « modifier », pour qu'un Capitaine retire un document joint par erreur. #}
 {% from "carnet/_icone.html" import icone_photo %}
-{% macro section_documents(documents, base, owner_id, form_id, de, doc_max_bytes, doc_accept, titre='Documents', classe='') %}
+{% macro section_documents(documents, base, owner_id, form_id, de, doc_max_bytes, doc_accept, titre='Documents', classe='', retirer='delete') %}
 <style>
     .docs-section { margin-top: 16px; }
     .docs-section h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
@@ -69,7 +72,7 @@
                     {% else %}<img class="doc-vignette" src="{{ d.path }}" alt="Image" loading="lazy">{% endif %}
                 </td>
                 <td style="text-align:right">
-                    <form method="POST" action="{{ base }}/documents/{{ d.id }}/delete" style="margin:0"
+                    <form method="POST" action="{{ base }}/documents/{{ d.id }}/{{ retirer }}" style="margin:0"
                           onsubmit="return confirm('Retirer « {{ (d.title or 'ce document') | replace("'", "’") }} » {{ de }} ?')">
                         <button type="submit" class="btn" title="Retirer ce document {{ de }}" aria-label="Supprimer"
                                 style="background:#fee2e2;color:#991b1b;width:26px;height:26px;padding:0;font-size:12px;border-radius:50%">✕</button>

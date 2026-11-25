@@ -183,6 +183,12 @@
             <div class="acces-badge rang-{{ rang or 'mousse' }}">{{ rank_labels[rang] }}</div>
             {% endif %}
 
+            {# Propriétaire : l'autre versant de ship_owners, en lecture seule —
+               on le modifie sur la fiche du navire. La part, l'Amiral seul. #}
+            {% for o in owned %}
+            <div class="meta" style="text-align:center">Propriétaire de <strong>{{ o.ship_name or 'navire sans nom' }}</strong>{% if o.share is not none and peut(request, 'proprietaires') %} ({{ ('%g' | format(o.share)).replace('.', ',') }} %){% endif %}</div>
+            {% endfor %}
+
             {% if account %}
             <div class="meta" style="text-align:center">Identifiant <strong>{{ account.username }}</strong></div>
             {# Changer un identifiant : l'Amiral seul, quelle que soit la grille. #}

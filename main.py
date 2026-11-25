@@ -665,6 +665,18 @@ async def init_db():
             )
         """)
 
+        # Documents d'une tâche (devis, notice, schéma…), PDF ou images, dans
+        # IMG/To-Do/ avec ses photos : même modèle qu'expense_documents.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS todo_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                todo_id INTEGER NOT NULL REFERENCES todo_items(id) ON DELETE CASCADE,
+                title TEXT,
+                path TEXT NOT NULL,
+                created_at DATETIME
+            )
+        """)
+
         # Remarques des nuits supplémentaires d'une étape (les lignes grises de
         # l'itinéraire, calculées et non stockées) : une par étape et par nuit
         # (night = 1 pour la 2e nuit sur place, 2 pour la 3e…).
@@ -824,6 +836,22 @@ async def init_db():
                 embark_date TEXT,
                 disembark_date TEXT,
                 FOREIGN KEY (cruise_id) REFERENCES cruises(id) ON DELETE CASCADE,
+                FOREIGN KEY (crew_member_id) REFERENCES crew_members(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Propriétaires d'un navire : un lien personne ↔ navire, comme
+        # cruise_crew, et non une case sur la fiche — un équipier n'appartient à
+        # aucun navire, il peut posséder l'un et naviguer sur l'autre. `share`,
+        # la part en %, facultative, n'est montrée qu'à l'Amiral.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS ship_owners (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ship_id INTEGER NOT NULL,
+                crew_member_id INTEGER NOT NULL,
+                share REAL,
+                UNIQUE (ship_id, crew_member_id),
+                FOREIGN KEY (ship_id) REFERENCES ship_info(id) ON DELETE CASCADE,
                 FOREIGN KEY (crew_member_id) REFERENCES crew_members(id) ON DELETE CASCADE
             )
         """)
@@ -1336,6 +1364,11 @@ async def _save_todo_photo(upload: Optional[UploadFile]) -> Optional[str]:
     return await _save_upload(upload, IMG_SUFFIXES, TODO_SUBDIR)
 
 
+async def _save_todo_document(upload: Optional[UploadFile]) -> Optional[str]:
+    """Document d'une tâche (image ou PDF), dans IMG/To-Do/ avec ses photos."""
+    return await _save_upload(upload, DOC_SUFFIXES, TODO_SUBDIR, DOC_MAX_BYTES)
+
+
 async def _save_ship_photo(upload: Optional[UploadFile]) -> Optional[str]:
     """Photo du navire, dans IMG/Navire/ (réduite dans le navigateur)."""
     return await _save_upload(upload, IMG_SUFFIXES, SHIP_PHOTO_SUBDIR)
@@ -1660,6 +1693,7 @@ YES_NO_GRID = {
     #               Mousse  Matelot  Capitaine  Amiral
     "imports":    (False,  False,   False,     True),
     "rangs":      (False,  False,   False,     True),
+    "proprietaires": (False, False,  False,     True),   # ajouter, retirer, voir les parts
 }
 _RANK_COLUMN = {None: 0, "matelot": 1, "capitaine": 2, "amiral": 3}
 
@@ -1683,6 +1717,7 @@ SECTION_RULES = [
     (r"^/ship/(expenses|contacts)/import", "imports"),
     (r"^/cruises/import$", "imports"),
     (r"^/carnet/import(/|$)", "imports"),
+    (r"^/ship/info/owners(/|$)", "proprietaires"),
     (r"^/ship/(info|documents|new)(/|$)", "navire"),
     (r"^/ship/todo(/|$)", "todo"),
     (r"^/ship/fuel(/|$)", "gasoil"),
@@ -2055,12 +2090,13 @@ async def ship_info(request: Request):
                 (ship["id"],),
             )
             documents = [dict(d) for d in await cursor.fetchall()]
+        owners, candidates = await _ship_owners(db, ship["id"]) if ship else ([], [])
         consumption = await _consumption(db, ship["id"]) if ship else None
     return templates.TemplateResponse(
         "ship/info.html",
         {"request": request, "active_section": "ship", "ship": ship, "current_ship": ship,
          "documents": documents, "doc_max_bytes": SHIP_DOC_MAX_BYTES, "ship_fields": SHIP_FIELDS,
-         "consumption": consumption,
+         "consumption": consumption, "owners": owners, "owner_candidates": candidates,
          # Repères de la couleur de validité : expiré avant aujourd'hui,
          # « bientôt » dans les DOC_EXPIRY_WARNING_DAYS qui suivent. Des
          # dates ISO, que la template compare comme des chaînes.
@@ -2071,6 +2107,71 @@ async def ship_info(request: Request):
 
 # Un document dont la validité expire dans ce délai s'affiche en orange.
 DOC_EXPIRY_WARNING_DAYS = 30
+
+
+# ── Propriétaires ─────────────────────────────────────────────────────────────
+# Carte « Propriétaire(s) » de la fiche du navire. Tout ce qui écrit passe par
+# /ship/info/owners…, rubrique `proprietaires` : l'Amiral seul.
+
+async def _ship_owners(db, ship_id: int):
+    """Les propriétaires du navire, et les équipiers qui ne le sont pas encore
+    (le menu « + Ajouter »)."""
+    db.row_factory = aiosqlite.Row
+    cursor = await db.execute(
+        """SELECT o.id, o.share, m.id AS crew_id, m.first_name, m.last_name
+           FROM ship_owners o JOIN crew_members m ON o.crew_member_id = m.id
+           WHERE o.ship_id = ?
+           ORDER BY m.last_name COLLATE NOCASE, m.first_name COLLATE NOCASE""",
+        (ship_id,),
+    )
+    owners = [dict(r) for r in await cursor.fetchall()]
+    cursor = await db.execute(
+        """SELECT id, first_name, last_name FROM crew_members
+           WHERE id NOT IN (SELECT crew_member_id FROM ship_owners WHERE ship_id = ?)
+           ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE""",
+        (ship_id,),
+    )
+    return owners, [dict(r) for r in await cursor.fetchall()]
+
+
+@app.post("/ship/info/owners/add")
+async def add_ship_owner(request: Request, crew_member_id: Optional[int] = Form(None)):
+    """Ajoute un propriétaire au navire courant ; déjà propriétaire, rien ne
+    change (OR IGNORE, sur l'index unique)."""
+    if crew_member_id:
+        async with connect() as db:
+            ship = await _fetch_ship(db, get_current_ship_id(request))
+            if ship is None:
+                raise HTTPException(status_code=404, detail="Aucun navire")
+            await db.execute(
+                "INSERT OR IGNORE INTO ship_owners (ship_id, crew_member_id) VALUES (?, ?)",
+                (ship[0], crew_member_id),
+            )
+            await db.commit()
+    return RedirectResponse(url="/ship/info#proprietaires", status_code=303)
+
+
+@app.post("/ship/info/owners/{owner_id}/share")
+async def set_ship_owner_share(owner_id: int, value: Optional[str] = Form(None)):
+    """La part en %, virgule décimale ; vide, aucune. Une saisie qui n'est pas
+    un nombre est ignorée plutôt que d'effacer la part."""
+    try:
+        share = _import_amount(value)
+    except ValueError:
+        return RedirectResponse(url="/ship/info#proprietaires", status_code=303)
+    async with connect() as db:
+        await db.execute("UPDATE ship_owners SET share = ? WHERE id = ?", (share, owner_id))
+        await db.commit()
+    return RedirectResponse(url="/ship/info#proprietaires", status_code=303)
+
+
+@app.post("/ship/info/owners/{owner_id}/remove")
+async def remove_ship_owner(owner_id: int):
+    """Retire un propriétaire : le lien seul, jamais la fiche de l'équipier."""
+    async with connect() as db:
+        await db.execute("DELETE FROM ship_owners WHERE id = ?", (owner_id,))
+        await db.commit()
+    return RedirectResponse(url="/ship/info#proprietaires", status_code=303)
 
 
 @app.post("/ship/documents/new")
@@ -3114,6 +3215,7 @@ async def new_todo_form(request: Request, next: Optional[str] = None):
             # /ship/todo par défaut.
             "next": next,
             "contacts": contacts,
+            "documents": [], "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES)),
         },
     )
 
@@ -3129,16 +3231,23 @@ async def create_todo_item(
     photo_file: Optional[UploadFile] = File(None),
     contact_id: Optional[str] = Form(None),
     next: Optional[str] = Form(None),
+    doc_title: Optional[str] = Form(None),
+    document_file: List[UploadFile] = File([]),
 ):
     ship_id = get_current_ship_id(request)
     photo = await _save_todo_photo(photo_file) or photo_path or None
     async with connect() as db:
-        await db.execute(
+        cursor = await db.execute(
             "INSERT INTO todo_items (ship_id, title, task, urgent, due_date, photo_path, contact_id)"
             " VALUES (?, ?, ?, ?, ?, ?, ?)",
             (ship_id, title, task or None, 1 if urgent else 0, due_date or None, photo,
              int(contact_id) if contact_id else None),
         )
+        # Les documents choisis à la création partent avec la tâche (champs
+        # doc_title / document_file de la section Documents).
+        files = [f for f in document_file if f.filename]
+        for upload in files:
+            await _add_todo_document(db, cursor.lastrowid, doc_title if len(files) == 1 else None, upload)
         await db.commit()
     # Retour à la page appelante (une route) quand le formulaire en portait une.
     return RedirectResponse(url=next or "/ship/todo", status_code=303)
@@ -3152,6 +3261,8 @@ async def edit_todo_form(request: Request, item_id: int, next: Optional[str] = N
         cursor = await db.execute("SELECT * FROM todo_items WHERE id = ?", (item_id,))
         item = await cursor.fetchone()
         contacts = await _todo_contacts(db, get_current_ship_id(request))
+        cursor = await db.execute("SELECT * FROM todo_documents WHERE todo_id = ? ORDER BY id", (item_id,))
+        documents = [dict(d) for d in await cursor.fetchall()]
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     return templates.TemplateResponse(
@@ -3160,9 +3271,10 @@ async def edit_todo_form(request: Request, item_id: int, next: Optional[str] = N
             "request": request, "active_section": "ship",
             "current_ship": dict(ship) if ship else None,
             "item": dict(item),
-            # Idem : « Annuler » revient à la page appelante.
+            # Idem : « Retour » revient à la page appelante.
             "next": next,
             "contacts": contacts,
+            "documents": documents, "doc_max_bytes": DOC_MAX_BYTES, "doc_accept": ",".join(sorted(DOC_SUFFIXES)),
         },
     )
 
@@ -3180,6 +3292,7 @@ async def update_todo_item(
     photo_file: Optional[UploadFile] = File(None),
     contact_id: Optional[str] = Form(None),
     next: Optional[str] = Form(None),
+    auto: Optional[str] = Form(None),
 ):
     # A newly chosen file wins over the text field, which still holds the old path.
     photo = await _save_todo_photo(photo_file) or photo_path or None
@@ -3205,8 +3318,72 @@ async def update_todo_item(
              completed_at or None, photo, int(contact_id) if contact_id else None, item_id),
         )
         await db.commit()
+    # Enregistrement automatique (un champ quitté, _todo_form.html) : la page
+    # reste ; elle reprend ce que le serveur a décidé — statut et date de
+    # réalisation se commandent l'un l'autre, et la photo envoyée a un chemin.
+    if auto:
+        return JSONResponse({"ok": True, "status": status, "completed_at": completed_at or "",
+                             "photo_path": photo or ""})
     # Idem : la route d'où l'on vient, /ship/todo sinon.
     return RedirectResponse(url=next or "/ship/todo", status_code=303)
+
+
+async def _add_todo_document(db, todo_id: int, title: Optional[str],
+                             upload: Optional[UploadFile]) -> bool:
+    """Enregistre le fichier dans IMG/To-Do/ et l'ajoute aux documents de la
+    tâche ; sans titre, celui du fichier. Sans fichier, rien."""
+    path = await _save_todo_document(upload)
+    if not path:
+        return False
+    await db.execute(
+        "INSERT INTO todo_documents (todo_id, title, path, created_at) VALUES (?, ?, ?, ?)",
+        (todo_id, (title or "").strip() or _doc_title(upload.filename), path,
+         datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+    )
+    return True
+
+
+@app.post("/ship/todo/{item_id}/documents/new")
+async def add_todo_document(
+    item_id: int,
+    title: Optional[str] = Form(None),
+    document_file: List[UploadFile] = File([]),
+):
+    """Un ou plusieurs fichiers ; le titre saisi ne vaut que pour un fichier
+    seul, sinon chacun prend le nom du sien."""
+    files = [f for f in document_file if f.filename]
+    async with connect() as db:
+        for upload in files:
+            await _add_todo_document(db, item_id, title if len(files) == 1 else None, upload)
+        await db.commit()
+    return RedirectResponse(url=f"/ship/todo/{item_id}/edit#documents", status_code=303)
+
+
+@app.post("/ship/todo/documents/{doc_id}/title")
+async def rename_todo_document(doc_id: int, value: Optional[str] = Form(None)):
+    """Titre modifié sur place ; vidé, il garde l'ancien."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT todo_id FROM todo_documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        if (value or "").strip():
+            await db.execute("UPDATE todo_documents SET title = ? WHERE id = ?", (value.strip(), doc_id))
+            await db.commit()
+    return RedirectResponse(url=f"/ship/todo/{row[0]}/edit#documents" if row else "/ship/todo",
+                            status_code=303)
+
+
+# `remove` et non `delete` : retirer un document joint par erreur ne demande
+# que le droit « modifier » (Capitaine), pas « supprimer » (Amiral).
+@app.post("/ship/todo/documents/{doc_id}/remove")
+async def remove_todo_document(doc_id: int):
+    """Retire le document de la tâche ; le fichier reste dans IMG/."""
+    async with connect() as db:
+        cursor = await db.execute("SELECT todo_id FROM todo_documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        await db.execute("DELETE FROM todo_documents WHERE id = ?", (doc_id,))
+        await db.commit()
+    return RedirectResponse(url=f"/ship/todo/{row[0]}/edit#documents" if row else "/ship/todo",
+                            status_code=303)
 
 
 @app.post("/ship/todo/{item_id}/done")
@@ -4299,6 +4476,15 @@ async def crew_detail(request: Request, crew_id: int):
         cursor = await db.execute(
             "SELECT id, username, rank FROM users WHERE crew_member_id = ?", (crew_id,))
         account = await cursor.fetchone()
+        # Les navires dont il est propriétaire — l'autre versant de ship_owners,
+        # en lecture seule ici : on les modifie depuis la fiche du navire.
+        cursor = await db.execute(
+            """SELECT s.id AS ship_id, s.name AS ship_name, o.share
+               FROM ship_owners o JOIN ship_info s ON o.ship_id = s.id
+               WHERE o.crew_member_id = ? ORDER BY s.name COLLATE NOCASE""",
+            (crew_id,),
+        )
+        owned = [dict(r) for r in await cursor.fetchall()]
         cursor = await db.execute("SELECT COUNT(*) FROM users")
         has_users = (await cursor.fetchone())[0] > 0
     if member is None:
@@ -4316,6 +4502,7 @@ async def crew_detail(request: Request, crew_id: int):
             "erreur": request.query_params.get("erreur"),
             "info": request.query_params.get("info"),
             "cruises": [dict(c) for c in cruises],
+            "owned": owned,
             "crew_fields": CREW_FIELDS, "crew_choices": CREW_CHOICES,
             "prev_id": ids[i - 1] if i > 0 else None,
             "next_id": ids[i + 1] if i + 1 < len(ids) else None,
