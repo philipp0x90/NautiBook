@@ -15,10 +15,10 @@
     }
     /* Le logo cède en hauteur sur un écran bas (iPad en paysage) : l'écran
        garde de la place pour le menu, le sous-titre, le navire et la
-       signature, environ 300 px, et tout tient sans défiler. */
+       signature, environ 315 px (le nom du navire à 60 px), et tout tient sans défiler. */
     .splash-logo {
         width: auto;
-        height: min(383px, 62vw * 592 / 464, 100svh - 270px);
+        height: min(383px, 62vw * 592 / 464, 100svh - 285px);
         max-width: 100%;
         display: block;
         user-select: none;
@@ -30,21 +30,23 @@
         text-transform: uppercase;
     }
     /* Le navire courant, sous le sous-titre : le nom seul, en bleu de l'ancre,
-       en Playfair Display grasse (choix de l'utilisateur, 25/11/2026). La police
+       en Inter Thin, graisse 100 (choix de l'utilisateur, 26/11/2026). La police
        est servie par l'app (vendor/fonts, licence OFL à côté), pas par Google :
-       à bord il n'y a pas d'internet. Seule la graisse 700 est fournie. */
+       à bord il n'y a pas d'internet. Déclarée sous son propre nom, « Inter
+       Thin » : sous « Inter », le reste de la page, qui demande Inter, la
+       prendrait aussi et tout le texte de l'accueil deviendrait fin. */
     @font-face {
-        font-family: "Playfair Display";
-        src: url("/vendor/fonts/playfair-display/PlayfairDisplay-Bold.woff2") format("woff2");
-        font-weight: 700;
+        font-family: "Inter Thin";
+        src: url("/vendor/fonts/inter/Inter-Thin.woff2") format("woff2");
+        font-weight: 100;
         font-style: normal;
         font-display: swap;
     }
     .splash-ship {
-        font-family: "Playfair Display", Georgia, serif;
-        font-size: 44px;
+        font-family: "Inter Thin", system-ui, -apple-system, sans-serif;
+        font-size: 60px;
         line-height: 1.1;
-        font-weight: 700;
+        font-weight: 100;
         color: #08204e;
         letter-spacing: 1px;
     }
@@ -61,7 +63,7 @@
         /* Hauteur de l'écran moins le menu et la signature : le bloc est
            centré verticalement dans ce qui reste. */
         .splash { gap: 16px; min-height: calc(100svh - 120px); }
-        .splash-ship { font-size: 36px; }
+        .splash-ship { font-size: 48px; }
     }
 </style>
 {% endblock %}

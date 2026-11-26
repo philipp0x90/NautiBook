@@ -6,6 +6,18 @@
 
 {% block head %}
 <style>
+    /* Le nom du navire dans la barre de titre : Inter Medium, graisse 500
+       (choix de l'utilisateur, 26/11/2026), sur cette page seulement. Servie
+       par l'app (vendor/fonts/inter), sous son propre nom pour que rien
+       d'autre sur la page ne la prenne. */
+    @font-face {
+        font-family: "Inter Medium";
+        src: url("/vendor/fonts/inter/Inter-Medium.woff2") format("woff2");
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+    }
+    .fiche-nom { font-family: "Inter Medium", system-ui, -apple-system, sans-serif; font-weight: 500; font-size: 24px; }
 
     /* Section Documents */
     .doc-ajout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -193,7 +205,7 @@
 {# Collée sous le menu : le nom du navire reste visible en faisant défiler la fiche. #}
 <div class="section-bar section-bar-collee">
     <div class="section-bar-title">
-        <div style="font-size:24px">{{ ship.name or 'Navire sans nom' }}</div>
+        <div class="fiche-nom">{{ ship.name or 'Navire sans nom' }}</div>
         {% if resume %}<div class="fiche-resume">{{ resume }}</div>{% endif %}
     </div>
 </div>
