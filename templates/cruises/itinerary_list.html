@@ -15,14 +15,14 @@
 
 {# « + Nouvel itinéraire » à droite ; son double invisible garde le titre centré. #}
 <div class="section-bar section-bar-collee">
-    <span class="btn" style="min-width:160px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvel itinéraire</span>
+    <span class="btn" style="min-width:160px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ <span class="btn-lib">Nouvel itinéraire</span></span>
     <div class="section-bar-title">Liste des itinéraires</div>
     {% if peut(request, 'croisieres.modifier') %}
     <form method="POST" action="/cruises/itinerary/new" style="margin:-10px 0">
-        <button type="submit" class="btn btn-yellow" style="min-width:160px">+ Nouvel itinéraire</button>
+        <button type="submit" class="btn btn-yellow" style="min-width:160px">+ <span class="btn-lib">Nouvel itinéraire</span></button>
     </form>
     {% else %}
-    <span class="btn" style="min-width:160px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvel itinéraire</span>
+    <span class="btn" style="min-width:160px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ <span class="btn-lib">Nouvel itinéraire</span></span>
     {% endif %}
 </div>
 

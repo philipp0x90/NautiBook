@@ -91,7 +91,7 @@
    grandissent pas la barre, qui garde la hauteur des autres. Plus de bouton
    « Supprimer la fiche » : la croix de la liste des équipiers s'en charge. #}
 <div class="section-bar" style="margin-bottom:12px">
-    <a href="/crew" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">← Liste des équipiers</a>
+    <a href="/crew" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">← <span class="btn-lib">Liste des équipiers</span></a>
     {# Précédent et suivant de part et d'autre du nom, dans la barre : une
        rangée de boutons de moins, pour que la fiche tienne sur un écran
        d'iPad. Aux extrémités de la liste, la flèche reste en place, estompée. #}
@@ -100,7 +100,7 @@
         <span>{{ member.first_name or '' }} <span style="text-transform:uppercase">{{ member.last_name or '' }}</span></span>
         {% if next_id %}<a href="/crew/{{ next_id }}" title="Équipier suivant">›</a>{% else %}<span class="eteint">›</span>{% endif %}
     </div>
-    <a href="/crew/new" class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ Nouvel équipier</a>
+    <a href="/crew/new" class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ <span class="btn-lib">Nouvel équipier</span></a>
 </div>
 
 {# Plus de bouton « Modifier » : chaque champ se modifie sur place. La page

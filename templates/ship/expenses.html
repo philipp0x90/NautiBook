@@ -12,11 +12,12 @@
        mesurés (--topbar-h, --barre-h, base.html) plutôt qu'estimés — le menu
        à icônes et l'agrandissement sur iPad avaient rendu l'ancienne marge
        fixe trop courte : le cadre débordait, la page défilait, et l'en-tête
-       partait avec elle. 84 px : les marges autour de la barre et celle du bas de page. */
+       partait avec elle. 84 px : les marges autour de la barre et celle du bas de page ;
+       62 px : le bouton « Nouvelle dépense » (46 au-delà du téléphone) et sa marge (16). */
     .comptes-scroll {
         overflow: auto;
-        max-height: calc(100vh - var(--topbar-h, 70px) - var(--barre-h, 66px) - 84px);
-        max-height: calc(100dvh - var(--topbar-h, 70px) - var(--barre-h, 66px) - 84px);
+        max-height: calc(100vh - var(--topbar-h, 70px) - var(--barre-h, 66px) - 84px - 62px);
+        max-height: calc(100dvh - var(--topbar-h, 70px) - var(--barre-h, 66px) - 84px - 62px);
         border-radius: 6px;
     }
     /* Tout l'en-tête collé d'un bloc (filtre et titres), et non chaque
@@ -56,6 +57,100 @@
     }
     .tri a:hover { color: var(--accent); }
     .tri a.actif { color: var(--accent-dark); }
+    /* « Importer » dans la barre, discret : contour blanc sur le bleu. Sur
+       téléphone, le pictogramme seul. */
+    /* Mac, iPad : date, montant, catégorie et solde à la largeur de leur
+       contenu (width: 1 % + nowrap) ; la place qui reste va à l'objet et au
+       fournisseur — répartie entre toutes, elle creusait des vides entre la
+       date et le montant, la catégorie et le fournisseur (26/11/2026). Les
+       titres (2e rangée de l'en-tête) : 1 date, 2 montant, 3 trombone, 4 objet,
+       5 catégorie, 6 fournisseur, 7 solde. */
+    @media (min-width: 601px) {
+        .comptes-scroll thead tr:nth-child(2) th:is(:nth-child(1), :nth-child(2), :nth-child(5), :nth-child(7)),
+        .comptes-scroll td:is(.c-date, .c-montant, .c-cat, .c-solde) { width: 1%; white-space: nowrap; }
+        .comptes-scroll thead tr:nth-child(2) th:nth-child(1), .comptes-scroll td.c-date { padding-right: 24px; }
+        .comptes-scroll thead tr:nth-child(2) th:nth-child(5), .comptes-scroll td.c-cat { padding-right: 28px; }
+        .comptes-scroll td.c-objet { padding-right: 28px; }
+        .filtre-comptes #filtre-categorie { width: auto; }
+    }
+    .comptes-geant { margin: 0 0 16px; }
+    /* Mac, iPad : le total presque au ras du bas de l'écran — la marge du bas
+       de page (.wrap, 20 px) ramenée à 6 px sur cette page. */
+    @media (min-width: 601px) { .wrap { padding-bottom: 6px; } }
+    .comptes-import { margin: -10px 0; background: #5bc8e0; color: #fff; box-shadow: 0 0 0 1px #fff; white-space: nowrap; }
+
+    /* Téléphone : les huit colonnes ne tiennent pas. Chaque dépense devient
+       une petite fiche — date et montant en tête, l'objet (et son trombone),
+       puis catégorie, fournisseur, et ce qui reste dû s'il reste quelque
+       chose, le ✕ en bas à droite. Au-dessus, les deux filtres côte à côte
+       et les tris en une rangée de boutons ; le total collé en bas. */
+    @media (max-width: 600px) {
+        .comptes-import span { display: none; }
+        .comptes-scroll .data-table, .comptes-scroll thead, .comptes-scroll tbody, .comptes-scroll tfoot { display: block; }
+        /* Pas de cadre qui défile : toute la page défile (#defile). Le grand
+           bouton, puis les filtres et les tris, restent collés sous la barre
+           « Comptes » (demandes de l'utilisateur, 26/11/2026), ramassés pour
+           laisser de la place aux dépenses : les tris sur une rangée qui
+           défile de côté. Le bouton tient 80 px collé (8 + 64 + 8), d'où le
+           décalage des titres. */
+        .comptes-scroll { max-height: none; overflow: visible; }
+        .comptes-geant { position: sticky; top: calc(14px + var(--barre-h, 52px)); z-index: 145;
+                         background: var(--bg); padding: 8px 0; margin: -8px 0 0; }
+        .comptes-geant .btn-geant { height: 64px; min-height: 64px; }
+        .comptes-scroll thead { position: sticky; top: calc(14px + var(--barre-h, 52px) + 80px); z-index: 140;
+                                background: var(--bg); padding: 8px 0 8px; margin-top: -8px; }
+        .comptes-scroll thead tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+        .comptes-scroll thead th { display: block; border: 0; padding: 0 !important; background: none; }
+        .filtre-comptes { margin-bottom: 6px; }
+        .filtre-comptes th:nth-child(1) { flex: 0 0 auto; }
+        .filtre-comptes th:nth-child(2) { order: 3; flex: 1 0 100%; }
+        .filtre-comptes th:nth-child(3) { flex: 1; }
+        .filtre-comptes th:nth-child(4) { display: none !important; }
+        .filtre-comptes select { min-width: 0; height: 36px; }
+        /* Les titres deviennent des boutons de tri. */
+        .comptes-scroll thead tr:nth-child(2) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+                                                -webkit-overflow-scrolling: touch; }
+        .comptes-scroll thead tr:nth-child(2)::-webkit-scrollbar { display: none; }
+        .comptes-scroll thead tr:nth-child(2) th { flex: none; }
+        .comptes-scroll thead tr:nth-child(2) th { font-size: 11px; background: #fff; border: 1px solid #dde5ee !important;
+                                                   border-radius: 14px; padding: 2px 4px 2px 10px !important; text-align: left !important; }
+        .comptes-scroll thead tr:nth-child(2) th.col-trombone,
+        .comptes-scroll thead tr:nth-child(2) th:nth-last-child(-n+2) { display: none; }
+        .tri-titre.tri-droite .tri { position: static; margin-left: 0; }
+        .tri { flex-direction: row; }
+        .tri a { padding: 6px 5px; font-size: 12px; }
+        /* Le trombone sur la ligne de la date, juste après elle ; le ✕ en bas
+           à droite, à cheval sur les deux dernières lignes. */
+        .comptes-scroll tbody tr.ligne-depense { display: grid; grid-template-columns: auto 1fr auto; column-gap: 8px; row-gap: 2px;
+                                  grid-template-areas: "date trombone montant" "objet objet solde" "cat cat suppr" "four four suppr";
+                                  background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
+                                  padding: 9px 12px; margin-bottom: 8px; }
+        .comptes-scroll tbody tr.ligne-depense[hidden] { display: none; }
+        .comptes-scroll tbody td { display: block; padding: 0 !important; border: 0 !important; background: none; }
+        .c-date { grid-area: date; font-size: 13px; color: var(--muted); }
+        .c-montant { grid-area: montant; font-weight: 700; font-size: 16px; }
+        .c-objet { grid-area: objet; font-weight: 600; }
+        .ligne-depense .col-trombone { grid-area: trombone; width: auto; justify-self: start; align-self: center; }
+        .ligne-depense .col-trombone .trombone svg { width: 20px; height: 20px; }
+        .c-cat { grid-area: cat; font-size: 13px; color: var(--muted); }
+        .c-four { grid-area: four; font-size: 13px; color: var(--muted); }
+        .c-solde { grid-area: solde; font-size: 13px; color: #9a3412; font-weight: 600; align-self: center; }
+        .c-solde::before { content: "reste dû "; font-weight: 400; }
+        .c-solde.solde-nul { visibility: hidden; }
+        .c-suppr { grid-area: suppr; justify-self: end; align-self: center; }
+        .comptes-suppr { width: 30px; height: 30px; padding: 0 !important; border-radius: 50%; }
+        /* Le total, collé en bas : libellé, montant, puis ce qui reste dû. */
+        .comptes-scroll tfoot { position: sticky; bottom: 0; z-index: 2; background: #fff; box-shadow: inset 0 2px 0 #5bc8e0; }
+        /* Le total, lisible d'un coup d'œil : libellé et montant en grand,
+           ce qui reste dû dessous, à droite. */
+        .comptes-scroll tfoot tr { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; padding: 10px 14px 12px; }
+        .comptes-scroll tfoot #total-libelle { font-size: 17px; font-weight: 700; }
+        .comptes-scroll .data-table tfoot td { position: static; box-shadow: none; padding: 0 !important; border: 0; }
+        .comptes-scroll tfoot td[colspan], .comptes-scroll tfoot td:empty { display: none; }
+        .comptes-scroll tfoot #total-montant { margin-left: auto; font-weight: 800; font-size: 20px; }
+        .comptes-scroll tfoot #total-solde { flex: 1 0 100%; text-align: right; color: #9a3412; font-size: 15px; font-weight: 600; margin-top: 2px; }
+        .comptes-scroll tfoot #total-solde::before { content: "reste dû "; }
+    }
     .comptes-scroll tfoot td {
         position: sticky; bottom: 0; z-index: 2; background: #fff;
         /* border-collapse ne colle pas les bordures avec la cellule : le trait
@@ -73,9 +168,18 @@
     {# Un bouton de chaque côté, de même largeur, pour que le titre reste
        centré ; l'import à gauche, la saisie à droite comme sur les autres listes.
        Marges verticales négatives : les boutons ne grandissent pas la barre. #}
-    <a href="/ship/expenses/import" class="btn" style="min-width:180px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">⇪ Importer</a>
+    <a href="/ship/expenses/import" class="btn comptes-import" title="Importer des dépenses (CSV, Excel)">⇪ <span>Importer</span></a>
     <div class="section-bar-title">Comptes</div>
-    <a href="/ship/expenses/new" class="btn btn-yellow" style="min-width:180px;text-align:center;margin:-10px 0">+ Nouvelle dépense</a>
+    <span class="btn comptes-import" style="visibility:hidden" aria-hidden="true">⇪ <span>Importer</span></span>
+</div>
+
+{# Le geste principal de la page, en grand bouton comme « Nouvelle tâche » et
+   « Nouveau plein » (26/11/2026) ; il remplace le bouton jaune de la barre. #}
+<div class="comptes-geant">
+<a href="/ship/expenses/new" class="btn-geant btn-geant-bleu btn-geant-liste">
+    <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+    <span class="btn-geant-texte"><span class="btn-geant-nom">Nouvelle dépense</span></span>
+</a>
 </div>
 
 {% if entries %}
@@ -97,7 +201,9 @@
                     </select>
                 </th>
                 <th colspan="3"><span class="compte" id="filtre-compte"></span></th>
-                <th>
+                {# Sur deux colonnes (catégorie et fournisseur) : le menu ne force
+                   plus la largeur de la colonne Catégorie. #}
+                <th colspan="2">
                     <select id="filtre-categorie">
                         <option value="">Toutes catégories</option>
                         {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
@@ -108,7 +214,7 @@
                         {% endif %}
                     </select>
                 </th>
-                <th colspan="3"></th>
+                <th colspan="2"></th>
             </tr>
             <tr>
                 {# Deux triangles à droite du titre : ▲ croissant, ▼ décroissant.
@@ -152,8 +258,8 @@
             <tr style="cursor:pointer" title="Ouvrir cette dépense" class="ligne-depense"
                 data-categorie="{{ e.expense_type or '' }}" data-annee="{{ (e.date or '')[:4] }}" data-montant="{{ e.unit_price or 0 }}" data-solde="{{ e.balance or 0 }}"
                 onclick="rowLink(event, '/ship/expenses/{{ e.id }}')">
-                <td style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
-                <td style="text-align:right;white-space:nowrap">{{ e.unit_price | euros }}</td>
+                <td class="c-date" style="white-space:nowrap">{{ e.date | datefr if e.date else '' }}</td>
+                <td class="c-montant" style="text-align:right;white-space:nowrap">{{ e.unit_price | euros }}</td>
                 {# Le trombone signale une facture et l'ouvre dans un nouvel
                    onglet ; rowLink laisse passer ce clic, le reste de la ligne
                    ouvre la fiche. #}
@@ -164,9 +270,9 @@
                        class="trombone"><svg aria-hidden="true"><use href="#icon-trombone"/></svg></a>
                     {% endif %}
                 </td>
-                <td>{{ e.designation or '' }}</td>
-                <td>{{ e.expense_type or '' }}</td>
-                <td>
+                <td class="c-objet">{{ e.designation or '' }}</td>
+                <td class="c-cat">{{ e.expense_type or '' }}</td>
+                <td class="c-four">
                     {# Une dépense d'escale mène au contact qui porte le nom du port. #}
                     {% set fiche = supplier_ids.get(e.supplier) or supplier_ids.get(e.port_name) %}
                     {% if fiche %}
@@ -176,14 +282,14 @@
                     {{ e.supplier or '' }}
                     {% endif %}
                 </td>
-                <td style="text-align:right;white-space:nowrap">{{ e.balance | euros }}</td>
-                <td>
+                <td class="c-solde{{ '' if e.balance else ' solde-nul' }}" style="text-align:right;white-space:nowrap">{{ e.balance | euros }}</td>
+                <td class="c-suppr">
                     {# La dépense d'une escale se supprime avec l'escale (ou en
                        vidant son Total), pas d'ici. #}
                     {% if not e.stopover_id %}
                     <form method="POST" action="/ship/expenses/{{ e.id }}/delete"
                           onsubmit="return confirm('Supprimer cette dépense ?')">
-                        <button type="submit" class="btn" style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px">✕</button>
+                        <button type="submit" class="btn comptes-suppr" style="background:#fee2e2;color:#991b1b;padding:2px 10px;font-size:12px">✕</button>
                     </form>
                     {% endif %}
                 </td>
@@ -210,6 +316,24 @@
     </table>
 </div>
 <script>
+// Hauteur du cadre du tableau (Mac, iPad) : mesurée, jusqu'au bas de l'écran
+// moins la marge du bas de page (6 px sur cette page, .wrap) — le calcul du style, fait de
+// marges estimées, laissait un vide sous le total depuis l'ajout du grand
+// bouton. Le calc() reste en secours si le script ne tourne pas. Sur
+// téléphone, pas de cadre : toute la page défile.
+(function () {
+    const cadre = document.querySelector('.comptes-scroll'), zone = document.getElementById('defile');
+    if (!cadre || !zone) return;
+    const telephone = matchMedia('(max-width: 600px)');
+    function ajuster() {
+        if (telephone.matches) { cadre.style.maxHeight = ''; return; }
+        const haut = cadre.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop;
+        cadre.style.maxHeight = Math.max(240, zone.clientHeight - haut - 6) + 'px';
+    }
+    ajuster();
+    addEventListener('resize', ajuster);
+    addEventListener('load', ajuster);
+})();
 (function () {
     const cat = document.getElementById('filtre-categorie'), compte = document.getElementById('filtre-compte');
     const annee = document.getElementById('filtre-annee');
@@ -250,9 +374,6 @@
 {% else %}
 <div class="stub">
     <div>Aucune dépense enregistrée.</div>
-    <div style="margin-top:16px">
-        <a href="/ship/expenses/new" class="btn btn-yellow">+ Première dépense</a>
-    </div>
 </div>
 {% endif %}
 

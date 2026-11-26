@@ -408,6 +408,30 @@
         .btn-geant-gris { background: #e5e9ee; color: #4b5563; min-height: 72px; }
         .btn-geant-gris .btn-geant-nom { font-size: 19px; font-weight: 800; }
         .btn-geant:hover { filter: brightness(1.05); }
+        /* Grand bouton d'une liste (Nouvelle tâche, Nouveau plein, Nouvelle
+           dépense) : 64 points de haut pour le doigt sur le téléphone, mais
+           moins haut au-delà — sur le Mac et l'iPad, il prenait trop de place
+           (26/11/2026). « Nouvelle route » et « Nouvelle ligne » gardent leur
+           taille : ils sont le geste principal de l'app. */
+        /* Sous la barre de titre, l'espace jusqu'au grand bouton réduit de
+           moitié (20 → 10 px) : les deux vont ensemble (26/11/2026). */
+        .section-bar:has(+ .btn-geant-liste), .section-bar:has(+ .comptes-geant) { margin-bottom: 10px; }
+        @media (min-width: 601px) {
+            .btn-geant-liste { min-height: 46px; padding-top: 4px; padding-bottom: 4px; }
+            .btn-geant-liste .btn-geant-nom { font-size: 17px; }
+            .btn-geant-liste svg { width: 22px; height: 22px; }
+        }
+        /* Téléphone : les boutons des barres de titre (« ← Comptes », « + Nouvel
+           équipier », « ⇪ Importer »…, et leurs doubles invisibles qui
+           centrent le titre) réduits à leur symbole, le libellé (.btn-lib)
+           restant pour les lecteurs d'écran : à 160 px chacun, ils
+           écrasaient le titre sur quatre lignes. */
+        @media (max-width: 600px) {
+            .section-bar .btn[style*="min-width"] { min-width: 0 !important; width: 44px; height: 32px; padding: 0;
+                                                     display: inline-flex; align-items: center; justify-content: center;
+                                                     font-size: 17px; flex: none; }
+            .section-bar .btn-lib { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+        }
         /* Téléphone : une échelle de titres — la section dans la barre du haut
            17 px (.topbar-section), le titre de la page dans sa barre bleue
            20 px, le plus grand, et les grands boutons 18 px, sous lui. Ils

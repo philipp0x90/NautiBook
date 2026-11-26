@@ -118,9 +118,9 @@
     {% if peut(request, 'comptes.voir') %}
     <a href="/ship/expenses{{ '?ligne=/ship/expenses/' ~ purchases[-1].id if purchases }}" class="btn"
        style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff"
-       title="{{ 'Ouvrir les comptes sur la dernière dépense chez ce fournisseur' if purchases else 'Ouvrir les comptes' }}">← Comptes</a>
+       title="{{ 'Ouvrir les comptes sur la dernière dépense chez ce fournisseur' if purchases else 'Ouvrir les comptes' }}">← <span class="btn-lib">Comptes</span></a>
     {% else %}
-    <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← Comptes</span>
+    <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← <span class="btn-lib">Comptes</span></span>
     {% endif %}
     {# Contact précédent et suivant, dans l'ordre du carnet : ‹ › autour du nom. #}
     <div class="section-bar-title fiche-nav">
@@ -130,7 +130,7 @@
     </div>
     {# Une dépense chez ce fournisseur, préchoisi dans le formulaire. #}
     <a href="/ship/expenses/new?fournisseur={{ (contact.company or contact.contact_name or '') | urlencode }}"
-       class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ Nouvelle dépense</a>
+       class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ <span class="btn-lib">Nouvelle dépense</span></a>
 </div>
 
 
