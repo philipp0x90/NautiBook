@@ -111,7 +111,8 @@
 {# multipart : le document part avec le reste de la fiche. #}
 <div class="expense-page">
 <form method="POST" enctype="multipart/form-data" class="card expense-form" id="expense-form"
-      action="{{ '/ship/expenses/' ~ entry.id ~ '/edit' if edition else '/ship/expenses/new' }}">
+      action="{{ '/ship/expenses/' ~ entry.id ~ '/edit' if edition else '/ship/expenses/new' }}"
+      {% if not edition %}data-avertir="La dépense n'est pas enregistrée."{% endif %}>
 
         <div style="grid-area:date">
             {# Date du jour par défaut à la création ; une fiche existante garde

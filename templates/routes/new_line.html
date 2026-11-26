@@ -89,6 +89,7 @@
 </div>
 
 <form method="POST" action="/routes/{{ route.id }}/new-line" class="card" id="ligne-form" style="display:grid;gap:12px"
+      data-avertir="La ligne n'est pas enregistrée."
       onsubmit="return confirmerConditions(this)">
 
     {# Ligne oubliée, sur une route arrivée : son heure, entre le départ et

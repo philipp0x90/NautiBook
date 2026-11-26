@@ -596,7 +596,7 @@ function buildCruiseMap() {
     </table>
     {# Le gasoil n'a ni départ ni arrivée (aucune jauge relevée) : hors du
        tableau, deux pavés d'estimation, chacun avec son calcul dessous. #}
-    <div class="recap-gasoil">
+    <div class="recap-gasoil" onclick="rowLink(event, '/ship/fuel')" title="Ouvrir la page Gasoil">
         <div>
             <div class="titre">Gasoil consommé</div>
             <div class="chiffre">{{ '≈ %.0f L'|format(recap.fuel) if recap.fuel is not none else '—' }}</div>
@@ -608,6 +608,8 @@ function buildCruiseMap() {
             <div class="chiffre">{{ '≈ ' ~ (recap.cost | euros) if recap.cost is not none else '—' }}</div>
             {% if recap.price %}<div class="detail">{{ recap.price | dec(3) }} €/L, prix du plein du {{ recap.price_date | datefr }}</div>{% endif %}
         </div>
+        {% from "_jauge_gasoil.html" import carte_reservoir %}
+        {{ carte_reservoir(recap.tank, 'en fin de croisière') }}
     </div>
 </div>
 

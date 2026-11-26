@@ -408,6 +408,16 @@
         .btn-geant-gris { background: #e5e9ee; color: #4b5563; min-height: 72px; }
         .btn-geant-gris .btn-geant-nom { font-size: 19px; font-weight: 800; }
         .btn-geant:hover { filter: brightness(1.05); }
+        /* Téléphone : une échelle de titres — la section dans la barre du haut
+           17 px (.topbar-section), le titre de la page dans sa barre bleue
+           20 px, le plus grand, et les grands boutons 18 px, sous lui. Ils
+           étaient à 17, 17 et 20 : le bouton passait avant le titre. Le
+           bouton jaune (Nouvelle ligne) garde un cran de plus que les autres. */
+        @media (max-width: 600px) {
+            .section-bar-title { font-size: 20px; }
+            .btn-geant .btn-geant-nom { font-size: 18px; }
+            .btn-geant-jaune .btn-geant-nom { font-size: 19px; }
+        }
         .btn-gris { background: #eef2f6; color: #374151; }
         button.primary { background: var(--accent); color: #fff; padding: 9px 16px; border-radius: 8px; border: 0; cursor: pointer; font-size: 14px; font-weight: 600; }
         .meta { color: var(--muted); font-size: 13px; }
@@ -483,7 +493,25 @@
         .recap tfoot th { text-align: right; font-weight: 600; padding-right: 10px; }
         .recap tfoot td span { font-weight: 400; color: var(--muted); font-size: 12px; }
         /* Sous le Récapitulatif : le gasoil consommé et son coût, en pavés. */
-        .recap-gasoil { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+        /* Trois cartes : gasoil consommé, son coût, et le gasoil restant en
+           jauge (_jauge_gasoil.html). Téléphone : les deux premières côte à
+           côte, la jauge dessous sur toute la largeur. */
+        .recap-gasoil { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 14px; }
+        @media (max-width: 600px) {
+            .recap-gasoil { grid-template-columns: 1fr 1fr; }
+            .recap-gasoil > div:nth-child(3) { grid-column: 1 / -1; }
+        }
+        .recap-jauge { height: 10px; margin: 6px 4px 0; background: #fff; border: 1px solid #dde5ee; border-radius: 6px; overflow: hidden; }
+        .recap-jauge > div { height: 100%; }
+        .recap-jauge .haut { background: #22c55e; }
+        .recap-jauge .moyen { background: #f59e0b; }
+        .recap-jauge .bas { background: #ef4444; }
+        .recap-gasoil .detail a { color: var(--accent); }
+        /* Toute la zone mène à la page Gasoil (rowLink), d'où viennent ces
+           estimations. */
+        .recap-gasoil { cursor: pointer; }
+        .recap-gasoil > div { transition: background .12s; }
+        .recap-gasoil:hover > div { background: #e6f3f9; }
         .recap-gasoil > div { background: #f2f9fc; border-radius: 8px; padding: 10px 12px; text-align: center; }
         .recap-gasoil .titre { font-size: 11px; font-weight: 700; color: #7d8fa3; text-transform: uppercase; letter-spacing: 1px; }
         .recap-gasoil .chiffre { font-size: 20px; font-weight: 700; color: #0f3a4a; margin-top: 2px; }
@@ -574,6 +602,56 @@
             .topbar-logo { width: 34px; }
             .topbar-logo svg { width: 28px; height: 28px; }
         }
+        /* Téléphone tenu en hauteur : menu « hamburger » (☰, à droite, sous le
+           pouce — choix de l'utilisateur, 26/11/2026). Dix icônes de 32 points
+           dans la barre, puis six onglets en bas de l'écran, étaient trop
+           petits au doigt, ceux des bords surtout. La barre ne garde que ‹,
+           l'ancre, le nom de la section, la loupe, le compte et ☰ ; ☰ ouvre un
+           panneau (#tiroir, construit par le script « Menu du téléphone » à
+           partir des onglets et de leurs menus : rien n'est écrit deux fois)
+           où chaque page est à une touche, les sous-menus dépliés. */
+        .topbar-section, .topbar-menu { display: none; }
+        @media (max-width: 600px) {
+            .topbar { padding: 4px 6px 4px 8px; }
+            nav.main-nav, .topbar-reglages { display: none; }
+            /* Centré sur l'écran, et non dans l'espace entre l'ancre et la
+               loupe (plus étroit à gauche qu'à droite) : posé au milieu de la
+               barre, hors du flux ; l'ancre repousse les icônes à droite. */
+            .topbar .logo-menu { margin-right: auto; }
+            .topbar-section { display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+                              max-width: calc(100% - 300px); pointer-events: none; font-size: 17px; font-weight: 600;
+                              color: #08204e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            .topbar-settings { min-width: 44px; min-height: 44px; padding: 4px; }
+            .topbar-retour { min-height: 44px; padding: 0 8px 4px 4px; }
+            .topbar-menu { display: flex; position: relative; align-items: center; justify-content: center;
+                           width: 48px; height: 44px; padding: 0; border: 0; background: none; color: #08204e; cursor: pointer; }
+            .topbar-menu svg { width: 26px; height: 26px; display: block; }
+            .topbar-menu .point { position: absolute; top: 7px; right: 8px; width: 10px; height: 10px; border-radius: 50%;
+                                  background: #e11d48; box-shadow: 0 0 0 2px var(--topbar-bg); }
+        }
+        #tiroir { position: fixed; inset: 0; z-index: 900; visibility: hidden; transition: visibility 0s .22s; }
+        #tiroir.ouvert { visibility: visible; transition: visibility 0s; }
+        @media (min-width: 601px) { #tiroir { display: none; } }
+        .tiroir-fond { position: absolute; inset: 0; background: rgba(8, 32, 78, .35); opacity: 0; transition: opacity .22s; }
+        #tiroir.ouvert .tiroir-fond { opacity: 1; }
+        .tiroir-panneau { position: absolute; top: 0; right: 0; bottom: 0; width: min(320px, 86vw); box-sizing: border-box;
+                          background: var(--card); box-shadow: -8px 0 30px rgba(8, 32, 78, .18);
+                          transform: translateX(100%); transition: transform .22s ease;
+                          overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+                          padding: max(6px, env(safe-area-inset-top)) 0 max(16px, env(safe-area-inset-bottom)); }
+        #tiroir.ouvert .tiroir-panneau { transform: none; }
+        .tiroir-tete { display: flex; justify-content: flex-end; padding: 0 6px; }
+        .tiroir-fermer { width: 48px; height: 44px; border: 0; background: none; font-size: 24px; color: #08204e; cursor: pointer; }
+        .tiroir-section { border-top: 1px solid #e6edf3; padding: 4px 0; }
+        .tiroir-titre { display: flex; align-items: center; gap: 14px; min-height: 48px; padding: 0 20px; box-sizing: border-box;
+                        font-size: 17px; font-weight: 600; color: #08204e; text-decoration: none; }
+        .tiroir-titre svg { width: 24px; height: 24px; flex: none; }
+        .tiroir-titre .nav-pastille { position: static; margin-left: auto; box-shadow: none; }
+        .tiroir-section.active .tiroir-titre { color: var(--accent-dark); box-shadow: inset 4px 0 var(--accent-dark); }
+        .tiroir-sous a { display: flex; align-items: center; min-height: 44px; padding: 0 20px 0 58px;
+                         font-size: 16px; color: #1a1a2e; text-decoration: none; }
+        .tiroir-section > a.tiroir-titre:active, .tiroir-sous a:active { background: #e8f4f9; }
+        .tiroir-sous a.courant, a.tiroir-titre.courant { color: var(--accent-dark); font-weight: 600; }
         /* Type d'escale, en pastille de couleur (liste des escales, page de la
            croisière). Les valeurs stockées sont celles-ci : Port, Marina,
            Bouée, Mouillage — à ajouter ici si un type s'ajoute au formulaire. */
@@ -813,6 +891,11 @@
         </ul>
     </nav>
 
+    {# Téléphone : le nom de la section courante, à la place des onglets
+       rangés sous ☰ (voir « menu hamburger » dans les styles). #}
+    <span class="topbar-section">{{ {'ship': 'Navire', 'crew': 'Équipiers', 'cruises': 'Croisières', 'routes': 'Route',
+                                     'tools': 'Outils', 'gallery': 'Carnets', 'settings': 'Réglages'}.get(active_section, '') }}</span>
+
     {# Loupe : la recherche dans toute la base. Une icône plutôt qu'un champ,
        les six onglets occupant déjà la largeur de la barre. Mêmes dimensions
        et même couleur que la roue crantée qui la suit. #}
@@ -850,11 +933,20 @@
        de dossier static, et fill="currentColor" à la place du #08204E du fichier
        pour que la couleur et le survol restent gouvernés par le CSS. #}
     {% if voit(request, '/settings') %}
-    <a href="/settings" class="topbar-settings" title="Paramètres" aria-label="Paramètres">
+    <a href="/settings" class="topbar-settings topbar-reglages" title="Paramètres" aria-label="Paramètres">
         <svg aria-hidden="true"><use href="#icon-settings"></use></svg>
         <span class="nav-lib">Réglages</span>
     </a>
     {% endif %}
+
+    {# ☰ : le menu du téléphone (script « Menu du téléphone »). Le point rouge
+       reprend la pastille de Carnets, cachée avec les onglets. #}
+    <button type="button" class="topbar-menu" aria-label="Menu" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <path d="M3 6h18M3 12h18M3 18h18"/>
+        </svg>
+        {% if carnet_nouveaux(request) %}<span class="point"></span>{% endif %}
+    </button>
 </header>
 
 {# Zone de défilement : tout ce qui est sous le menu. Le menu, lui, ne défile
@@ -1354,6 +1446,106 @@ document.querySelectorAll('[data-recadrage]').forEach(function (cadre) {
         // de la page peut encore avoir changé.
         addEventListener('load', () => { zone.scrollTop = note.haut; });
     }
+})();
+
+// Saisie non enregistrée : <form data-avertir="La nouvelle tâche n'est pas
+// enregistrée."> fait demander confirmation avant de quitter la page, une
+// fois un champ touché et tant que le formulaire n'est pas envoyé. Safari sur
+// iPhone ignore beforeunload : on intercepte donc les liens de la page (menu,
+// ☰, ancre…) et le bouton ‹, avant leur propre action (phase de capture).
+// beforeunload reste pour le Mac (fermer l'onglet, recharger). Les liens du
+// formulaire lui-même (« Annuler ») quittent sans question : c'est voulu,
+// comme l'envoi de n'importe quel formulaire de la page (« Supprimer la
+// ligne » a déjà sa propre confirmation). Les champs rattachés par form="…"
+// (documents joints) comptent aussi.
+document.querySelectorAll('form[data-avertir]').forEach(function (form) {
+    let modifie = false, quitte = false;
+    const marquer = function (e) { if (e.target.form === form) modifie = true; };
+    document.addEventListener('input', marquer, true);
+    document.addEventListener('change', marquer, true);
+    // Une saisie abandonnée par un bouton qui vide le formulaire (form.reset(),
+    // l'« Annuler » de la ligne d'un nouveau plein) n'est plus à protéger.
+    form.addEventListener('reset', function () { modifie = false; });
+    // En bulle, après les onsubmit des formulaires : une confirmation
+    // refusée (defaultPrevented) laisse sur la page, l'avertissement aussi.
+    document.addEventListener('submit', function (e) { if (!e.defaultPrevented) quitte = true; });
+    const question = form.dataset.avertir + '\n\nQuitter sans enregistrer ?';
+    document.addEventListener('click', function (e) {
+        if (!modifie || quitte || e.metaKey || e.ctrlKey) return;
+        const cible = e.target.closest('a[href], .topbar-retour');
+        if (!cible || form.contains(cible)) return;
+        if (cible.matches('a') && (cible.target === '_blank' || cible.getAttribute('href').startsWith('#'))) return;
+        if (confirm(question)) { quitte = true; return; }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+    }, true);
+    addEventListener('beforeunload', function (e) {
+        if (modifie && !quitte) { e.preventDefault(); e.returnValue = ''; }
+    });
+});
+
+// Menu du téléphone (☰) : un panneau qui glisse depuis la droite, construit
+// ici à partir des onglets et de leurs menus déroulants — déjà filtrés selon
+// le rang par le serveur (voit) —, puis Réglages, Aide et À propos. Une
+// section qui a un menu montre son titre et toutes ses pages ; sans menu, le
+// titre est le lien. Refermé par ✕, un toucher à côté, Échap, ou au retour
+// sur la page (pageshow : Safari la garde en mémoire, menu ouvert).
+(function () {
+    const bouton = document.querySelector('.topbar-menu');
+    if (!bouton) return;
+    const tiroir = document.createElement('div');
+    tiroir.id = 'tiroir';
+    tiroir.innerHTML = '<div class="tiroir-fond"></div><nav class="tiroir-panneau" aria-label="Menu">' +
+        '<div class="tiroir-tete"><button type="button" class="tiroir-fermer" aria-label="Fermer le menu">✕</button></div></nav>';
+    const panneau = tiroir.querySelector('.tiroir-panneau');
+    const ici = location.pathname;
+    const lien = function (a, texte) {
+        const n = document.createElement('a');
+        n.href = a.getAttribute('href');
+        if (n.getAttribute('href') === ici) n.classList.add('courant');
+        if (texte) n.textContent = a.textContent.trim();
+        return n;
+    };
+    const titre = function (el, icone, libelle) {
+        el.classList.add('tiroir-titre');
+        if (icone) el.append(icone.cloneNode(true));
+        const s = document.createElement('span');
+        s.textContent = libelle;
+        el.append(s);
+        return el;
+    };
+    const sousListe = function (liens) {
+        const sous = document.createElement('div');
+        sous.className = 'tiroir-sous';
+        liens.forEach(function (a) { sous.append(lien(a, true)); });
+        return sous;
+    };
+    document.querySelectorAll('nav.main-nav > ul > li').forEach(function (li) {
+        const a = li.querySelector(':scope > a'), menu = li.querySelector(':scope > .dropdown-menu');
+        const section = document.createElement('div');
+        section.className = 'tiroir-section' + (li.classList.contains('active') ? ' active' : '');
+        const t = titre(menu ? document.createElement('div') : lien(a), a.querySelector('svg'),
+                        a.querySelector('.nav-lib').textContent);
+        const pastille = a.querySelector('.nav-pastille');
+        if (pastille) t.append(pastille.cloneNode(true));
+        section.append(t);
+        if (menu) section.append(sousListe(menu.querySelectorAll('a')));
+        panneau.append(section);
+    });
+    const fin = document.createElement('div');
+    fin.className = 'tiroir-section';
+    const reglages = document.querySelector('.topbar-reglages');
+    if (reglages) fin.append(titre(lien(reglages), reglages.querySelector('svg'), 'Réglages'));
+    fin.append(sousListe(document.querySelectorAll('.logo-menu .dropdown-menu a')));
+    panneau.append(fin);
+    document.body.append(tiroir);
+
+    const fermer = function () { tiroir.classList.remove('ouvert'); bouton.setAttribute('aria-expanded', 'false'); };
+    bouton.addEventListener('click', function () { tiroir.classList.add('ouvert'); bouton.setAttribute('aria-expanded', 'true'); });
+    tiroir.querySelector('.tiroir-fond').addEventListener('click', fermer);
+    tiroir.querySelector('.tiroir-fermer').addEventListener('click', fermer);
+    addEventListener('keydown', function (e) { if (e.key === 'Escape') fermer(); });
+    addEventListener('pageshow', fermer);
 })();
 
 // Hauteurs du menu et de la barre collée de la page, pour ce qui se colle

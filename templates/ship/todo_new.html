@@ -9,7 +9,8 @@
 </div>
 
 {% set item = none %}
-<form method="POST" action="/ship/todo/new" enctype="multipart/form-data" class="todo-form" id="todo-form">
+<form method="POST" action="/ship/todo/new" enctype="multipart/form-data" class="todo-form" id="todo-form"
+      data-avertir="La nouvelle tâche n'est pas enregistrée.">
 {% include "ship/_todo_form.html" %}
 </form>
 

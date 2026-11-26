@@ -44,6 +44,28 @@
     .validite.expire .validite-badge { background: #dc2626; }
     .doc-validite { display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; }
     .doc-validite input { width: auto; }
+    /* Téléphone : chaque document en petite fiche plutôt qu'en rangée de
+       cinq colonnes, qui débordait à droite — le titre, son type et ✕ sur
+       la première ligne, puis « Valable du » et « jusqu'au » chacun sur la
+       sienne, leur libellé repris devant la date (l'en-tête est caché). */
+    @media (max-width: 600px) {
+        .docs-table thead { display: none; }
+        .docs-table, .docs-table tbody { display: block; }
+        .docs-table tr { display: grid; grid-template-columns: 1fr auto auto; align-items: center; column-gap: 10px;
+                         grid-template-areas: "titre type suppr" "du du du" "au au au";
+                         padding: 8px 0; border-bottom: 1px solid #eef3f7; }
+        .docs-table td { padding: 0; border: 0; }
+        .docs-table td:nth-child(1) { grid-area: titre; }
+        .docs-table td:nth-child(2) { grid-area: type; }
+        .docs-table td:nth-child(3) { grid-area: du; }
+        .docs-table td:nth-child(4) { grid-area: au; }
+        .docs-table td:nth-child(5) { grid-area: suppr; }
+        .docs-table td:nth-child(3), .docs-table td:nth-child(4) { display: flex; align-items: center; gap: 4px; }
+        .docs-table td:nth-child(3)::before, .docs-table td:nth-child(4)::before {
+            width: 92px; flex: none; font-size: 13px; color: var(--muted); }
+        .docs-table td:nth-child(3)::before { content: "Valable du"; }
+        .docs-table td:nth-child(4)::before { content: "jusqu'au"; }
+    }
 
     /* Cartes réparties sur deux colonnes à la manière d'un mur (column-count) :
        des cartes de hauteurs différentes s'y empilent sans trous, ce qu'une
@@ -88,6 +110,17 @@
     .valeur input:focus { outline: none; background: transparent; }
     .valeur input[type=date] { width: auto; }
     .valeur .unite { width: 34px; flex: 0 0 34px; padding-left: 4px; font-weight: 600; color: var(--muted); text-align: left; }
+    /* Téléphone : la case d'unité vide, gardée ailleurs pour aligner les
+       valeurs, laissait 34 px de blanc à droite de chaque ligne. Elle disparaît
+       quand la ligne n'a pas d'unité ; une unité ne prend que sa largeur. Les
+       dates, que Safari iOS centre dans leur case, sont calées à droite. */
+    @media (max-width: 600px) {
+        .valeur { min-width: 0; }
+        .valeur .unite { width: auto; flex: none; padding: 0 2px 0 3px; }
+        .valeur .unite:empty { display: none; }
+        .valeur input[type=date] { width: 100%; text-align: right; }
+        .valeur input[type=date]::-webkit-date-and-time-value { text-align: right; }
+    }
     /* Échéances : même règle que les documents. */
     .valeur.bientot input { color: #b45309; }
     .valeur.expire input { color: #b91c1c; }
@@ -103,6 +136,9 @@
         font: inherit; background: transparent; border: 1px solid transparent;
         border-radius: 6px; resize: vertical;
     }
+    /* Téléphone : pas sept lignes vides sous une note d'une ligne ; la case
+       grandit avec le texte (data-grandit, base.html). */
+    @media (max-width: 600px) { .champ-divers { min-height: 4.5em; } }
     .champ-divers:hover { border-color: #cfe3ef; background: #f8fbfd; }
     .champ-divers:focus { border-color: var(--accent); background: #fff; outline: none; }
     /* Photo du navire : bandeau sous la barre, recadré à sa hauteur. */
@@ -136,6 +172,13 @@
     .proprio a.libelle:hover { text-decoration: underline; }
     .proprio form { margin: 0; }
     .proprio .valeur { min-width: 90px; }
+    /* Téléphone : la part, à la largeur d'un pourcentage (« 33,33 ») — un
+       champ texte prend sinon la largeur d'une vingtaine de caractères, et
+       le nom était coupé sur trois lignes. */
+    @media (max-width: 600px) {
+        .proprio .valeur { min-width: 0; }
+        .proprio .valeur input { width: 3.6em; }
+    }
     .proprio-retirer { background: #fee2e2; color: #991b1b; width: 24px; height: 24px; padding: 0;
                        font-size: 11px; border: 0; border-radius: 50%; cursor: pointer; }
     .proprio-ajout { display: flex; margin: 6px 0 0; }
@@ -371,7 +414,7 @@
     <section class="card fiche-carte">
         <h3>Divers, notes, …</h3>
         <form method="POST" action="/ship/info/field/misc_notes">
-            <textarea name="value" class="champ-divers" rows="7" placeholder="Notes libres…"
+            <textarea name="value" class="champ-divers" rows="2" placeholder="Notes libres…" data-grandit
                       onchange="this.form.submit()">{{ ship.misc_notes or '' }}</textarea>
         </form>
     </section>
@@ -386,7 +429,7 @@
         <h3>Documents</h3>
 
         {% if documents %}
-        <table class="data-table" style="margin-bottom:12px">
+        <table class="data-table docs-table" style="margin-bottom:12px">
             <thead>
                 <tr><th>Titre</th><th>Type</th><th>Valable du</th><th>au</th><th></th></tr>
             </thead>

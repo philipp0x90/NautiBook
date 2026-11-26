@@ -117,7 +117,8 @@
 {# Les listes déroulantes ouvrent sur une option vide : une valeur absente en
    base doit pouvoir le rester, alors que le formulaire de création part
    toujours sur la première option. #}
-<form method="POST" action="/logbook/{{ line.id }}/edit" class="card" id="ligne-form" style="display:grid;gap:12px">
+<form method="POST" action="/logbook/{{ line.id }}/edit" class="card" id="ligne-form" style="display:grid;gap:12px"
+      data-avertir="Les modifications de la ligne ne sont pas enregistrées.">
 
     <div class="field-groups">
 

@@ -68,7 +68,8 @@
     {% endif %}
 </div>
 
-<form method="POST" action="{{ action }}" class="card escale-carte" id="escale-form" enctype="multipart/form-data">
+<form method="POST" action="{{ action }}" class="card escale-carte" id="escale-form" enctype="multipart/form-data"
+      {% if nouveau %}data-avertir="L'escale n'est pas enregistrée."{% endif %}>
 
     {% if stopover.cruise_name or stopover.route_id %}
     <div class="escale-contexte">

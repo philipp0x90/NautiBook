@@ -38,7 +38,8 @@
 
 {# enctype obligatoire dès qu'un champ envoie un fichier. #}
 <form method="POST" enctype="multipart/form-data" class="card crew-form" style="display:grid;gap:16px"
-      action="{{ '/crew/' ~ member.id ~ '/edit' if edition else '/crew/new' }}">
+      action="{{ '/crew/' ~ member.id ~ '/edit' if edition else '/crew/new' }}"
+      data-avertir="{{ 'Les modifications ne sont pas enregistrées.' if edition else 'La fiche n’est pas créée.' }}">
 
     <section>
         {# Titre accordé au genre choisi ; une fiche nouvelle n'en a pas encore. #}

@@ -684,7 +684,7 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
            départ ni arrivée relevés. Son coût au prix du dernier plein fait
            avant la fin de la route (_fuel_price). #}
         {% set fuel = h_diff * conso if h_diff is not none and conso else none %}
-        <div class="recap-gasoil">
+        <div class="recap-gasoil" onclick="rowLink(event, '/ship/fuel')" title="Ouvrir la page Gasoil">
             <div>
                 <div class="titre">Gasoil consommé</div>
                 <div class="chiffre">{{ '≈ %.0f L'|format(fuel) if fuel is not none else '—' }}</div>
@@ -696,6 +696,8 @@ document.querySelectorAll('.journal textarea').forEach(function (t) {
                 <div class="chiffre">{{ '≈ ' ~ ((fuel * fuel_price) | euros) if fuel is not none and fuel_price else '—' }}</div>
                 {% if fuel_price %}<div class="detail">{{ fuel_price | dec(3) }} €/L, prix du plein du {{ fuel_price_date | datefr }}</div>{% endif %}
             </div>
+            {% from "_jauge_gasoil.html" import carte_reservoir %}
+            {{ carte_reservoir(tank, tank_moment) }}
         </div>
     </div>
 

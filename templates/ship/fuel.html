@@ -80,9 +80,88 @@
         .pleins input { width: 46px; padding: 0 2px; }
         .pleins input[type=date] { width: 104px; }
     }
+    /* Téléphone : les neuf colonnes ne tiennent pas (chiffres coupés, montant
+       hors de l'écran). Chaque plein devient une petite fiche : la date, la
+       glissière Plein / Appoint et ✕ en tête ; puis horamètre, litres et
+       montant ; puis prix au litre, heures et conso — chaque valeur sous son
+       libellé, repris des titres de colonnes (cachés). La ligne de saisie
+       d'un nouveau plein prend la même forme, ses boutons en dernière ligne.
+       Jusqu'à 760 px : l'iPad en portrait (620) aussi, où le tableau
+       débordait déjà à droite. */
+    @media (max-width: 760px) {
+        .pleins thead, .pleins colgroup { display: none; }
+        .pleins, .pleins tbody { display: block; }
+        .pleins { font-size: 15px; }
+        .pleins tr { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 8px; row-gap: 8px;
+                     grid-template-areas: "date date tete" "hor qte mont" "prix heures conso";
+                     background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
+                     padding: 10px 12px; margin-bottom: 10px; }
+        .pleins tbody td { padding: 0; border: 0; background: none; text-align: center; }
+        /* display: grid l'emporterait sur l'attribut hidden : la ligne de
+           saisie, cachée tant qu'on n'a pas touché « Nouveau plein »,
+           s'affichait d'emblée. */
+        .pleins tr[hidden] { display: none; }
+        .pleins td:nth-child(1) { grid-area: date; justify-self: start; }
+        .pleins td:nth-child(2) { grid-area: hor; }
+        .pleins td:nth-child(3) { grid-area: qte; }
+        .pleins td:nth-child(4) { grid-area: tete; justify-self: end; align-self: center; margin-right: 40px; }
+        .pleins td:nth-child(5) { grid-area: mont; }
+        .pleins td:nth-child(6) { grid-area: prix; }
+        .pleins td:nth-child(7) { grid-area: heures; }
+        .pleins td:nth-child(8) { grid-area: conso; }
+        .pleins td:nth-child(9) { grid-area: tete; justify-self: end; align-self: center; width: auto !important; }
+        .pleins td:nth-child(n+2):nth-child(-n+8):not(:nth-child(4))::before {
+            display: block; margin-bottom: 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .5px;
+            text-transform: uppercase; color: #7d8fa3; }
+        .pleins td:nth-child(2)::before { content: "Horamètre"; }
+        .pleins td:nth-child(3)::before { content: "Litres"; }
+        .pleins td:nth-child(5)::before { content: "Montant"; }
+        .pleins td:nth-child(6)::before { content: "Prix/L"; }
+        .pleins td:nth-child(7)::before { content: "Heures"; }
+        .pleins td:nth-child(8)::before { content: "Moy./plein"; }
+        .pleins td.qte, .pleins td.qte .champ { text-align: center; justify-content: center; padding: 0; }
+        .pleins .champ { justify-content: center; }
+        /* Le chiffre collé à son unité : la case prend la largeur de son
+           texte (field-sizing ; 64 px là où il n'est pas connu). */
+        .pleins input { width: 64px; field-sizing: content; min-width: 2.5em; height: 28px; text-align: right; padding: 0 3px; }
+        .pleins tr.nouveau input:not([type=date]) { width: 92px; field-sizing: fixed; text-align: center; }
+        .pleins input[type=date] { width: auto; text-align: left; font-weight: 700; }
+        /* ✕ rose pâle et rond, comme dans les Comptes, les Escales, la To-Do. */
+        .pleins td.suppr .btn { width: 30px; height: 30px; padding: 0 !important; border-radius: 50%;
+                                background: #fee2e2; color: #991b1b; }
+        .pleins .glissiere { top: 0; }
+        /* Ligne de saisie : ses boutons à la place des chiffres calculés. */
+        .pleins tr.nouveau { background: #f7fafc; }
+        /* tbody : un cran de plus que la règle générale de la ligne de saisie,
+           écrite plus bas, qui borde chaque case d'un trait. */
+        .pleins tbody tr.nouveau td { background: none; border: 0; }
+        .pleins tr.nouveau { grid-template-areas: "date date date" "tete tete tete" "hor qte mont" "boutons boutons boutons"; }
+        /* Plein / Appoint : sa rangée à lui, sur toute la largeur et à
+           hauteur de doigt (choix de l'utilisateur, 26/11/2026) — c'est la
+           question qu'on oublie, avec sa petite glissière de tableau. */
+        .pleins tr.nouveau td:nth-child(4) { margin-right: 0; justify-self: stretch; }
+        .pleins tr.nouveau .glissiere { width: 100%; height: 44px; }
+        .pleins tr.nouveau .glissiere .piste { border-radius: 10px; font-size: 15px; letter-spacing: 1px; line-height: 44px; }
+        .pleins tr.nouveau .glissiere .piste::before { top: 4px; left: 4px; width: 36px; height: 36px; border-radius: 8px; }
+        .pleins tr.nouveau .glissiere input:checked + .piste::before { left: calc(100% - 40px); }
+        .pleins tr.nouveau .glissiere .plein { right: 40px; }
+        .pleins tr.nouveau .glissiere .appoint-txt { left: 40px; }
+        .pleins tr.nouveau td:nth-child(6) { grid-area: boutons; display: flex; justify-content: center; gap: 14px;
+                                             margin-top: 6px; }
+        .pleins tr.nouveau td:nth-child(6) .btn { min-height: 44px; padding: 0 24px; font-size: 16px; margin: 0; }
+        .pleins tr.nouveau td:nth-child(6)::before { content: none; }
+    }
     /* Ligne de saisie d'un nouveau plein : cases visibles d'emblée. */
     .pleins tr.nouveau td { background: #f7fafc; border-bottom: 2px solid #dde5ee; }
     .pleins tr.nouveau input { border-color: #d5e0ea; background: #fff; }
+    /* Enregistrer / Annuler : à la taille du doigt et espacés — sur l'iPad,
+       la taille d'un bouton de tableau était trop petite et trop serrée. */
+    .pleins tr.nouveau .btn { min-height: 40px; padding: 0 22px; font-size: 15px; margin: 8px 0; }
+    .pleins tr.nouveau .btn + .btn { margin-left: 14px; }
+    /* Ses cases assez larges pour leur texte d'aide (« Horamètre »), que les
+       cases étroites du tableau coupaient sur l'iPad. En fiches (760 px et
+       moins), elles ont les leurs (92 px, plus haut). */
+    @media (min-width: 761px) { .pleins tr.nouveau input:not([type=date]) { width: 84px; } }
     /* « ? » du mode d'emploi, dans la barre : blanc, cerclé de blanc. Marges
        négatives : il ne grandit pas la barre. */
     .aide-rond { display: inline-flex; align-items: center; justify-content: center;
@@ -110,8 +189,21 @@
     .reservoir-chiffres .chiffre { font-size: 22px; font-weight: 700; color: #0f3a4a; margin-top: 4px; }
     .reservoir-chiffres input { width: 52px; padding: 1px 4px; font: inherit; font-size: 12px; font-weight: 700;
                                 text-align: center; color: #0f3a4a; border: 1px solid #cfe3ef; border-radius: 5px; }
-    .reservoir-detail { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.6; }
-    .reservoir-detail a { color: var(--accent); }
+    .reservoir-chiffres .vitesse { font-size: 12px; font-weight: 700; color: #7d8fa3; margin-top: 4px; }
+    /* Les valeurs d'abord (nowrap, largeur de leur texte) : un long libellé
+       passe à la ligne plutôt que de casser une date ou un nom de route. */
+    .reservoir-detail { display: grid; grid-template-columns: minmax(0, 1fr) auto; max-width: 460px; margin: 4px auto 0;
+                        font-size: 13px; line-height: 1.35; }
+    .reservoir-detail dt, .reservoir-detail dd { margin: 0; padding: 5px 0; border-bottom: 1px solid #eef3f7; }
+    .reservoir-detail dt { color: var(--muted); padding-right: 12px; }
+    .reservoir-detail dd { text-align: right; font-weight: 600; color: #0f3a4a; white-space: nowrap; }
+    .reservoir-detail dt:nth-last-of-type(1), .reservoir-detail dd:last-child { border-bottom: 0; }
+    .reservoir-detail .source { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+    .reservoir-detail a { display: block; font-weight: 400; color: var(--accent); }
+    .reservoir-alerte { background: #fff7ed; border: 1px solid #fdba74; color: #7c2d12; border-radius: 8px;
+                        padding: 10px 14px; margin: 4px 0 12px; font-size: 14px; line-height: 1.5; }
+    .reservoir-alerte strong { display: block; margin-bottom: 2px; }
+    .reservoir-alerte a { color: inherit; }
     /* Bilan : trois pavés sous le tableau, comme le pied de l'écran d'origine. */
     .bilan { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin-top: 18px; }
     .bilan > div { background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
@@ -123,24 +215,23 @@
 {% endblock %}
 {% block content %}
 
-{# « + Nouveau plein » dans la barre, comme sur les autres listes : son double
-   invisible à gauche garde le titre centré, les marges négatives la hauteur
-   de la barre. Il fait apparaître la ligne de saisie, en tête du tableau. #}
-{# À gauche, le mode d'emploi (« ? ») ; à droite « + Nouveau plein », ou son double
-   invisible pour qui ne peut pas ajouter : les deux de même largeur gardent
-   le titre centré. #}
+{# À gauche, le mode d'emploi (« ? ») ; à droite son double invisible, qui
+   garde le titre centré. #}
 <div class="section-bar section-bar-collee">
-    {# Le « ? » dans une case de la largeur du bouton d'en face. #}
-    <span style="min-width:140px;display:flex;align-items:center">
-        <a href="/help/gasoil" class="aide-rond" title="Mode d'emploi" aria-label="Mode d'emploi">?</a>
-    </span>
+    <a href="/help/gasoil" class="aide-rond" title="Mode d'emploi" aria-label="Mode d'emploi">?</a>
     <div class="section-bar-title">Gasoil</div>
-    {% if current_ship and peut(request, 'gasoil.modifier') %}
-    <button type="button" class="btn btn-yellow" style="min-width:140px;margin:-10px 0" onclick="nouveauPlein()">+ Nouveau plein</button>
-    {% else %}
-    <span class="btn" style="min-width:140px;visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouveau plein</span>
-    {% endif %}
+    <span class="aide-rond" style="visibility:hidden" aria-hidden="true">?</span>
 </div>
+
+{# Le geste principal de la page, en grand bouton comme « Nouvelle tâche » et
+   « Nouvelle route » (choix de l'utilisateur, 26/11/2026). Il fait
+   apparaître la ligne de saisie, en tête du tableau. #}
+{% if current_ship and peut(request, 'gasoil.modifier') %}
+<button type="button" class="btn-geant btn-geant-bleu" style="width:100%;margin:0 0 20px" onclick="nouveauPlein()">
+    <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+    <span class="btn-geant-texte"><span class="btn-geant-nom">Nouveau plein</span></span>
+</button>
+{% endif %}
 
 {% if not current_ship %}
 <div class="stub">Aucun navire configuré.</div>
@@ -156,6 +247,20 @@
 {% set niveau = 'haut' if tank.percent > 50 else ('moyen' if tank.percent >= 25 else 'bas') %}
 <section class="reservoir">
     <div class="reservoir-titre">Réservoir <span>· estimation</span></div>
+    {% if tank.incoherent %}
+    {# Estimation impossible (_tank_estimate) : plus de gasoil consommé
+       qu'il n'y en avait. Pas de jauge ni de chiffres, qui afficheraient un
+       réservoir vide comme un fait ; le détail, dessous, montre d'où vient
+       l'écart. #}
+    <div class="reservoir-alerte">
+        <strong>Estimation impossible : un horamètre est à vérifier.</strong>
+        Depuis le plein du {{ tank.full.date | datefr }}, noté à {{ tank.full.engine_hours | dec(1) }} h,
+        le moteur aurait tourné {{ tank.since | dec(1) }} h et consommé ≈ {{ '%.0f'|format(tank.used) }} L,
+        plus que le réservoir n’en contenait ({{ tank.capacity | dec(0) }} L{% if tank.topped_up %} et les appoints{% endif %}).
+        Vérifiez l'horamètre de ce plein{% if tank.reading.route %}, et celui de la route
+        <a href="/routes/{{ tank.reading.route.id }}">{{ tank.reading.route.departure_location or '?' }} - {{ tank.reading.route.destination_location or '?' }}</a>{% endif %}.
+    </div>
+    {% else %}
     <div class="jauge-ligne">
         <div class="jauge"><div class="jauge-niveau {{ niveau }}" style="width:{{ '%.0f'|format(tank.percent) }}%"></div></div>
         <div class="jauge-texte">≈ {{ '%.0f'|format(tank.remaining) }} L sur {{ tank.capacity | dec(0) }} L · {{ '%.0f'|format(tank.percent) }} %</div>
@@ -170,23 +275,39 @@
             <div class="chiffre">≈ {{ '%.0f'|format(tank.autonomy_hours) }} h</div>
         </div>
         <div>
-            <div class="titre">Autonomie à
+            {# La vitesse sous la distance (choix de l'utilisateur, 26/11/2026) :
+               le chiffre s'aligne ainsi sur ses deux voisins. #}
+            <div class="titre">Autonomie</div>
+            <div class="chiffre">≈ <span id="autonomie-milles">{{ '%.0f'|format(tank.autonomy_hours * cruising_speed) }}</span> NM</div>
+            <div class="vitesse">à
                 <input type="number" id="vitesse" value="{{ '%g' | format(cruising_speed) }}" min="0.5" step="0.5" inputmode="decimal"
                        oninput="autonomieMilles()" title="Vitesse moyenne au moteur — pour ce calcul seulement"> kn</div>
-            <div class="chiffre">≈ <span id="autonomie-milles">{{ '%.0f'|format(tank.autonomy_hours * cruising_speed) }}</span> NM</div>
         </div>
     </div>
-    <div class="reservoir-detail">
-        Depuis le plein du {{ tank.full.date | datefr }} ({{ tank.full.engine_hours | dec(0) }} h) :
-        {{ tank.since | dec(1) }} h de moteur × {{ tank.conso | dec(2) }} L/h
-        {%- if tank.consumption.source == 'mesuree' %} ({{ derniers_pleins(tank.consumption.count) }}){% else %} (réputée){% endif %}
-        ≈ {{ '%.0f'|format(tank.used) }} L consommés
-        {%- if tank.topped_up %}, {{ tank.topped_up | dec(1, 2) }} L d'appoint{% endif %}<br>
-        Dernier horamètre enregistré : {{ tank.reading.hours | dec(1) }} h
-        {%- if tank.reading.route %} (route
-            <a href="/routes/{{ tank.reading.route.id }}">{{ tank.reading.route.departure_location or '?' }} - {{ tank.reading.route.destination_location or '?' }}</a>)
-        {%- else %} (dernier plein){% endif %}
-    </div>
+    {% endif %}
+    {# Le détail du calcul, en lignes « libellé … valeur » comme la fiche
+       navire, plutôt qu'en deux phrases centrées que le téléphone coupait
+       au hasard, jusqu'au milieu du lien (26/11/2026). #}
+    <dl class="reservoir-detail">
+        <dt>Dernier plein complet</dt>
+        <dd>{{ tank.full.date | datefr }} · {{ tank.full.engine_hours | dec(0) }} h</dd>
+        <dt>Heures moteur depuis dernier plein</dt>
+        <dd>{{ tank.since | dec(1) }} h</dd>
+        <dt>Consommation calculée</dt>
+        <dd>{{ tank.conso | dec(2) }} L/h
+            <span class="source">{% if tank.consumption.source == 'mesuree' %}{{ derniers_pleins(tank.consumption.count) }}{% else %}réputée{% endif %}</span></dd>
+        <dt>Consommation estimée depuis dernier plein</dt>
+        <dd>≈ {{ '%.0f'|format(tank.used) }} L</dd>
+        {% if tank.topped_up %}
+        <dt>Appoints depuis</dt>
+        <dd>{{ tank.topped_up | dec(1, 2) }} L</dd>
+        {% endif %}
+        <dt>Dernier horamètre</dt>
+        <dd>{{ tank.reading.hours | dec(1) }} h
+            {%- if tank.reading.route %}
+            <a href="/routes/{{ tank.reading.route.id }}">{{ tank.reading.route.departure_location or '?' }} - {{ tank.reading.route.destination_location or '?' }}</a>
+            {%- else %} <span class="source">dernier plein</span>{% endif %}</dd>
+    </dl>
 </section>
 <script>
 function autonomieMilles() {
@@ -262,7 +383,7 @@ function autonomieMilles() {
                     <button type="submit" form="nouveau-plein" class="btn btn-primary">Enregistrer</button>
                     {% if fills %}
                     <button type="button" class="btn" style="background:#eee;color:#333"
-                            onclick="document.getElementById('ligne-nouveau-plein').hidden = true">Annuler</button>
+                            onclick="document.getElementById('nouveau-plein').reset(); document.getElementById('ligne-nouveau-plein').hidden = true">Annuler</button>
                     {% endif %}
                 </td>
             </tr>
@@ -300,8 +421,39 @@ function autonomieMilles() {
         </tbody>
     </table>
 </div>
-<form id="nouveau-plein" method="POST" action="/ship/fuel/new"></form>
+{# data-avertir : quitter la page avec un plein tapé et pas enregistré
+   demande confirmation (base.html) ; « Annuler » vide la ligne (reset). #}
+<form id="nouveau-plein" method="POST" action="/ship/fuel/new" data-avertir="Le plein n'est pas enregistré."></form>
 <script>
+// Nouveau plein : horamètre, puis litres, puis montant, sans viser chaque
+// case. Quitter une case remplie sans toucher ailleurs — ✓ du clavier de
+// l'iPhone, Entrée (touche « suivant ») — mène à la suivante, si elle est
+// encore vide. Toucher une autre case, un bouton ou la page laisse aller où
+// l'on a touché (pointerdown juste avant la sortie). Le passage se fait
+// aussitôt la sortie achevée (setTimeout 0 : pendant la sortie même, le
+// navigateur l'ignore) ; plus tard, iOS refuserait d'ouvrir le clavier.
+(function () {
+    const ordre = ['engine_hours', 'liters', 'amount']
+        .map(nom => document.querySelector('[form=nouveau-plein][name=' + nom + ']'));
+    if (!ordre[0]) return;
+    let toucher = 0;
+    document.addEventListener('pointerdown', () => { toucher = Date.now(); }, true);
+    ordre.slice(0, -1).forEach((champ, i) => {
+        const suivant = ordre[i + 1];
+        champ.enterKeyHint = 'next';
+        champ.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); suivant.focus(); }
+        });
+        champ.addEventListener('blur', e => {
+            if (e.relatedTarget || Date.now() - toucher < 700) return;
+            if (!champ.value.trim() || suivant.value.trim()) return;
+            setTimeout(() => {
+                if (document.activeElement === document.body || !document.activeElement) suivant.focus();
+            }, 0);
+        });
+    });
+    ordre[ordre.length - 1].enterKeyHint = 'done';
+})();
 function nouveauPlein() {
     const ligne = document.getElementById('ligne-nouveau-plein');
     ligne.hidden = false;

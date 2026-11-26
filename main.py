@@ -3700,12 +3700,46 @@ async def _tank_estimate(db, ship, fills, consumption) -> Optional[dict]:
     since = max(reading["hours"] - full["engine_hours"], 0)
     used = since * conso
     remaining = max(min(capacity + topped_up - used, capacity), 0)
+    # Plus de gasoil brûlé qu'il n'y en avait (le réservoir plein et les
+    # appoints) : un horamètre est faux — celui du plein, saisi à 0 h, ou
+    # celui d'une route. La page le signale au lieu d'afficher un réservoir
+    # vide comme un fait (Fleur d'azur, 26/11/2026 : 5788 h « depuis » un
+    # plein noté à 0 h, 17 364 L pour un réservoir de 200 L).
+    incoherent = used > capacity + topped_up
     return {
+        "incoherent": incoherent,
         "capacity": capacity, "remaining": remaining, "percent": remaining / capacity * 100,
         "autonomy_hours": remaining / conso, "conso": conso, "consumption": consumption,
         "used": used, "since": since,
         "full": full, "topped_up": topped_up, "reading": reading,
     }
+
+
+async def _tank_at(db, ship_id: Optional[int], hours: Optional[float]) -> Optional[dict]:
+    """Le gasoil restant estimé quand l'horamètre marquait `hours` — à
+    l'arrivée d'une route, à la fin d'une croisière (carte « Gasoil restant »
+    des Récapitulatifs). Même méthode que le réservoir de la page Gasoil
+    (_tank_estimate), arrêtée à cet horamètre : le dernier plein complet fait
+    à cet horamètre ou avant, plus les appoints qui suivent jusque-là, moins
+    les heures écoulées × la consommation. None s'il manque l'horamètre, la
+    capacité, la consommation ou un plein complet d'avant."""
+    if not ship_id or hours is None:
+        return None
+    fills, stats = await _fuel_fills(db, ship_id)
+    consumption = await _consumption(db, ship_id, stats)
+    cursor = await db.execute("SELECT tank_fuel FROM ship_info WHERE id = ?", (ship_id,))
+    row = await cursor.fetchone()
+    capacity, conso = (row[0] if row else None), consumption["value"]
+    usable = [f for f in fills if f["engine_hours"] is not None and not f["incoherent"]
+              and f["engine_hours"] <= hours]
+    full = next((f for f in reversed(usable) if f["full"]), None)
+    if not capacity or not conso or full is None:
+        return None
+    topped_up = sum(f["liters"] or 0 for f in usable[usable.index(full) + 1:])
+    used = (hours - full["engine_hours"]) * conso
+    remaining = max(min(capacity + topped_up - used, capacity), 0)
+    return {"capacity": capacity, "remaining": remaining, "percent": remaining / capacity * 100,
+            "full": full, "incoherent": used > capacity + topped_up}
 
 
 @app.get("/ship/fuel", response_class=HTMLResponse)
@@ -4817,7 +4851,10 @@ async def _cruise_recap(db, cruise) -> dict:
     consumption = await _consumption(db, cruise["ship_id"])
     fuel = hours * consumption["value"] if hours is not None and consumption["value"] else None
     price_date, price = await _fuel_price(db, cruise["ship_id"], cruise["end_time"])
+    # Gasoil restant estimé au dernier horamètre de la croisière.
+    tank = await _tank_at(db, cruise["ship_id"], hours_end)
     return {
+        "tank": tank,
         "days": days,
         "loch_first": loch_first, "loch_last": loch_last if loch_count > 1 else None,
         "distance": loch_last - loch_first if loch_count > 1 else None,
@@ -6805,6 +6842,12 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0, ligne
         # Le prix au litre du dernier plein avant la fin de la route, pour le coût.
         price_date, price = (await _fuel_price(db, route["cruise_ship_id"], route["end_time"])
                              if route["cruise_ship_id"] else (None, None))
+        # Gasoil restant estimé à l'arrivée (au départ tant que la route
+        # n'est pas arrivée) : la troisième carte du Récapitulatif.
+        tank_moment = "à l'arrivée" if route["motor_hours_end"] is not None else "au départ"
+        tank = await _tank_at(db, route["cruise_ship_id"],
+                              route["motor_hours_end"] if route["motor_hours_end"] is not None
+                              else route["motor_hours_start"])
         db.row_factory = aiosqlite.Row
 
         cursor = await db.execute(
@@ -6865,6 +6908,7 @@ async def route_detail(request: Request, route_id: int, nouvelle: int = 0, ligne
             "previous": previous,
             "consumption": consumption,
             "fuel_price": price, "fuel_price_date": price_date,
+            "tank": tank, "tank_moment": tank_moment,
             "duration_min": _minutes_between(route["start_time"], route["end_time"]),
             "track_count": track_count,
             "reopenable": reopenable,

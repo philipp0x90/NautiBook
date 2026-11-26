@@ -1,0 +1,21 @@
+{# Troisième carte des Récapitulatifs (route, croisière) : le gasoil restant
+   estimé à un moment donné (_tank_at, main.py), en jauge comme le réservoir
+   de la page Gasoil — mêmes seuils de couleur. `moment` dit lequel :
+   « à l'arrivée », « au départ », « en fin de croisière ». #}
+{% macro carte_reservoir(tank, moment) %}
+<div>
+    <div class="titre">Gasoil restant</div>
+    {% if tank and not tank.incoherent %}
+    {% set niveau = 'haut' if tank.percent > 50 else ('moyen' if tank.percent >= 25 else 'bas') %}
+    <div class="chiffre">≈ {{ '%.0f'|format(tank.remaining) }} L</div>
+    <div class="recap-jauge"><div class="{{ niveau }}" style="width:{{ '%.0f'|format(tank.percent) }}%"></div></div>
+    <div class="detail">{{ '%.0f'|format(tank.percent) }} % de {{ tank.capacity | dec(0) }} L, {{ moment }}</div>
+    {% elif tank %}
+    <div class="chiffre">—</div>
+    <div class="detail">Horamètre à vérifier (<a href="/ship/fuel">page Gasoil</a>)</div>
+    {% else %}
+    <div class="chiffre">—</div>
+    <div class="detail">Aucun plein complet enregistré avant</div>
+    {% endif %}
+</div>
+{% endmacro %}

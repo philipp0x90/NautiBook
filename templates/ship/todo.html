@@ -3,14 +3,16 @@
 {% block content %}
 
 <div class="section-bar section-bar-collee">
-    {# Le bouton dans la barre, comme sur le carnet d'adresses : son double
-       invisible à gauche garde le titre centré. Marges verticales négatives :
-       le bouton déborde sans grandir la barre, qui garde la hauteur de celles
-       des pages Escales et Liste des croisières. #}
-    <span class="btn btn-yellow" style="visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvelle tâche</span>
     <div class="section-bar-title">To-Do List</div>
-    <a href="/ship/todo/new" class="btn btn-yellow" style="margin:-10px 0">+ Nouvelle tâche</a>
 </div>
+
+{# Le geste principal de la page, en grand bouton comme « Nouvelle route »
+   sur la croisière en cours (choix de l'utilisateur, 26/11/2026) ; il
+   remplace le petit bouton jaune de la barre. #}
+<a href="/ship/todo/new" class="btn-geant btn-geant-bleu" style="margin:0 0 20px">
+    <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+    <span class="btn-geant-texte"><span class="btn-geant-nom">Nouvelle tâche</span></span>
+</a>
 
 {% if items %}
 
@@ -25,6 +27,9 @@
     <div class="card todo-card" onclick="rowLink(event, '/ship/todo/{{ item.id }}/edit')"
          style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;
         {{ 'border-left:4px solid #dc2626' if item.urgent else 'border-left:4px solid #dde5ee' }}">
+        <form method="POST" action="/ship/todo/{{ item.id }}/done" class="todo-coche-form">
+            <button type="submit" class="todo-coche" title="Marquer comme terminée" aria-label="Marquer comme terminée"></button>
+        </form>
         <div style="flex:1;min-width:0">
             <div style="font-weight:600;font-size:15px;margin-bottom:2px">
                 {% if item.urgent %}<span style="color:#dc2626;font-size:12px;font-weight:700;margin-right:6px">URGENT</span>{% endif %}
@@ -56,12 +61,9 @@
             </div>
         </div>
     </div>
-        {# Hors de la fiche : un clic sur la fiche ouvre la tâche, les boutons
-           doivent donc rester en dehors de la zone cliquable. #}
+        {# Le ✕ hors de la fiche, dont un clic ouvre la tâche ; la case à
+           cocher, elle, est dans la fiche — rowLink ignore les boutons. #}
         <div class="todo-actions">
-            <form method="POST" action="/ship/todo/{{ item.id }}/done">
-                <button type="submit" class="btn" style="background:#dcfce7;color:#166534" title="Marquer comme terminé">✓ Fait</button>
-            </form>
             <form method="POST" action="/ship/todo/{{ item.id }}/delete"
                   onsubmit="return confirm('Supprimer cette tâche ?')">
                 <button type="submit" class="btn todo-suppr" title="Supprimer cette tâche" aria-label="Supprimer">✕</button>
@@ -81,8 +83,14 @@
         {% for item in done %}
         <div class="todo-row">
         <div class="card todo-card" onclick="rowLink(event, '/ship/todo/{{ item.id }}/edit')"
-             style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;opacity:.7;border-left:4px solid #86efac">
-            <div style="flex:1;min-width:0">
+             style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;border-left:4px solid #86efac">
+            <form method="POST" action="/ship/todo/{{ item.id }}/undo" class="todo-coche-form">
+                <button type="submit" class="todo-coche cochee" title="Remettre à faire" aria-label="Remettre à faire">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3"
+                         stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5l4 4 8-9"/></svg>
+                </button>
+            </form>
+            <div style="flex:1;min-width:0;opacity:.7">
                 <div style="font-weight:500;font-size:14px;text-decoration:line-through;margin-bottom:3px">{{ item.title or item.task }}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
                     {% if item.completed_at %}
@@ -92,9 +100,6 @@
             </div>
         </div>
             <div class="todo-actions">
-                <form method="POST" action="/ship/todo/{{ item.id }}/undo">
-                    <button type="submit" class="btn" style="background:#fef9c3;color:#854d0e" title="Remettre en cours">↩ Annuler</button>
-                </form>
                 <form method="POST" action="/ship/todo/{{ item.id }}/delete"
                       onsubmit="return confirm('Supprimer cette tâche ?')">
                     <button type="submit" class="btn todo-suppr" title="Supprimer cette tâche" aria-label="Supprimer">✕</button>
@@ -109,9 +114,6 @@
 {% else %}
 <div class="stub">
     <div>Aucune tâche enregistrée.</div>
-    <div style="margin-top:16px">
-        <a href="/ship/todo/new" class="btn btn-yellow">+ Première tâche</a>
-    </div>
 </div>
 {% endif %}
 
@@ -123,15 +125,26 @@
 .todo-row { display: flex; align-items: stretch; gap: 10px; }
 .todo-card { flex: 1; min-width: 0; cursor: pointer; }
 .todo-card:hover { background: #f7fbfd; }
-/* Côte à côte : « Fait » (ou « Annuler ») à gauche, le ✕ de suppression à
-   droite, dans l'ordre où les formulaires sont écrits. */
-.todo-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.todo-actions form { display: flex; }
-/* Coins du cadre plutôt que la pilule du .btn : une pastille de 100 px de haut. */
-.todo-actions .btn { height: 100%; min-width: 84px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
-/* Supprimer : un ✕ rose pâle, comme dans les Comptes et les Escales — une
-   colonne étroite plutôt qu'un second gros bouton. */
-.todo-actions .todo-suppr { min-width: 36px; padding: 0; font-size: 13px; background: #fee2e2; color: #991b1b; }
+/* Case à cocher ronde, à gauche de la tâche, comme dans Rappels (choix de
+   l'utilisateur, 26/11/2026 — un bouton « ✓ Fait » ne disait pas si la tâche
+   était faite ou à marquer faite). Vide : à faire, la toucher la termine
+   (/done). Verte et cochée : terminée, la toucher la remet à faire (/undo).
+   Le rond fait 26 px ; le bouton, 44, la taille d'une cible au doigt, ses
+   marges négatives l'empêchant d'élargir la fiche. */
+.todo-coche-form { display: flex; margin: -9px -6px -9px -9px; }
+.todo-coche { width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer;
+              display: flex; align-items: center; justify-content: center; flex: none; color: #fff; position: relative; }
+.todo-coche::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; border: 2px solid #9aa8b6;
+                     transition: border-color .12s, background .12s; }
+.todo-coche:hover::after { border-color: #16a34a; background: #f0fdf4; }
+.todo-coche.cochee::after { border-color: #16a34a; background: #16a34a; }
+.todo-coche svg { position: relative; z-index: 1; width: 16px; height: 16px; }
+/* Supprimer : un petit ✕ rose pâle, rond, comme dans les Comptes et les
+   Escales, centré à droite de la fiche. */
+.todo-actions { display: flex; align-items: center; flex-shrink: 0; }
+.todo-actions form { display: flex; margin: 0; }
+.todo-actions .todo-suppr { width: 30px; height: 30px; min-width: 0; padding: 0; border-radius: 50%; font-size: 12px;
+                            background: #fee2e2; color: #991b1b; display: flex; align-items: center; justify-content: center; }
 
 details summary::-webkit-details-marker { display: none; }
 details[open] summary span:first-child { transform: rotate(90deg); display:inline-block; }

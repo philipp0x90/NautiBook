@@ -165,7 +165,8 @@
 {% macro composer(action, texte='', bouton='Publier', croisiere=none, existantes=none, horodatage=none) %}
 <form method="POST" action="{{ action }}" enctype="multipart/form-data" class="card composer"
       data-debut="{{ (existantes | map(attribute='position') | select('number') | max + 1) if existantes else 0 }}"
-      {% if existantes is not none %}data-correction="1"{% endif %}>
+      {% if existantes is not none %}data-correction="1"{% endif %}
+      data-avertir="{{ 'La correction n’est pas enregistrée.' if existantes is not none else 'Le texte n’est pas publié.' }}">
     <input type="hidden" name="back" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}">
     {# Mise en forme : les boutons posent les marques que le filtre
        mise_en_forme (main.py) interprète à l'affichage. #}

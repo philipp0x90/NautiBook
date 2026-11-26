@@ -25,7 +25,7 @@
 <h1 style="margin:24px 0 2px;text-align:center">{{ cruise.name or 'Croisière sans nom' }}</h1>
 <div class="meta" style="font-size:18px;font-weight:600;text-align:center">Nouvelle route</div>
 
-<form method="POST" action="/routes/new" class="card" style="margin:12px auto 0;display:grid;gap:14px;max-width:520px">
+<form method="POST" action="/routes/new" data-avertir="La route n'est pas créée." class="card" style="margin:12px auto 0;display:grid;gap:14px;max-width:520px">
     <input type="hidden" name="cruise_id" value="{{ cruise.id }}">
     <div class="route-deux">
         {# Préremplis depuis l'arrivée de la route précédente : une étape part
