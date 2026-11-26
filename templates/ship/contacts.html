@@ -21,6 +21,40 @@
     .ligne-contact .case input:hover, .ligne-contact .case select:hover { border-color: #cfe3ef; background: #f8fbfd; }
     .ligne-contact .case input:focus, .ligne-contact .case select:focus { border-color: var(--accent); background: #fff; outline: none; }
     .ligne-contact td.lu { padding-left: 10px; white-space: nowrap; }
+
+    /* Téléphone : le tableau ne montrait que ses deux premières colonnes,
+       les filtres hors de l'écran. Chaque contact devient une petite fiche,
+       en texte plus grand — la société et ✕, le contact, puis catégorie et
+       pays, toujours modifiables sur place ; au-dessus, les deux filtres côte
+       à côte, collés sous la barre (26/11/2026). */
+    @media (max-width: 600px) {
+        .tableau-colle { overflow: visible; }
+        .tableau-colle .data-table, .tableau-colle thead, .tableau-colle tbody { display: block; }
+        .tableau-colle thead { position: sticky; top: calc(14px + var(--barre-h, 52px)); z-index: 140;
+                               background: var(--bg); padding: 8px 0; margin-top: -8px; }
+        .tableau-colle thead tr:nth-child(2) { display: none; }
+        .filtres-contacts { display: flex; flex-wrap: wrap; gap: 6px; }
+        .filtres-contacts th { display: block; padding: 0 !important; border: 0; background: none; }
+        .filtres-contacts th:nth-child(1) { order: 3; flex: 1 0 100%; }
+        .filtres-contacts th:nth-child(2), .filtres-contacts th:nth-child(3) { flex: 1; }
+        .filtres-contacts th:nth-child(4) { display: none; }
+        .filtres-contacts select { height: 36px; font-size: 15px; }
+        .tableau-colle tbody tr.ligne-contact { display: grid; grid-template-columns: 1fr 1fr auto; column-gap: 8px; row-gap: 2px;
+                                  grid-template-areas: "soc soc suppr" "nom nom suppr" "cat pays pays";
+                                  background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
+                                  padding: 10px 12px; margin-bottom: 8px; font-size: 15px; }
+        .tableau-colle tbody tr.ligne-contact[hidden] { display: none; }
+        .tableau-colle tbody td { display: block; padding: 0 !important; border: 0 !important; background: none; white-space: normal; }
+        .c-societe { grid-area: soc; font-size: 16px; }
+        .c-nom { grid-area: nom; color: var(--muted); }
+        .c-nom:empty { display: none !important; }
+        .c-categorie { grid-area: cat; margin-top: 4px; }
+        .c-pays { grid-area: pays; margin-top: 4px; }
+        .c-suppr { grid-area: suppr; align-self: center; }
+        .ligne-contact .case input, .ligne-contact .case select { min-width: 0; font-size: 14px; color: var(--muted);
+                                                                   border-color: #e6edf3; padding: 4px 8px; }
+        .c-suppr .btn { width: 30px; height: 30px; padding: 0 !important; border-radius: 50%; background: #fee2e2; color: #991b1b; }
+    }
 </style>
 {% endblock %}
 {% block content %}
@@ -32,8 +66,15 @@
 <div class="section-bar section-bar-collee">
     <a href="/ship/contacts/import" class="btn" style="min-width:180px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">⇪ <span class="btn-lib">Importer</span></a>
     <div class="section-bar-title">Carnet d'adresses</div>
-    <a href="/ship/contacts/new" class="btn btn-yellow" style="min-width:180px;text-align:center;margin:-10px 0">+ <span class="btn-lib">Nouveau contact</span></a>
+    <span class="btn" style="min-width:180px;margin:-10px 0;visibility:hidden" aria-hidden="true">⇪ <span class="btn-lib">Importer</span></span>
 </div>
+
+{# Le geste principal de la page, en grand bouton comme « Nouvelle dépense »
+   (26/11/2026) ; il remplace le « + » jaune de la barre. #}
+<a href="/ship/contacts/new" class="btn-geant btn-geant-bleu btn-geant-liste" style="margin:0 0 16px">
+    <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+    <span class="btn-geant-texte"><span class="btn-geant-nom">Nouveau contact</span></span>
+</a>
 
 {% from "ship/_place_select.html" import place_select %}
 
@@ -96,9 +137,9 @@
                ses coordonnées sont sur sa fiche. #}
             <tr class="ligne-contact" data-categorie="{{ c.category or '' }}" data-pays="{{ c.country or '' }}"
                 style="cursor:pointer" title="Ouvrir ce contact" onclick="rowLink(event, '/ship/contacts/{{ c.id }}')">
-                <td class="lu"><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
-                <td class="lu">{{ c.contact_name or '' }}</td>
-                <td>
+                <td class="lu c-societe"><strong>{{ c.company or c.contact_name or '—' }}</strong></td>
+                <td class="lu c-nom">{{ c.contact_name or '' }}</td>
+                <td class="c-categorie">
                     <form method="POST" action="/ship/contacts/{{ c.id }}/field/category" class="case">
                         <input type="hidden" name="retour" value="liste">
                         <select name="value" onchange="choisirCategorie(this, {{ c.id }})" data-avant="{{ c.category or '' }}">
@@ -113,7 +154,7 @@
                         </select>
                     </form>
                 </td>
-                <td>
+                <td class="c-pays">
                     <form method="POST" action="/ship/contacts/{{ c.id }}/field/country" class="case">
                         <input type="hidden" name="retour" value="liste">
                         {{ place_select('value', countries, c.country, '', true, nouveau='Nouveau pays') }}
@@ -121,7 +162,7 @@
                 </td>
                 {# Supprimer : seulement pour qui a le droit (le script des droits
                    masque ce formulaire …/delete aux autres). #}
-                <td style="width:1%;white-space:nowrap">
+                <td class="c-suppr" style="width:1%;white-space:nowrap">
                     <form method="POST" action="/ship/contacts/{{ c.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer le contact « {{ (c.company or c.contact_name or 'sans nom') | replace("'", "’") }} » ?')">
                         <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
@@ -185,9 +226,6 @@ function choisirCategorie(select, contact) {
 <div class="stub">
     <div style="font-size:36px;margin-bottom:12px">📒</div>
     <div>Aucun contact enregistré.</div>
-    <div style="margin-top:16px">
-        <a href="/ship/contacts/new" class="btn btn-yellow">+ Ajouter un contact</a>
-    </div>
 </div>
 {% endif %}
 

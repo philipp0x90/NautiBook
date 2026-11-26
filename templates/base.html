@@ -649,8 +649,18 @@
                barre, hors du flux ; l'ancre repousse les icônes à droite. */
             .topbar .logo-menu { margin-right: auto; }
             .topbar-section { display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-                              max-width: calc(100% - 300px); pointer-events: none; font-size: 17px; font-weight: 600;
+                              max-width: calc(100% - 300px); pointer-events: none; font-size: 20px; font-weight: 700;
                               color: #08204e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+            /* Titre d'une section qui a des sous-pages : un toucher ouvre leur
+               menu juste dessous (script « Menu du téléphone ») ; ▾ le dit. */
+            .topbar-section.a-menu { pointer-events: auto; cursor: pointer; padding: 6px 4px; }
+            .topbar-section.a-menu::after { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 0 4px 8px;
+                                            border-right: 2.2px solid currentColor; border-bottom: 2.2px solid currentColor;
+                                            transform: rotate(45deg); transition: transform .15s; }
+            .topbar-section.ouvert::after { transform: rotate(-135deg); margin-bottom: -1px; }
+            #menu-section { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; min-width: 220px; }
+            #menu-section.ouvert { display: block; }
+            #menu-section a { padding: 12px 18px; font-size: 16px; }
             .topbar-settings { min-width: 44px; min-height: 44px; padding: 4px; }
             .topbar-retour { min-height: 44px; padding: 0 8px 4px 4px; }
             .topbar-menu { display: flex; position: relative; align-items: center; justify-content: center;
@@ -1576,6 +1586,30 @@ document.querySelectorAll('form[data-avertir]').forEach(function (form) {
     tiroir.querySelector('.tiroir-fermer').addEventListener('click', fermer);
     addEventListener('keydown', function (e) { if (e.key === 'Escape') fermer(); });
     addEventListener('pageshow', fermer);
+
+    // Le titre de la section, dans la barre : s'il a des sous-pages (le menu
+    // déroulant de son onglet), un toucher les montre juste dessous.
+    const titreSection = document.querySelector('.topbar-section');
+    const sous = document.querySelector('nav.main-nav > ul > li.active > .dropdown-menu');
+    if (titreSection && sous) {
+        const menu = sous.cloneNode(true);
+        menu.id = 'menu-section';
+        menu.querySelectorAll('a').forEach(function (a) {
+            if (a.getAttribute('href') === location.pathname) a.style.fontWeight = '700';
+        });
+        titreSection.after(menu);
+        titreSection.classList.add('a-menu');
+        titreSection.setAttribute('role', 'button');
+        titreSection.setAttribute('aria-expanded', 'false');
+        const basculer = function (ouvrir) {
+            menu.classList.toggle('ouvert', ouvrir);
+            titreSection.classList.toggle('ouvert', ouvrir);
+            titreSection.setAttribute('aria-expanded', String(ouvrir));
+        };
+        titreSection.addEventListener('click', function (e) { e.stopPropagation(); basculer(!menu.classList.contains('ouvert')); });
+        document.addEventListener('click', function (e) { if (!menu.contains(e.target)) basculer(false); });
+        addEventListener('pageshow', function () { basculer(false); });
+    }
 })();
 
 // Hauteurs du menu et de la barre collée de la page, pour ce qui se colle

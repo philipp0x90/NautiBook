@@ -1,5 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Choisir un navire — NautiBook{% endblock %}
+{% block head %}
+<style>
+    /* « Sélectionner » et « Navire actif » au dessin des boutons de la fiche
+       d'un contact (26/11/2026) : coins arrondis, 32 points de haut sur Mac et
+       iPad, 52 et texte en 17 px sur téléphone. */
+    .choix-navire { display: flex; align-items: center; justify-content: center; width: 100%; height: 32px;
+                    box-sizing: border-box; padding: 0 16px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+    /* Le navire actif : au dessin de « Dupliquer » (fond blanc, contour et
+       texte bleus), plutôt qu'un vert pâle. */
+    .choix-navire.actif { background: #fff; color: var(--accent); border: 1.5px solid var(--accent); }
+    @media (max-width: 600px) {
+        .choix-navire { height: 52px; border-radius: 14px; font-size: 17px; }
+    }
+</style>
+{% endblock %}
 {% block content %}
 
 {# Barre sans badges : le titre occupe toute la largeur. Un .section-bar-right
@@ -30,14 +45,12 @@
             </div>
         </div>
         {% if ship.id == current_ship_id %}
-        <div style="background:#dcfce7;color:#166534;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;text-align:center">
-            Navire actif
-        </div>
+        <div class="choix-navire actif">Navire actif</div>
         {% else %}
         <form method="POST" action="/ship/select/{{ ship.id }}">
             {# La page d'où l'on vient : on y retourne, pour le nouveau navire. #}
             {% if from_page %}<input type="hidden" name="from_page" value="{{ from_page }}">{% endif %}
-            <button type="submit" class="btn btn-blue" style="width:100%">Sélectionner</button>
+            <button type="submit" class="btn btn-blue choix-navire">Sélectionner</button>
         </form>
         {% endif %}
     </div>

@@ -66,8 +66,60 @@
     .contact-notes::placeholder { color: #b8c4d0; }
     .achats-titre { display: flex; align-items: baseline; justify-content: center; gap: 8px; margin: 8px 0 6px; }
     .achats-titre span { font-size: 12px; color: var(--muted); }
-    .contact-actions { display: flex; justify-content: space-between; align-items: center; margin: 4px 0 18px; }
-    .contact-actions form { margin: 0; }
+    /* Les trois boutons de la fiche, au dessin du bouton « Nouvelle dépense »
+       (coins arrondis, texte en 17 px), dans l'ordre Carnet d'adresses,
+       Dupliquer, Supprimer la fiche (26/11/2026) : côte à côte, chacun un
+       tiers de la largeur, sur Mac et iPad ; l'un sous l'autre sur téléphone. */
+    .contact-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 4px 0 18px; }
+    .contact-actions > a { order: -1; }
+    .contact-actions form { margin: 0; display: flex; }
+    .contact-actions .btn { width: 100%; height: 32px; box-sizing: border-box; padding: 0 16px; border-radius: 10px;
+                            display: flex; align-items: center; justify-content: center; font-size: 14px; }
+
+    /* Téléphone (26/11/2026). Le CP a la place de ses 5 chiffres en 16 px
+       (Safari y force cette taille). Dans la barre, de l'air entre les
+       boutons et les flèches ‹ ›. Les boutons du bas à hauteur de doigt.
+       L'historique des achats, qui débordait, en fiches comme les Comptes :
+       date et payé en tête, l'objet (et son trombone), la catégorie et le
+       mode de paiement, ce qui reste dû s'il reste quelque chose ; le total
+       dessous. Colonnes : 1 date, 2 objet, 3 catégorie, 4 payé, 5 solde,
+       6 paiement, 7 ✕. */
+    @media (max-width: 600px) {
+        .ligne-groupe { grid-template-columns: 76px minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; }
+        .section-bar { gap: 6px; }
+        /* Pas de « ← Comptes » (ni son double) : la barre laisse toute la
+           place au nom ; on revient par ‹ ou par le menu. */
+        .section-bar .btn.barre-retour { display: none !important; }
+        /* Les trois boutons l'un sous l'autre, Supprimer le plus loin du pouce. */
+        .contact-actions { grid-template-columns: 1fr; gap: 10px; }
+        .contact-actions .btn { height: 52px; border-radius: 14px; font-size: 17px; }
+        .achats-table { overflow: visible; }
+        .achats-table .data-table, .achats-table tbody, .achats-table tfoot { display: block; }
+        .achats-table thead { display: none; }
+        .achats-table tbody tr { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 2px;
+                                 grid-template-areas: "date paye" "objet solde" "cat suppr" "mode suppr";
+                                 background: var(--card); border: 1px solid #dde5ee; border-radius: 8px;
+                                 padding: 9px 12px; margin-bottom: 8px; font-size: 15px; }
+        .achats-table tbody td { display: block; padding: 0 !important; border: 0 !important; background: none; }
+        .achats-table tbody td:nth-child(1) { grid-area: date; font-size: 13px; color: var(--muted); }
+        .achats-table tbody td:nth-child(2) { grid-area: objet; font-weight: 600; }
+        .achats-table tbody td:nth-child(3) { grid-area: cat; font-size: 13px; color: var(--muted); }
+        .achats-table tbody td:nth-child(4) { grid-area: paye; font-weight: 700; font-size: 16px; }
+        .achats-table tbody td:nth-child(5) { grid-area: solde; font-size: 13px; color: #9a3412; font-weight: 600; }
+        .achats-table tbody td:nth-child(5)::before { content: "reste dû "; font-weight: 400; }
+        .achats-table tbody td.solde-nul { visibility: hidden; }
+        .achats-table tbody td:nth-child(6) { grid-area: mode; font-size: 13px; color: var(--muted); }
+        .achats-table tbody td:nth-child(7) { grid-area: suppr; align-self: center; }
+        .achats-table tbody td:nth-child(7) .btn { width: 30px; height: 30px; padding: 0 !important; border-radius: 50%; }
+        .achats-table tfoot tr { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; padding: 8px 12px;
+                                 background: #fff; border-radius: 8px; box-shadow: inset 0 2px 0 #5bc8e0; }
+        .achats-table tfoot td { display: block; padding: 0 !important; border: 0; }
+        .achats-table tfoot td:first-child { font-size: 16px; font-weight: 700; }
+        .achats-table tfoot td:nth-child(2) { margin-left: auto; font-size: 18px; font-weight: 800; }
+        .achats-table tfoot td:nth-child(3) { flex: 1 0 100%; text-align: right; color: #9a3412; font-size: 14px; font-weight: 600; }
+        .achats-table tfoot td:nth-child(3)::before { content: "reste dû "; font-weight: 400; }
+        .achats-table tfoot td:nth-child(n+4), .achats-table tfoot td.solde-nul { display: none; }
+    }
 </style>
 {% endblock %}
 
@@ -116,11 +168,11 @@
    verticales négatives : les boutons ne grandissent pas la barre. #}
 <div class="section-bar section-bar-collee">
     {% if peut(request, 'comptes.voir') %}
-    <a href="/ship/expenses{{ '?ligne=/ship/expenses/' ~ purchases[-1].id if purchases }}" class="btn"
+    <a href="/ship/expenses{{ '?ligne=/ship/expenses/' ~ purchases[-1].id if purchases }}" class="btn barre-retour"
        style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff"
        title="{{ 'Ouvrir les comptes sur la dernière dépense chez ce fournisseur' if purchases else 'Ouvrir les comptes' }}">← <span class="btn-lib">Comptes</span></a>
     {% else %}
-    <span class="btn" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← <span class="btn-lib">Comptes</span></span>
+    <span class="btn barre-retour" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← <span class="btn-lib">Comptes</span></span>
     {% endif %}
     {# Contact précédent et suivant, dans l'ordre du carnet : ‹ › autour du nom. #}
     <div class="section-bar-title fiche-nav">
@@ -128,10 +180,16 @@
         <span>{{ contact.company or contact.contact_name or 'Contact' }}</span>
         {% if next_id %}<a href="/ship/contacts/{{ next_id }}" title="Contact suivant">›</a>{% else %}<span class="eteint">›</span>{% endif %}
     </div>
-    {# Une dépense chez ce fournisseur, préchoisi dans le formulaire. #}
-    <a href="/ship/expenses/new?fournisseur={{ (contact.company or contact.contact_name or '') | urlencode }}"
-       class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ <span class="btn-lib">Nouvelle dépense</span></a>
+    <span class="btn barre-retour" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← <span class="btn-lib">Comptes</span></span>
 </div>
+
+{# Une dépense chez ce fournisseur, préchoisi dans le formulaire : en grand
+   bouton bleu sous la barre, comme les autres listes (26/11/2026). #}
+<a href="/ship/expenses/new?fournisseur={{ (contact.company or contact.contact_name or '') | urlencode }}"
+   class="btn-geant btn-geant-bleu btn-geant-liste" style="margin:0 0 16px">
+    <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+    <span class="btn-geant-texte"><span class="btn-geant-nom">Nouvelle dépense</span></span>
+</a>
 
 
 <div class="contact-cartes">
@@ -190,7 +248,7 @@
     </div>
 
     {% if purchases %}
-    <div class="tableau-colle">
+    <div class="tableau-colle achats-table">
         <table class="data-table titres-legers">
             <thead>
                 <tr>
@@ -220,7 +278,7 @@
                     </td>
                     <td>{{ p.expense_type or '' }}</td>
                     <td style="text-align:right;white-space:nowrap">{{ p.paid | euros }}</td>
-                    <td style="text-align:right;white-space:nowrap">{{ p.balance | euros }}</td>
+                    <td class="{{ '' if p.balance else 'solde-nul' }}" style="text-align:right;white-space:nowrap">{{ p.balance | euros }}</td>
                     <td>{{ p.payment or '' }}</td>
                     <td style="text-align:right">
                         {# Comme dans les comptes : la dépense d'une escale se
@@ -241,7 +299,8 @@
                 <tr>
                     <td colspan="3">Total</td>
                     <td style="text-align:right;white-space:nowrap">{{ ((purchases | selectattr('paid', 'ne', none) | sum(attribute='paid')) or 0) | euros }}</td>
-                    <td style="text-align:right;white-space:nowrap">{{ ((purchases | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0) | euros }}</td>
+                    {% set reste = (purchases | selectattr('balance', 'ne', none) | sum(attribute='balance')) or 0 %}
+                    <td class="{{ '' if reste else 'solde-nul' }}" style="text-align:right;white-space:nowrap">{{ reste | euros }}</td>
                     <td></td>
                     <td></td>
                 </tr>
