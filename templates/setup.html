@@ -129,21 +129,21 @@
         <hr class="divider">
         <div class="setup-title">Bienvenue à bord</div>
         <div class="setup-desc">
-            Avant de commencer, indiquez l'adresse de votre serveur iKommunicate.
+            Avant de commencer, indiquez l'adresse de votre serveur SignalK.
             C'est lui qui fournit les données capteurs (vent, position, vitesse…).
         </div>
         <form method="post" action="/setup">
-            <label for="url">Adresse iKommunicate / SignalK</label>
+            <label for="url">Adresse du serveur SignalK</label>
             <input
                 type="text"
                 id="url"
                 name="ikommunicate_url"
-                placeholder="192.168.1.x"
+                placeholder="nautibook.local:3000"
                 required
                 autofocus
             >
             <p class="hint">
-                Adresse IP ou nom d'hôte uniquement — ex.&nbsp;: <code>192.168.1.1</code><br>
+                Adresse IP ou nom d'hôte, suivi du port — ex.&nbsp;: <code>nautibook.local:3000</code>. Sans port, l'app cherche sur le port 80, où un serveur SignalK n'est d'ordinaire pas.<br>
                 <span style="color: #999;">Pour tester sans capteurs&nbsp;: <code>demo.signalk.org</code></span>
             </p>
             <button type="submit">Enregistrer et continuer →</button>
