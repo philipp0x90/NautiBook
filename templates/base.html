@@ -536,7 +536,19 @@
            du navire n'y est qu'un rappel — il est déjà dans le menu et sur
            l'accueil — et ne prend plus une ligne à lui en 17 px. */
         footer { text-align: center; padding: 10px 0 0; color: var(--muted); font-size: 12px; border-top: 1px solid #dde5ee; margin-top: 24px; }
-        .footer-ship { font-weight: 700; color: var(--accent-dark); }
+        /* Le nom du navire, ici et dans la barre de titre de sa fiche : Inter
+           Medium (choix de l'utilisateur, 26/11/2026), servie par l'app
+           (vendor/fonts/inter) — à bord il n'y a pas d'internet. Sous son
+           propre nom de famille : déclarée « Inter », toute l'app, qui demande
+           Inter, passerait en Medium. */
+        @font-face {
+            font-family: "Inter Medium";
+            src: url("/vendor/fonts/inter/Inter-Medium.woff2") format("woff2");
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        .footer-ship { font-family: "Inter Medium", system-ui, -apple-system, sans-serif; font-weight: 500; color: var(--accent-dark); }
         .icon-boat { width: 1em; height: 1em; vertical-align: -0.1em; }
         /* Même dimensionnement en em pour la roue crantée, qui sert aussi dans
            le titre de la page Paramètres. */
