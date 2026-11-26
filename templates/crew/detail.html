@@ -80,32 +80,67 @@
     .groupes-equipier .champ-equipier input[type=date] { -webkit-appearance: none; appearance: none; line-height: 22px; }
     .groupes-equipier .champ-equipier input[type=date]::-webkit-date-and-time-value { margin: 0; text-align: left; color: #222; }
     .embarquements .data-table th, .embarquements .data-table td { padding-top: 4px; padding-bottom: 4px; }
+
+    /* Téléphone (26/11/2026) : la photo et le rang au-dessus, centrés ; les
+       champs deux par deux à la largeur de l'écran (téléphone, email et rue
+       sur une ligne entière), en 16 px — la taille que Safari impose ; les
+       embarquements en petites fiches (croisière, navire, dates, rôle).
+       Pas de « ← » dans la barre, comme la fiche d'un contact. */
+    @media (max-width: 600px) {
+        .section-bar .btn.barre-retour { display: none !important; }
+        .fiche-equipier { grid-template-columns: 1fr !important; gap: 14px !important; padding: 14px 12px !important; }
+        .colonne-photo { width: auto; justify-items: center; }
+        .colonne-photo [data-recadrage] { width: 160px; }
+        .colonne-photo .photo-equipier img, .colonne-photo .photo-equipier > div { width: 160px !important; height: 160px !important; }
+        .acces { width: 100%; max-width: 320px; justify-items: stretch; text-align: center; }
+        .acces .meta { white-space: normal; }
+        .groupes-equipier { gap: 10px; }
+        .groupes-equipier > section + section { padding-top: 10px; }
+        .groupes-equipier .grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+        .groupes-equipier .grid > .large, .groupes-equipier .grid > form[action$="/field/street"] { grid-column: 1 / -1; }
+        .groupes-equipier .champ-equipier input, .groupes-equipier .champ-equipier select,
+        .groupes-equipier .champ-lecture { height: 38px; font-size: 16px; box-sizing: border-box; }
+        .groupes-equipier .champ-lecture { display: flex; align-items: center; }
+        .groupes-equipier .meta { font-size: 13px; }
+        .embarquements .data-table, .embarquements tbody { display: block; }
+        .embarquements thead { display: none; }
+        .embarquements tbody tr { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 2px;
+                                  grid-template-areas: "nom role" "navire navire" "dates dates";
+                                  border-bottom: 1px solid #eef3f7; padding: 8px 2px; }
+        .embarquements tbody td { display: block; padding: 0 !important; border: 0 !important; }
+        .embarquements tbody td:nth-child(1) { grid-area: nom; font-size: 15px; }
+        .embarquements tbody td:nth-child(2) { grid-area: navire; color: var(--muted); font-size: 13px; }
+        .embarquements tbody td:nth-child(3) { grid-area: dates; font-size: 14px; }
+        .embarquements tbody td:nth-child(4) { grid-area: dates; font-size: 14px; justify-self: end; }
+        .embarquements tbody td:nth-child(4)::before { content: "→ "; color: var(--muted); }
+        .embarquements tbody td:nth-child(5) { grid-area: role; align-self: center; }
+    }
     /* Tous les embarquements, sans cadre qui défile : la page défile. */
 </style>
 {% endblock %}
 
 {% block content %}
 
-{# Retour à la liste à gauche, « + Nouvel équipier » à droite, de même largeur
-   pour que le nom reste centré. Marges verticales négatives : les boutons ne
+{# Retour à la liste à gauche, son double invisible à droite pour que le nom
+   reste centré (« + Nouvel équipier » est sur la liste, en grand bouton). Marges verticales négatives : les boutons ne
    grandissent pas la barre, qui garde la hauteur des autres. Plus de bouton
    « Supprimer la fiche » : la croix de la liste des équipiers s'en charge. #}
 <div class="section-bar" style="margin-bottom:12px">
-    <a href="/crew" class="btn" style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">← <span class="btn-lib">Liste des équipiers</span></a>
+    <a href="/crew" class="btn barre-retour" style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">← <span class="btn-lib">Liste des équipier·ères</span></a>
     {# Précédent et suivant de part et d'autre du nom, dans la barre : une
        rangée de boutons de moins, pour que la fiche tienne sur un écran
        d'iPad. Aux extrémités de la liste, la flèche reste en place, estompée. #}
     <div class="section-bar-title fiche-nav">
-        {% if prev_id %}<a href="/crew/{{ prev_id }}" title="Équipier précédent">‹</a>{% else %}<span class="eteint">‹</span>{% endif %}
+        {% if prev_id %}<a href="/crew/{{ prev_id }}" title="Équipier·ère précédent·e">‹</a>{% else %}<span class="eteint">‹</span>{% endif %}
         <span>{{ member.first_name or '' }} <span style="text-transform:uppercase">{{ member.last_name or '' }}</span></span>
-        {% if next_id %}<a href="/crew/{{ next_id }}" title="Équipier suivant">›</a>{% else %}<span class="eteint">›</span>{% endif %}
+        {% if next_id %}<a href="/crew/{{ next_id }}" title="Équipier·ère suivant·e">›</a>{% else %}<span class="eteint">›</span>{% endif %}
     </div>
-    <a href="/crew/new" class="btn btn-yellow" style="min-width:160px;text-align:center;margin:-10px 0">+ <span class="btn-lib">Nouvel équipier</span></a>
+    <span class="btn barre-retour" style="min-width:160px;margin:-10px 0;visibility:hidden" aria-hidden="true">← <span class="btn-lib">Liste des équipier·ères</span></span>
 </div>
 
 {# Plus de bouton « Modifier » : chaque champ se modifie sur place. La page
    /crew/{id}/edit existe toujours. #}
-<div class="card" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start;padding:14px 16px">
+<div class="card fiche-equipier" style="display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start;padding:14px 16px">
     {# Colonne de gauche : la photo, puis le rang d'accès dans l'app. #}
     <div class="colonne-photo">
         {# Un clic sur la photo ouvre le choix d'un fichier ; le choisir l'envoie
@@ -287,7 +322,7 @@
                 {# Indicatif et numéro dans une même case, deux champs d'un même
                    formulaire : _join_phone les recompose, comme à la saisie. #}
                 {% set tel = member.phone | phoneparts %}
-                <form method="POST" action="/crew/{{ member.id }}/phone">
+                <form method="POST" action="/crew/{{ member.id }}/phone" class="large">
                     <div class="meta">Téléphone{% if member.phone %} <a href="tel:{{ member.phone }}" title="Appeler" style="color:var(--accent);text-decoration:none">↗</a>{% endif %}</div>
                     <div class="champ-equipier">
                         {# L'indicatif seul n'est pas un numéro (_join_phone n'enregistre
@@ -302,7 +337,7 @@
                         <input type="tel" name="phone" value="{{ tel.number }}" placeholder="—" onchange="this.form.submit()">
                     </div>
                 </form>
-                <div>
+                <div class="large">
                     {{ champ('email', 'Email') }}
                 </div>
             </div>
@@ -344,7 +379,6 @@
         <thead>
             <tr>
                 <th>Croisière</th>
-                <th>n°</th>
                 <th>Navire</th>
                 <th>Embarquement</th>
                 <th>Débarquement</th>
@@ -356,7 +390,6 @@
             <tr style="cursor:pointer" title="Ouvrir cette croisière"
                 onclick="rowLink(event, '/cruises/{{ c.cruise_id }}')">
                 <td style="font-weight:700;text-transform:uppercase">{{ c.cruise_name or '—' }}</td>
-                <td>{{ '%03d'|format(c.number) if c.number else '—' }}</td>
                 <td>{{ c.ship_name or '—' }}</td>
                 {# À défaut de date d'embarquement, celle de la croisière : la
                    personne était à bord, on ne sait juste pas depuis quand. #}

@@ -647,9 +647,15 @@
             /* Centré sur l'écran, et non dans l'espace entre l'ancre et la
                loupe (plus étroit à gauche qu'à droite) : posé au milieu de la
                barre, hors du flux ; l'ancre repousse les icônes à droite. */
-            .topbar .logo-menu { margin-right: auto; }
+            /* La loupe à gauche, à côté de l'ancre (26/11/2026) : deux icônes de
+               chaque côté du titre, qui a ainsi la place d'un mot long
+               (« Équipier·ères ») en restant centré sur l'écran. */
+            .topbar-retour { order: 1; }
+            .topbar .logo-menu { order: 2; }
+            .topbar-chercher { order: 3; margin-right: auto; }
+            .topbar > :not(.topbar-retour, .logo-menu, .topbar-chercher) { order: 4; }
             .topbar-section { display: block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-                              max-width: calc(100% - 300px); pointer-events: none; font-size: 20px; font-weight: 700;
+                              max-width: calc(100% - 230px); pointer-events: none; font-size: 20px; font-weight: 700;
                               color: #08204e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             /* Titre d'une section qui a des sous-pages : un toucher ouvre leur
                menu juste dessous (script « Menu du téléphone ») ; ▾ le dit. */
@@ -658,6 +664,8 @@
                                             border-right: 2.2px solid currentColor; border-bottom: 2.2px solid currentColor;
                                             transform: rotate(45deg); transition: transform .15s; }
             .topbar-section.ouvert::after { transform: rotate(-135deg); margin-bottom: -1px; }
+            .topbar-section.decale { position: static; transform: none; flex: 1; max-width: none; text-align: center; margin: 0 2px; }
+            .topbar-section.decale ~ #menu-section { left: 50%; }
             #menu-section { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 2px; min-width: 220px; }
             #menu-section.ouvert { display: block; }
             #menu-section a { padding: 12px 18px; font-size: 16px; }
@@ -895,7 +903,18 @@
                menu Croisières : ils ne dépendent ni du navire courant ni d'une
                croisière (crew_members n'a pas de ship_id). #}
             <li class="{{ 'active' if active_section == 'crew' else '' }}">
-                <a href="/crew"><svg class="nav-ic" aria-hidden="true"><use href="#nav-equipiers"></use></svg><span class="nav-lib">Équipiers</span></a>
+                <a href="/crew"><svg class="nav-ic" aria-hidden="true"><use href="#nav-equipiers"></use></svg><span class="nav-lib">Équipier·ères</span></a>
+                {# La liste, sa propre fiche (connecté), une nouvelle fiche
+                   (selon le rang) — 26/11/2026. #}
+                {% set moi_menu = utilisateur(request) %}
+                <div class="dropdown-menu">
+                    <a href="/crew">Liste des équipier·ères</a>
+                    {% if moi_menu %}<a href="/crew/{{ moi_menu.crew_member_id }}">Ma fiche</a>{% endif %}
+                    {% if voit(request, '/crew/new') %}
+                    <hr style="border:none;border-top:1px solid #eee;margin:4px 6px">
+                    <a href="/crew/new">Nouvel·le équipier·ère</a>
+                    {% endif %}
+                </div>
             </li>
             <li class="{{ 'active' if active_section == 'cruises' else '' }}">
                 <a href="/cruises/current"><svg class="nav-ic" aria-hidden="true"><use href="#nav-croisieres"></use></svg><span class="nav-lib">Croisières</span></a>
@@ -933,13 +952,13 @@
 
     {# Téléphone : le nom de la section courante, à la place des onglets
        rangés sous ☰ (voir « menu hamburger » dans les styles). #}
-    <span class="topbar-section">{{ {'ship': 'Navire', 'crew': 'Équipiers', 'cruises': 'Croisières', 'routes': 'Route',
+    <span class="topbar-section">{{ {'ship': 'Navire', 'crew': 'Équipier·ères', 'cruises': 'Croisières', 'routes': 'Route',
                                      'tools': 'Outils', 'gallery': 'Carnets', 'settings': 'Réglages'}.get(active_section, '') }}</span>
 
     {# Loupe : la recherche dans toute la base. Une icône plutôt qu'un champ,
        les six onglets occupant déjà la largeur de la barre. Mêmes dimensions
        et même couleur que la roue crantée qui la suit. #}
-    <a href="/search" class="topbar-settings" title="Rechercher" aria-label="Rechercher">
+    <a href="/search" class="topbar-settings topbar-chercher" title="Rechercher" aria-label="Rechercher">
         <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
              stroke-width="2.6" stroke-linecap="round">
             <circle cx="10" cy="10" r="6.5"/>
@@ -1586,6 +1605,29 @@ document.querySelectorAll('form[data-avertir]').forEach(function (form) {
     tiroir.querySelector('.tiroir-fermer').addEventListener('click', fermer);
     addEventListener('keydown', function (e) { if (e.key === 'Escape') fermer(); });
     addEventListener('pageshow', fermer);
+
+    // Le titre de la section, centré sur l'écran. Un titre trop long pour y
+    // tenir en 18 px au moins (« Équipier·ères », un téléphone étroit) se
+    // centre plutôt dans l'espace libre entre l'ancre et la loupe (.decale),
+    // en 20 px ; et seulement si même là il manque de place, il rapetisse,
+    // jusqu'à 15 px, au lieu d'être coupé.
+    const ajusterTitre = function () {
+        const t = document.querySelector('.topbar-section');
+        if (!t || !t.offsetParent) return;
+        const reduire = function (plancher) {
+            t.style.fontSize = '';
+            let taille = parseFloat(getComputedStyle(t).fontSize);
+            while (t.scrollWidth > t.clientWidth && taille > plancher) { taille -= 1; t.style.fontSize = taille + 'px'; }
+            return t.scrollWidth <= t.clientWidth;
+        };
+        t.classList.remove('decale');
+        if (reduire(18)) return;
+        t.classList.add('decale');
+        reduire(15);
+    };
+    ajusterTitre();
+    addEventListener('resize', ajusterTitre);
+    if (document.fonts) document.fonts.ready.then(ajusterTitre);
 
     // Le titre de la section, dans la barre : s'il a des sous-pages (le menu
     // déroulant de son onglet), un toucher les montre juste dessous.

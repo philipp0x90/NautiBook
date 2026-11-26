@@ -66,7 +66,6 @@
                « départ / arrivée » avec ceux des lieux. #}
             <tr>
                 <th rowspan="2">Croisière</th>
-                <th rowspan="2" style="text-align:center">#</th>
                 <th rowspan="2">Départ</th>
                 <th rowspan="2">Arrivée</th>
                 <th rowspan="2" style="text-align:center">Jours</th>
@@ -91,7 +90,6 @@
                     {{ c.name or '—' }}
                     {% if current %}<span class="chip-current">en cours</span>{% endif %}
                 </td>
-                <td style="text-align:center">{{ '%03d'|format(c.number) }}</td>
                 {# from_location / to_location : où la croisière part et où elle
                    en est arrivée, d'après ses routes. Voir CRUISE_FROM /
                    CRUISE_TO dans main.py pour les règles de repli. #}
@@ -122,7 +120,7 @@
                dans le total plutôt que d'y entrer pour zéro. #}
             {% set total = cruises | map(attribute='distance') | select('number') | sum %}
             <tr>
-                <td colspan="7" style="text-align:right">Total</td>
+                <td colspan="6" style="text-align:right">Total</td>
                 <td style="text-align:center">{{ total | round | int }}</td>
                 <td></td>
             </tr>

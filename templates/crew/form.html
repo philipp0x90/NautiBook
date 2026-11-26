@@ -3,7 +3,7 @@
    de part et d'autre, qu'il aurait fallu maintenir en double. `member` est nul
    à la création. #}
 {% set edition = member is not none %}
-{% block title %}{{ 'Modifier ' ~ (member.gender | equipier('un')) if edition else 'Nouvel équipier' }} — NautiBook{% endblock %}
+{% block title %}{{ 'Modifier ' ~ (member.gender | equipier('un')) if edition else 'Nouvel·le équipier·ère' }} — NautiBook{% endblock %}
 
 {% block head %}
 <style>
@@ -32,8 +32,8 @@
 {% block content %}
 
 <div class="section-bar">
-    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Équipiers</a></div>
-    <div class="section-bar-title">{{ 'Modifier ' ~ (member.gender | equipier('un')) if edition else 'Nouvel équipier' }}</div>
+    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Équipier·ères</a></div>
+    <div class="section-bar-title">{{ 'Modifier ' ~ (member.gender | equipier('un')) if edition else 'Nouvel·le équipier·ère' }}</div>
 </div>
 
 {# enctype obligatoire dès qu'un champ envoie un fichier. #}

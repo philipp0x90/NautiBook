@@ -1,17 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Équipiers — NautiBook{% endblock %}
+{% block title %}Équipier·ères — NautiBook{% endblock %}
 
 {% block head %}
 <style>
     /* Un petit voilier par croisière sur le navire courant, dans sa propre
        colonne juste après le nom, alignés à gauche. */
-    .voiliers { display: inline-flex; flex-wrap: wrap; gap: 1px; vertical-align: -2px; color: var(--accent); }
+    .voiliers { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 1px; vertical-align: -2px; color: var(--accent); }
     .data-table .col-voiliers { padding-left: 0; white-space: nowrap; }
     .voiliers svg { width: 14px; height: 14px; }
     /* Sur l'iPad, pas de colonne Email : la liste y manque de largeur ;
        l'adresse reste sur la fiche. */
     html.tablette .col-email { display: none; }
     .voiliers .nb { font-size: 12px; font-weight: 700; margin-left: 2px; text-transform: none; }
+    .voiliers .compact { display: none; }
+    @media (max-width: 600px) {
+        /* Colonnes resserrées (photo, prénom, nom) : le nom tient sur une
+           ligne (« LUCAS-MANSION »). */
+        .tableau-colle .data-table th, .tableau-colle .data-table td { padding-left: 4px; padding-right: 4px; }
+        .tableau-colle .data-table td:first-child, .tableau-colle .data-table th:first-child { padding-left: 0; }
+        .tableau-colle .data-table td:nth-child(3) { white-space: nowrap; }
+        /* Nationalité, téléphone et email sur la fiche seulement : coupés au
+           bord de l'écran, ils laissaient des bribes à droite. */
+        .col-nat, .col-tel, .col-email { display: none; }
+        .col-suppr .btn { width: 28px; height: 28px; padding: 0 !important; border-radius: 50%; background: #fee2e2; color: #991b1b; }
+        .voiliers .dessines:has(+ .compact) { display: none; }
+        .voiliers .compact { display: inline; }
+    }
     /* Vignette ronde dans le tableau ; un cercle gris tient la place quand
        l'équipier n'a pas de photo, pour que les lignes gardent la même hauteur. */
     .crew-thumb {
@@ -31,14 +45,16 @@
 {# Pas de badge de navire dans la barre : les équipiers ne sont pas rattachés à
    un navire, c'est la seule liste de l'application qui ignore le cookie. #}
 <div class="section-bar section-bar-collee">
-    {# Le bouton dans la barre, comme sur le carnet d'adresses : son double
-       invisible à gauche garde le titre centré. Marges verticales négatives :
-       le bouton déborde sans grandir la barre, qui garde la hauteur de celles
-       des pages Escales et Liste des croisières. #}
-    <span class="btn btn-yellow" style="visibility:hidden;margin:-10px 0" aria-hidden="true">+ Nouvel équipier</span>
-    <div class="section-bar-title">Liste des équipiers</div>
-    <a href="/crew/new" class="btn btn-yellow" style="margin:-10px 0">+ Nouvel équipier</a>
+    <div class="section-bar-title">Liste des équipier·ères</div>
 </div>
+
+{# Le geste principal de la page, en grand bouton bleu comme « Nouvelle
+   dépense » ou « Nouveau contact » (26/11/2026) ; il remplace le bouton jaune
+   de la barre. #}
+<a href="/crew/new" class="btn-geant btn-geant-bleu btn-geant-liste" style="margin:0 0 16px">
+    <svg aria-hidden="true"><use href="#icone-plus"></use></svg>
+    <span class="btn-geant-texte"><span class="btn-geant-nom">Nouvel·le équipier·ère</span></span>
+</a>
 
 {% if crew %}
 <div class="tableau-colle">
@@ -53,9 +69,9 @@
                 {# La nationalité relève de l'identité : rubrique « identite »,
                    cachée au Mousse. #}
                 {% if peut(request, 'identite.voir') %}
-                <th>Nationalité</th>
+                <th class="col-nat">Nationalité</th>
                 {% endif %}
-                <th>Téléphone</th>
+                <th class="col-tel">Téléphone</th>
                 <th class="col-email">Email</th>
                 <th></th>
             </tr>
@@ -76,22 +92,25 @@
                 <td style="font-weight:700;text-transform:uppercase">{{ m.last_name or '—' }}</td>
                 <td class="col-voiliers">
                     {% if m.nb_cruises %}<span class="voiliers" title="{{ m.nb_cruises }} croisière{{ 's' if m.nb_cruises > 1 }} sur {{ current_ship.name if current_ship else 'ce navire' }}">
-                        {#- Jusqu'à 3, autant de voiliers ; au-delà, un seul suivi du nombre. -#}
-                        {%- if m.nb_cruises > 3 %}<svg aria-hidden="true"><use href="#icon-boat"></use></svg><span class="nb">×{{ m.nb_cruises }}</span>
-                        {%- else %}{% for _ in range(m.nb_cruises) %}<svg aria-hidden="true"><use href="#icon-boat"></use></svg>{% endfor %}{% endif -%}
+                        {#- Jusqu'à 3, autant de voiliers ; au-delà, un seul suivi du nombre.
+                            Sur téléphone, le nombre dès 2 (.compact) : les voiliers
+                            s'empilaient dans la colonne étroite. -#}
+                        {%- if m.nb_cruises > 3 %}<svg aria-hidden="true"><use href="#icon-boat"></use></svg><span class="nb">{{ m.nb_cruises }}</span>
+                        {%- else %}<span class="dessines">{% for _ in range(m.nb_cruises) %}<svg aria-hidden="true"><use href="#icon-boat"></use></svg>{% endfor %}</span>
+                        {%- if m.nb_cruises > 1 %}<span class="compact"><svg aria-hidden="true"><use href="#icon-boat"></use></svg><span class="nb">{{ m.nb_cruises }}</span></span>{% endif %}{% endif -%}
                     </span>{% endif %}
                 </td>
                 {# Âge calculé depuis la date de naissance ; la colonne age de la
                    table n'est jamais lue ni écrite. #}
                 <td style="text-align:center">{{ m.birth_date | age }}</td>
                 {% if peut(request, 'identite.voir') %}
-                <td>{{ m.nationality or '' }}</td>
+                <td class="col-nat">{{ m.nationality or '' }}</td>
                 {% endif %}
-                <td style="white-space:nowrap">{{ m.phone or '' }}</td>
+                <td class="col-tel" style="white-space:nowrap">{{ m.phone or '' }}</td>
                 <td class="col-email">{% if m.email %}<a href="mailto:{{ m.email }}" style="color:var(--accent)">{{ m.email }}</a>{% endif %}</td>
                 {# La fiche de l'Amiral est refusée par delete_crew, qui renvoie
                    sur la fiche avec l'explication. #}
-                <td style="width:1%;white-space:nowrap">
+                <td class="col-suppr" style="width:1%;white-space:nowrap">
                     <form method="POST" action="/crew/{{ m.id }}/delete" style="display:inline"
                           onsubmit="return confirm('Supprimer cette fiche d\'{{ m.gender | equipier }} ?')">
                         <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
@@ -105,10 +124,7 @@
 {% else %}
 <div class="stub">
     <div style="font-size:36px;margin-bottom:12px">🧑‍✈️</div>
-    <div>Aucun équipier enregistré.</div>
-    <div style="margin-top:16px">
-        <a href="/crew/new" class="btn btn-yellow">+ Premier équipier</a>
-    </div>
+    <div>Aucun·e équipier·ère enregistré·e.</div>
 </div>
 {% endif %}
 

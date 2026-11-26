@@ -4450,14 +4450,15 @@ def _equipier(gender, det=None):
 
     « Non-binaire » prend l'écriture inclusive avec point médian (« cette·te »
     n'existant pas, c'est la forme la plus lisible sans forme neutre établie en
-    français). Genre non renseigné : masculin, comme le reste de l'app (l'onglet
-    « Équipiers », le bouton « + Nouvel équipier »).
+    français). Genre non renseigné : l'écriture inclusive aussi, comme le reste
+    de l'app depuis le 26/11/2026 (l'onglet « Équipier·ères », « Nouvel·le
+    équipier·ère »).
 
     Le point médian « · » (U+00B7) et non un point ordinaire : c'est celui que
     les lecteurs d'écran savent ignorer.
     """
     # Index dans les triplets ci-dessous : masculin, féminin, inclusif.
-    i = {"Femme": 1, "Non-binaire": 2}.get(gender, 0)
+    i = {"Homme": 0, "Femme": 1}.get(gender, 2)
     noun = ("équipier", "équipière", "équipier·ère")[i]
     if det is None:
         return noun

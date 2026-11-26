@@ -34,7 +34,7 @@
     @media (max-width: 820px) {
         .cruise-header {
             grid-template-columns: 1fr;
-            grid-template-areas: "nom" "mention" "num";
+            grid-template-areas: "nom" "mention";
             justify-items: center;
         }
         .cruise-header .cruise-num { justify-self: center; }
@@ -213,10 +213,8 @@
         </form>
         {% if next_cruise_id %}<a href="/cruises/{{ next_cruise_id }}" title="Croisière suivante">›</a>{% else %}<span class="eteint">›</span>{% endif %}
     </div>
-    {# Position among this ship's cruises, not the id — same %03d as the list. #}
-    {% if cruise.number %}
-    <div class="cruise-num" style="grid-area:num;font-size:13px;font-weight:700"># {{ '%03d'|format(cruise.number) }}</div>
-    {% endif %}
+    {# Plus de numéro de croisière (« # 014 ») : l'utilisateur n'en a pas
+       l'usage (26/11/2026). #}
     {# À gauche du bandeau, « Croisière en cours » ou, pour une autre
        croisière, « Croisière » à la même place et dans la même typographie. #}
     <div class="cruise-mention cruise-etiquette" style="grid-area:mention">
