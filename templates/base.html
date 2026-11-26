@@ -503,9 +503,15 @@
         }
         .recap-jauge { height: 10px; margin: 6px 4px 0; background: #fff; border: 1px solid #dde5ee; border-radius: 6px; overflow: hidden; }
         .recap-jauge > div { height: 100%; }
-        .recap-jauge .haut { background: #22c55e; }
-        .recap-jauge .moyen { background: #f59e0b; }
-        .recap-jauge .bas { background: #ef4444; }
+        /* Jauges de gasoil (réservoir de la page Gasoil, carte « Gasoil
+           restant ») : lisibles par un daltonien (26/11/2026). Le niveau se
+           lit à la longueur de la barre, d'une seule couleur ; sous 25 %, la
+           barre se hachure et « ⚠ Réserve basse » s'écrit — le motif et le
+           texte disent l'alerte, la couleur ne fait que l'appuyer. Le vert /
+           orange / rouge d'avant se confondait chez les daltoniens. */
+        .jauge-ok { background: var(--accent); }
+        .jauge-bas { background: repeating-linear-gradient(135deg, #c2410c 0 5px, #fb923c 5px 10px); }
+        .reserve-basse { color: #9a3412; font-weight: 700; white-space: nowrap; }
         .recap-gasoil .detail a { color: var(--accent); }
         /* Toute la zone mène à la page Gasoil (rowLink), d'où viennent ces
            estimations. */

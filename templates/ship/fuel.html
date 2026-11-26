@@ -178,9 +178,7 @@
     .jauge { flex: 1; min-width: 200px; height: 16px; background: #eef3f7; border-radius: 8px; overflow: hidden;
              border: 1px solid #dde5ee; }
     .jauge-niveau { height: 100%; border-radius: 8px 0 0 8px; }
-    .jauge-niveau.haut { background: #22c55e; }
-    .jauge-niveau.moyen { background: #f59e0b; }
-    .jauge-niveau.bas { background: #ef4444; }
+    /* Couleur et hachures : .jauge-ok / .jauge-bas, dans base.html. */
     .jauge-texte { font-size: 13px; font-weight: 600; color: #0f3a4a; white-space: nowrap; }
     .reservoir-chiffres { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 14px 0 10px;
                           text-align: center; }
@@ -244,7 +242,7 @@
    croisière de la fiche navire (6 kn sans elle), rien n'est enregistré, elle
    y revient au rechargement. #}
 {% if tank %}
-{% set niveau = 'haut' if tank.percent > 50 else ('moyen' if tank.percent >= 25 else 'bas') %}
+{% set niveau = 'bas' if tank.percent < 25 else 'ok' %}
 <section class="reservoir">
     <div class="reservoir-titre">Réservoir <span>· estimation</span></div>
     {% if tank.incoherent %}
@@ -262,8 +260,8 @@
     </div>
     {% else %}
     <div class="jauge-ligne">
-        <div class="jauge"><div class="jauge-niveau {{ niveau }}" style="width:{{ '%.0f'|format(tank.percent) }}%"></div></div>
-        <div class="jauge-texte">≈ {{ '%.0f'|format(tank.remaining) }} L sur {{ tank.capacity | dec(0) }} L · {{ '%.0f'|format(tank.percent) }} %</div>
+        <div class="jauge"><div class="jauge-niveau jauge-{{ niveau }}" style="width:{{ '%.0f'|format(tank.percent) }}%"></div></div>
+        <div class="jauge-texte">{% if niveau == 'bas' %}<span class="reserve-basse">⚠ Réserve basse</span> · {% endif %}≈ {{ '%.0f'|format(tank.remaining) }} L sur {{ tank.capacity | dec(0) }} L · {{ '%.0f'|format(tank.percent) }} %</div>
     </div>
     <div class="reservoir-chiffres">
         <div>
