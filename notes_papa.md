@@ -19,8 +19,11 @@ Normalement il n'y a pas besoin de redémarrer le serveur, il integre les modifi
 # Le Raspberry Pi du bord
 
 Le Pi fait tourner NautiBook en permanence via `nautibook.service`, sur la branche
-`production`. Contrairement au serveur de test, il n'a pas `--reload` : il faut le
-redémarrer pour qu'il prenne un changement.
+`production`. Contrairement au serveur de test, il n'a pas `--reload` : un changement
+n'est pris en compte qu'au redémarrage du service. Pour une mise à jour poussée sur
+`production`, ce redémarrage est automatique (voir ci-dessous). Il ne faut le faire à
+la main (`sudo systemctl restart nautibook`) qu'après avoir modifié un fichier
+directement sur le Pi — ce qui est à éviter, la mise à jour suivante l'écrasant.
 
 ## Mise à jour automatique
 
