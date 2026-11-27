@@ -89,6 +89,9 @@
     .groupes-equipier .champ-equipier input[type=date]::-webkit-date-and-time-value { margin: 0; text-align: left; color: #222; }
     .embarquements .data-table th, .embarquements .data-table td { padding-top: 4px; padding-bottom: 4px; }
 
+    .supprimer-fiche { margin: 14px 0 0; }
+    .supprimer-fiche .btn { width: 100%; height: 32px; border-radius: 10px; font-size: 14px;
+                            display: flex; align-items: center; justify-content: center; }
     /* Téléphone (26/11/2026) : la photo et le rang au-dessus, centrés ; les
        champs deux par deux à la largeur de l'écran (téléphone, email et rue
        sur une ligne entière), en 16 px — la taille que Safari impose ; les
@@ -96,6 +99,7 @@
        Pas de « ← » dans la barre, comme la fiche d'un contact. */
     @media (max-width: 600px) {
         .section-bar .btn.barre-retour { display: none !important; }
+        .supprimer-fiche .btn { height: 52px; border-radius: 14px; font-size: 17px; }
         .fiche-equipier { grid-template-columns: 1fr !important; gap: 14px !important; padding: 14px 12px !important; }
         .colonne-photo { width: auto; justify-items: center; }
         .colonne-photo [data-recadrage] { width: 160px; }
@@ -142,8 +146,8 @@
 
 {# Retour à la liste à gauche, son double invisible à droite pour que le nom
    reste centré (« + Nouvel équipier » est sur la liste, en grand bouton). Marges verticales négatives : les boutons ne
-   grandissent pas la barre, qui garde la hauteur des autres. Plus de bouton
-   « Supprimer la fiche » : la croix de la liste des équipiers s'en charge. #}
+   grandissent pas la barre, qui garde la hauteur des autres. « Supprimer
+   cette fiche » est en bas de la page. #}
 <div class="section-bar" style="margin-bottom:12px">
     <a href="/crew" class="btn barre-retour" style="min-width:160px;text-align:center;margin:-10px 0;background:#5bc8e0;color:#fff;box-shadow:0 0 0 1px #fff">← <span class="btn-lib">Liste des équipier·ères</span></a>
     {# Précédent et suivant de part et d'autre du nom, dans la barre : une
@@ -455,6 +459,15 @@
     <div class="meta">{{ member.gender | equipier('cet') | capitalize }} n'a embarqué sur aucune croisière.</div>
     {% endif %}
 </div>
+
+{# Supprimer la fiche : ici, en bas, en grand (26/11/2026), plus par une
+   croix dans la liste. Seulement pour qui a le droit (le script des droits
+   masque ce formulaire …/delete aux autres). La fiche de l'Amiral est
+   refusée par delete_crew, qui revient ici avec l'explication. #}
+<form method="POST" action="/crew/{{ member.id }}/delete" class="supprimer-fiche"
+      onsubmit='return confirm({{ ("Supprimer la fiche de " ~ ((member.first_name or "") ~ " " ~ (member.last_name or "")).strip() ~ " ? Ses embarquements seront supprimés aussi.") | tojson }})'>
+    <button type="submit" class="btn btn-orange">Supprimer cette fiche</button>
+</form>
 
 <script>
 // Rang : le bouton « Appliquer » n'apparaît que si le choix change ; les cases

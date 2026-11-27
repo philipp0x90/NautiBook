@@ -22,7 +22,6 @@
         /* Nationalité, téléphone et email sur la fiche seulement : coupés au
            bord de l'écran, ils laissaient des bribes à droite. */
         .col-nat, .col-tel, .col-email { display: none; }
-        .col-suppr .btn { width: 28px; height: 28px; padding: 0 !important; border-radius: 50%; background: #fee2e2; color: #991b1b; }
         .voiliers .dessines:has(+ .compact) { display: none; }
         .voiliers .compact { display: inline; }
     }
@@ -73,7 +72,6 @@
                 {% endif %}
                 <th class="col-tel">Téléphone</th>
                 <th class="col-email">Email</th>
-                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -108,14 +106,6 @@
                 {% endif %}
                 <td class="col-tel" style="white-space:nowrap">{{ m.phone or '' }}</td>
                 <td class="col-email">{% if m.email %}<a href="mailto:{{ m.email }}" style="color:var(--accent)">{{ m.email }}</a>{% endif %}</td>
-                {# La fiche de l'Amiral est refusée par delete_crew, qui renvoie
-                   sur la fiche avec l'explication. #}
-                <td class="col-suppr" style="width:1%;white-space:nowrap">
-                    <form method="POST" action="/crew/{{ m.id }}/delete" style="display:inline"
-                          onsubmit="return confirm('Supprimer cette fiche d\'{{ m.gender | equipier }} ?')">
-                        <button type="submit" class="btn btn-orange" style="padding:3px 10px;font-size:12px">✕</button>
-                    </form>
-                </td>
             </tr>
             {% endfor %}
         </tbody>
