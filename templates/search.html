@@ -3,8 +3,18 @@
 
 {% block head %}
 <style>
-    .search-form { display: flex; gap: 10px; margin-bottom: 18px; max-width: 640px; }
-    .search-form input { flex: 1; height: 38px; font-size: 16px; }
+    /* Le champ prend toute la largeur, le bouton à sa droite (26/11/2026). */
+    .search-form { display: flex; gap: 10px; margin-bottom: 18px; }
+    .search-form input { flex: 1; height: 40px; font-size: 16px; }
+    .search-form .btn { height: 40px; font-size: 15px; border-radius: 10px; padding: 0 18px; }
+    /* Téléphone : champ et bouton de 52 points, comme la page de connexion,
+       l'un sous l'autre, chacun sur toute la largeur. */
+    @media (max-width: 600px) {
+        .search-form { flex-direction: column; }
+        .search-form input, .search-form .btn { width: 100%; flex: none; }
+        .search-form input { height: 52px; font-size: 17px; border-radius: 10px; }
+        .search-form .btn { height: 52px; font-size: 17px; border-radius: 14px; }
+    }
     .search-section { margin-bottom: 18px; }
     .search-section h3 {
         margin: 0 0 8px; font-size: 13px; color: var(--muted);

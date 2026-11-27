@@ -26,13 +26,51 @@
     /* Le bouton « Choisir un fichier » vit *dans* le champ : il lui faut un
        peu moins de marge pour tenir dans les 33 px. */
     .crew-form input[type="file"] { padding: 5px 8px; }
+    /* Les cases alignées sur leur bas : un libellé qui passe à la ligne
+       (« Code postal ») ne fait plus descendre sa case sous ses voisines. La
+       ligne de la photo, elle, reste alignée en haut : le texte d'aide sous
+       « Fichier image » la ferait monter. */
+    .crew-form .grid { align-items: end; }
+    /* Téléphone (26/11/2026) : Prénom, Nom, puis Genre · Âge ; Téléphone,
+       Email ; Rue, puis Code postal · Localité, puis Pays — deux colonnes,
+       les champs longs (.ligne-entiere) sur une ligne entière. */
+    @media (max-width: 600px) {
+        .crew-form .grid.grille-tel { grid-template-columns: 1fr 1fr !important; }
+        .crew-form .grid.grille-tel > .ligne-entiere { grid-column: 1 / -1; }
+        .crew-form input, .crew-form select { height: 40px; }
+        /* « Créer la fiche » sur toute la largeur, 52 points ; « Annuler »
+           dessous, centré. */
+        .actions-fiche { flex-direction: column; align-items: stretch !important; gap: 4px !important; }
+        .actions-fiche button.primary { width: 100%; height: 52px; border-radius: 14px; font-size: 17px; }
+        .actions-fiche a { text-align: center; }
+        /* Identité : un champ par ligne. */
+        .crew-form .grid.grille-une { grid-template-columns: 1fr !important; }
+        /* Safari dessine le champ date en contrôle natif, plus haut que ses
+           voisins et la date centrée : sans l'apparence native, il se plie
+           aux 40 px, la date à gauche. */
+        .crew-form input[type=date] { -webkit-appearance: none; appearance: none; text-align: left; min-width: 0; }
+        .crew-form input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+    }
+    /* Photo, comme dans le carnet : bouton rond, aperçu, explication. */
+    .photo-choix { display: flex; align-items: center; gap: 14px; }
+    .photo-choix .bouton-photo { background: #e8f4f9; color: #0f3a4a; cursor: pointer; margin: 0; flex: none;
+                                 width: 52px; height: 52px; padding: 0; display: inline-flex;
+                                 align-items: center; justify-content: center; border-radius: 50%; }
+    .photo-choix .bouton-photo:hover { background: #d6ecf5; }
+    .photo-choix .icone-photo { width: 26px; height: 26px; display: block; }
+    .photo-choix .apercu-photo:empty { display: none; }
+    .photo-choix .apercu-photo img { display: block; width: 72px; height: 72px; object-fit: cover; border-radius: 8px; }
+    .retour-liste { display: flex; align-items: center; justify-content: center; width: 100%; height: 32px;
+                    margin-top: 14px; box-sizing: border-box; border-radius: 10px; font-size: 14px; }
+    @media (max-width: 600px) {
+        .retour-liste { height: 52px; border-radius: 14px; font-size: 17px; }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 
 <div class="section-bar">
-    <div class="section-bar-left"><a href="/crew" style="color:#fff;text-decoration:none">← Équipages</a></div>
     <div class="section-bar-title">{{ 'Modifier ' ~ (member.gender | equipier('un')) if edition else 'Nouvel·le équipier·ère' }}</div>
 </div>
 
@@ -44,14 +82,14 @@
     <section>
         {# Titre accordé au genre choisi ; une fiche nouvelle n'en a pas encore. #}
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">{{ (member.gender if edition else none) | equipier | capitalize }}</h3>
-        <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:12px">
-            <div>
+        <div class="grid grille-tel" style="grid-template-columns:repeat(4,1fr);gap:12px">
+            <div class="ligne-entiere">
                 <label>Prénom</label>
-                <input type="text" name="first_name" value="{{ member.first_name or '' if edition else '' }}" placeholder="Jean">
+                <input type="text" name="first_name" value="{{ member.first_name or '' if edition else '' }}" placeholder="Camille">
             </div>
-            <div>
+            <div class="ligne-entiere">
                 <label>Nom</label>
-                <input type="text" name="last_name" value="{{ member.last_name or '' if edition else '' }}" placeholder="Dupont">
+                <input type="text" name="last_name" value="{{ member.last_name or '' if edition else '' }}" placeholder="Marins">
             </div>
             <div>
                 {# Option vide en premier, comme les selects du journal : sinon
@@ -77,11 +115,11 @@
 
     <section>
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Contact</h3>
-        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+        <div class="grid grille-tel" style="grid-template-columns:1fr 1fr;gap:12px">
             {# Code pays à part, mais une seule colonne en base : le handler
                recompose via _join_phone, le filtre phoneparts redécoupe. #}
             {% set tel = (member.phone if edition else none) | phoneparts %}
-            <div>
+            <div class="ligne-entiere">
                 <label>Téléphone</label>
                 <div class="tel-row">
                     <select name="phone_code" style="width:auto;flex:0 0 auto">
@@ -93,27 +131,27 @@
                     <input type="tel" name="phone" value="{{ tel.number }}" placeholder="470 12 34 56" style="flex:1;min-width:0">
                 </div>
             </div>
-            <div>
+            <div class="ligne-entiere">
                 <label>Email</label>
-                <input type="email" name="email" value="{{ member.email or '' if edition else '' }}" placeholder="jean@example.com">
+                <input type="email" name="email" value="{{ member.email or '' if edition else '' }}" placeholder="camille@domaine.com">
             </div>
         </div>
     </section>
 
     <section>
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Adresse</h3>
-        <div class="grid" style="grid-template-columns:2fr 1fr 2fr 1.5fr;gap:12px">
-            <div>
+        <div class="grid grille-tel" style="grid-template-columns:2fr 1fr 2fr 1.5fr;gap:12px">
+            <div class="ligne-entiere">
                 <label>Rue et numéro</label>
-                <input type="text" name="street" value="{{ member.street or '' if edition else '' }}" placeholder="1 rue de la Mer">
+                <input type="text" name="street" value="{{ member.street or '' if edition else '' }}" placeholder="rue de la Mer, 1">
             </div>
             <div>
                 <label>Code postal</label>
-                <input type="text" name="postal_code" value="{{ member.postal_code or '' if edition else '' }}" placeholder="1000">
+                <input type="text" name="postal_code" value="{{ member.postal_code or '' if edition else '' }}" placeholder="12345">
             </div>
             <div>
                 <label>Localité</label>
-                <input type="text" name="city" value="{{ member.city or '' if edition else '' }}" placeholder="Bruxelles">
+                <input type="text" name="city" value="{{ member.city or '' if edition else '' }}" placeholder="Paradis-Sur-Mer">
             </div>
             <div>
                 <label>Pays</label>
@@ -124,7 +162,7 @@
 
     <section>
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Identité</h3>
-        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+        <div class="grid grille-une" style="grid-template-columns:1fr 1fr;gap:12px">
             <div>
                 <label>Date de naissance</label>
                 <input type="date" name="birth_date" value="{{ member.birth_date[:10] if edition and member.birth_date else '' }}">
@@ -134,7 +172,7 @@
                 <input type="text" name="birth_place" value="{{ member.birth_place or '' if edition else '' }}" placeholder="Bruxelles">
             </div>
         </div>
-        <div class="grid" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px">
+        <div class="grid grille-une" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px">
             <div>
                 <label>Nationalité</label>
                 <input type="text" name="nationality" value="{{ member.nationality or '' if edition else '' }}" placeholder="Belge">
@@ -162,26 +200,44 @@
 
     <section>
         <h3 style="margin:0 0 10px;font-size:15px;border-bottom:2px solid #dde5ee;padding-bottom:4px">Photo</h3>
-        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
-            <div data-depot-photo>
-                <label>Fichier image</label>
-                <input type="file" name="photo_file" accept="image/*" data-photo-reduite="1000">
-                <div class="meta" style="margin-top:4px">Choisissez ou glissez ici une photo. Toute photo convient :
-                    elle est réduite automatiquement, et se cadre ensuite sur la fiche (« Recadrer »).
-                    JPEG, PNG ou HEIC (le HEIC depuis l'iPhone ou Safari).</div>
-            </div>
-            <div>
-                <label>ou chemin / URL <span class="meta" style="font-weight:400">(si la photo est ailleurs)</span></label>
-                <input type="text" name="photo_path" value="{{ member.photo_path or '' if edition else '' }}" placeholder="https://exemple.com/photo.jpg">
-            </div>
+        {# Comme dans le carnet (26/11/2026) : un bouton rond, l'appareil photo,
+           qui ouvre le choix (sur l'iPhone : prendre une photo ou la
+           photothèque), puis l'aperçu. Plus de champ « chemin / URL » : en
+           modification, sans nouvelle photo, celle de la fiche reste
+           (COALESCE dans update_crew). Une photo glissée sur la zone compte
+           aussi (data-depot-photo, base.html). #}
+        {% from "carnet/_icone.html" import icone_photo %}
+        <div class="photo-choix" data-depot-photo>
+            <label class="btn bouton-photo" title="Choisir une photo" aria-label="Choisir une photo">
+                {{ icone_photo() }}
+                <input type="file" name="photo_file" accept="image/*" hidden data-photo-reduite="1000">
+            </label>
+            <span class="apercu-photo">{% if edition and member.photo_path and fichier_visible(request, member.photo_path) %}<img src="{{ member.photo_path }}" alt="">{% endif %}</span>
+            <span class="meta">Toute photo convient : elle est réduite automatiquement, et se cadre ensuite sur la fiche (« Recadrer »).</span>
         </div>
+        <script>
+        // Aperçu de la photo choisie, à côté du bouton.
+        document.querySelector('.photo-choix input[type=file]').addEventListener('change', function () {
+            const f = this.files && this.files[0];
+            const place = document.querySelector('.photo-choix .apercu-photo');
+            if (!f) return;
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(f); img.alt = '';
+            place.replaceChildren(img);
+        });
+        </script>
     </section>
 
-    <div style="display:flex;gap:10px;align-items:center">
+    <div class="actions-fiche" style="display:flex;gap:10px;align-items:center">
         <button type="submit" class="primary">{{ 'Enregistrer les modifications' if edition else 'Créer la fiche' }}</button>
         <a href="{{ '/crew/' ~ member.id if edition else '/crew' }}"
            style="padding:9px 16px;color:var(--muted);text-decoration:none;font-size:14px">Annuler</a>
     </div>
 </form>
+
+{# Retour à la liste : en bas, un bouton large comme « Carnet d'adresses » sur
+   la fiche d'un contact (26/11/2026), à la place du « ← » de la barre. Hors
+   du formulaire : avec une saisie en cours, data-avertir demande d'abord. #}
+<a href="/crew" class="btn btn-blue retour-liste">Liste des équipier·ères</a>
 
 {% endblock %}

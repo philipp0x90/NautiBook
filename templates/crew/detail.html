@@ -464,8 +464,16 @@
    croix dans la liste. Seulement pour qui a le droit (le script des droits
    masque ce formulaire …/delete aux autres). La fiche de l'Amiral est
    refusée par delete_crew, qui revient ici avec l'explication. #}
+{# La fiche de l'Amiral : l'explication s'affiche dès le toucher, à la place
+   de la confirmation, et rien n'est envoyé (delete_crew refuserait de toute
+   façon, mais sa réponse, en haut de la fiche, passait inaperçue). #}
+{% if account and account.rank == 'amiral' %}
+<form method="POST" action="/crew/{{ member.id }}/delete" class="supprimer-fiche"
+      onsubmit='alert({{ "C\u2019est la fiche de l\u2019Amiral : elle ne peut pas être supprimée.\n\nNommez d\u2019abord un autre Amiral, depuis la fiche de celui-ci (menu déroulant « Rang », sous sa photo), pour pouvoir la supprimer." | tojson }}); return false'>
+{% else %}
 <form method="POST" action="/crew/{{ member.id }}/delete" class="supprimer-fiche"
       onsubmit='return confirm({{ ("Supprimer la fiche de " ~ ((member.first_name or "") ~ " " ~ (member.last_name or "")).strip() ~ " ? Ses embarquements seront supprimés aussi.") | tojson }})'>
+{% endif %}
     <button type="submit" class="btn btn-orange">Supprimer cette fiche</button>
 </form>
 

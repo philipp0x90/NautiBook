@@ -31,6 +31,11 @@
     .raccourci { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
                  border-radius: 50%; background: #e8f4f9; color: var(--accent); text-decoration: none; font-size: 12px; }
     .raccourci:hover { background: var(--accent); color: #fff; }
+    /* Appeler, écrire : bouton bleu au bout de la ligne (macro ligne). */
+    .contact-action { flex: none; display: inline-flex; align-items: center; justify-content: center;
+                      width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #fff; }
+    .contact-action svg { width: 16px; height: 16px; }
+    .contact-action:hover { filter: brightness(1.1); }
     /* CP, localité et pays sur une seule ligne, chacun son formulaire, le
        libellé en petit au-dessus de la valeur. Une grille aux colonnes
        fixées plutôt qu'un flex : Safari donne à un menu la largeur de sa plus
@@ -87,6 +92,8 @@
     @media (max-width: 600px) {
         .ligne-groupe { grid-template-columns: 76px minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; }
         .section-bar { gap: 6px; }
+        .contact-action { width: 60px; height: 38px; border-radius: 8px; margin: 3px 0; }
+        .contact-action svg { width: 20px; height: 20px; }
         /* Pas de « ← Comptes » (ni son double) : la barre laisse toute la
            place au nom ; on revient par ‹ ou par le menu. */
         .section-bar .btn.barre-retour { display: none !important; }
@@ -133,7 +140,7 @@
 {% set val = contact[field] %}
 <form method="POST" action="/ship/contacts/{{ contact.id }}/field/{{ field }}" class="{{ cls }}">
     <span class="libelle">{{ label }}
-        {% if val and lien %}<a href="{{ lien }}" class="raccourci" title="{{ icone }}"
+        {% if val and lien and field not in ('phone', 'email', 'website') %}<a href="{{ lien }}" class="raccourci" title="{{ icone }}"
            {% if lien.startswith('http') %}target="_blank" rel="noopener"{% endif %}>{{ '✆' if field == 'phone' else ('✉' if field == 'email' else '↗') }}</a>{% endif %}
     </span>
     <span class="valeur" {% if val %}title="{{ val }}"{% endif %}>
@@ -158,6 +165,22 @@
         <input type="{{ kind }}" name="value" value="{{ val or '' }}" placeholder="—" onchange="this.form.submit()">
         {% endif %}
     </span>
+    {# Appeler, écrire, ouvrir le site (globe) : un bouton bleu au bout de la ligne, comme sur la fiche
+       d'un équipier (26/11/2026) — le petit rond à côté du libellé était
+       difficile à toucher. La valeur, elle, se corrige d'un toucher. #}
+    {% if val and field in ('phone', 'email', 'website') %}
+    <a href="{{ 'tel:' ~ (val | replace(' ', '')) if field == 'phone' else lien }}" class="contact-action"
+       title="{{ icone }} {{ val }}" aria-label="{{ icone }}"
+       {% if field == 'website' %}target="_blank" rel="noopener"{% endif %}>
+        {% if field == 'phone' %}
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.12.37 2.33.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.6 21 3 13.4 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.27.2 2.48.57 3.6a1 1 0 0 1-.25 1l-2.22 2.2z"/></svg>
+        {% elif field == 'website' %}
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9s1.3-6.3 3.9-9z"/></svg>
+        {% else %}
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm0 2v.4l8 5 8-5V7H4zm16 2.75-7.47 4.67a1 1 0 0 1-1.06 0L4 9.75V17h16V9.75z"/></svg>
+        {% endif %}
+    </a>
+    {% endif %}
 </form>
 {% endmacro %}
 

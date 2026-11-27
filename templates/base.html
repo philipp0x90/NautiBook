@@ -215,7 +215,9 @@
         /* Zone où déposer une photo, pendant qu'on la survole. */
         .depot-survol { outline: 2px dashed var(--accent); outline-offset: 3px; border-radius: 8px; }
         /* Photo de la personne connectée, à la place du pictogramme. */
-        .topbar-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: block; overflow: hidden; }   /* overflow : rogne la photo zoomée (cadrage_equipier) */
+        /* La photo un peu plus grande que les pictogrammes (24 px), qu'on la
+           reconnaisse ; plus encore quand les libellés sont cachés. */
+        .topbar-avatar { width: 30px; height: 30px; margin: -3px 0; border-radius: 50%; object-fit: cover; display: block; overflow: hidden; }   /* overflow : rogne la photo zoomée (cadrage_equipier) */
         .topbar-prenom { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
 
         /* ── Section sub-header bar ── */
@@ -630,6 +632,7 @@
             .nav-lib { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
             nav > ul > li > a, .topbar-settings { min-width: 0; padding: 8px 4px 5px; }
             .topbar-logo { width: 34px; }
+            .topbar-avatar { width: 34px; height: 34px; margin: 0; }
             .topbar-logo svg { width: 28px; height: 28px; }
         }
         /* Téléphone tenu en hauteur : menu « hamburger » (☰, à droite, sous le

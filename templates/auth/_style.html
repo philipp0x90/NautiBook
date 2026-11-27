@@ -3,7 +3,14 @@
     .auth-card { max-width: 420px; margin: 30px auto; display: grid; gap: 14px; }
     .auth-card h2 { margin: 0; font-size: 20px; text-align: center; }
     .auth-card label { margin-bottom: 4px; }
-    .auth-card input { height: 38px; font-size: 16px; }
+    .auth-card input { height: 40px; font-size: 16px; }
+    .auth-card .btn { height: 40px; font-size: 15px; border-radius: 10px; }
+    /* Téléphone : champs et bouton de 52 points, à la taille des grands
+       boutons de l'app (26/11/2026) — ils étaient trop petits au doigt. */
+    @media (max-width: 600px) {
+        .auth-card input { height: 52px; font-size: 17px; border-radius: 10px; }
+        .auth-card .btn { height: 52px; font-size: 17px; border-radius: 14px; }
+    }
     .auth-msg { border-radius: 8px; padding: 10px 14px; font-size: 14px; }
     .auth-msg.erreur { background: #fee2e2; color: #991b1b; }
     .auth-msg.info { background: #e0f2fe; color: #075985; }
