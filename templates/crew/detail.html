@@ -17,6 +17,14 @@
     }
     .champ-equipier input:focus, .champ-equipier select:focus { outline: none; background: transparent; }
     .champ-equipier select.indicatif { flex: 0 0 auto; width: auto; padding-right: 2px; }
+    .indicatif-boite { display: flex; flex: 0 0 auto; position: relative; }
+    .indicatif-court { display: none; }
+    /* Appeler : un rond bleu avec un combiné, au bout de la case Téléphone. */
+    .appeler { flex: none; display: inline-flex; align-items: center; justify-content: center;
+               width: 28px; height: 28px; margin-right: 3px; border-radius: 50%;
+               background: var(--accent); color: #fff; text-decoration: none; }
+    .appeler svg { width: 16px; height: 16px; }
+    .appeler:hover { filter: brightness(1.1); }
     /* Le nom en capitales, comme sur les pièces d'identité ; stocké tel quel. */
     .champ-equipier input.nom { text-transform: uppercase; }
     .champ-lecture { background: #f1f5f8; border-radius: 6px; padding: 5px 10px; margin-top: 2px; color: #445; }
@@ -101,6 +109,17 @@
         .groupes-equipier .champ-equipier input, .groupes-equipier .champ-equipier select,
         .groupes-equipier .champ-lecture { height: 38px; font-size: 16px; box-sizing: border-box; }
         .groupes-equipier .champ-lecture { display: flex; align-items: center; }
+        /* L'indicatif seul (« +32 »), le menu transparent par-dessus. */
+        .indicatif-court { display: flex; align-items: center; padding: 0 0 0 12px; font-size: 16px; }
+        /* Le numéro juste après l'indicatif, séparé d'une espace (champ et
+           écart réduits). */
+        .groupes-equipier .indicatif-boite + input { padding-left: 2px; }
+        .indicatif-boite { margin-right: -1px; }
+        .indicatif-boite select.indicatif { position: absolute; inset: 0; width: 100%; opacity: 0; }
+        /* Un filet blanc (le fond de la carte) le détache du numéro. */
+        .appeler { width: 66px; height: 38px; margin: 0; border-radius: 0 6px 6px 0; border-left: 6px solid #fff;
+                   box-sizing: border-box; }
+        .appeler svg { width: 20px; height: 20px; }
         .groupes-equipier .meta { font-size: 13px; }
         .embarquements .data-table, .embarquements tbody { display: block; }
         .embarquements thead { display: none; }
@@ -300,6 +319,12 @@
                 {% else %}
                 <input type="{{ 'email' if field == 'email' else 'text' }}" name="value" class="{{ extra_class }}"
                        value="{{ val or '' }}" placeholder="—" onchange="this.form.submit()">
+                {# Écrire : le même bouton que « Appeler », au bout de la case. #}
+                {% if field == 'email' and val %}
+                <a href="mailto:{{ val }}" class="appeler" title="Écrire à {{ val }}" aria-label="Écrire un e-mail">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm0 2v.4l8 5 8-5V7H4zm16 2.75-7.47 4.67a1 1 0 0 1-1.06 0L4 9.75V17h16V9.75z"/></svg>
+                </a>
+                {% endif %}
                 {% endif %}
             </div>
         </form>
@@ -323,18 +348,33 @@
                    formulaire : _join_phone les recompose, comme à la saisie. #}
                 {% set tel = member.phone | phoneparts %}
                 <form method="POST" action="/crew/{{ member.id }}/phone" class="large">
-                    <div class="meta">Téléphone{% if member.phone %} <a href="tel:{{ member.phone }}" title="Appeler" style="color:var(--accent);text-decoration:none">↗</a>{% endif %}</div>
+                    <div class="meta">Téléphone</div>
                     <div class="champ-equipier">
                         {# L'indicatif seul n'est pas un numéro (_join_phone n'enregistre
                            rien) : choisi avant le numéro, il attend celui-ci au lieu
                            d'être envoyé, et perdu. #}
-                        <select name="phone_code" class="indicatif" onchange="if (this.form.phone.value) this.form.submit()">
-                            <option value="">—</option>
-                            {% for code, pays in dial_codes %}
-                            <option value="{{ code }}" {{ 'selected' if tel.code == code else '' }}>{{ code }} {{ pays }}</option>
-                            {% endfor %}
-                        </select>
+                        {# Sur téléphone, l'indicatif seul (« +32 ») : le menu est
+                           posé, transparent, par-dessus — un toucher l'ouvre, la
+                           liste garde le nom des pays (+1 : États-Unis ou Canada). #}
+                        <span class="indicatif-boite">
+                            <span class="indicatif-court" aria-hidden="true">{{ tel.code or '—' }}</span>
+                            <select name="phone_code" class="indicatif"
+                                    onchange="this.previousElementSibling.textContent = this.value || '—'; if (this.form.phone.value) this.form.submit()">
+                                <option value="">—</option>
+                                {% for code, pays in dial_codes %}
+                                <option value="{{ code }}" {{ 'selected' if tel.code == code else '' }}>{{ code }} {{ pays }}</option>
+                                {% endfor %}
+                            </select>
+                        </span>
                         <input type="tel" name="phone" value="{{ tel.number }}" placeholder="—" onchange="this.form.submit()">
+                        {# Appeler : un vrai bouton, au bout de la case — la petite
+                           flèche d'avant était difficile à toucher. Le numéro, lui,
+                           reste à corriger d'un toucher. #}
+                        {% if member.phone %}
+                        <a href="tel:{{ member.phone | replace(' ', '') }}" class="appeler" title="Appeler {{ member.phone }}" aria-label="Appeler">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.12.37 2.33.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.6 21 3 13.4 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.27.2 2.48.57 3.6a1 1 0 0 1-.25 1l-2.22 2.2z"/></svg>
+                        </a>
+                        {% endif %}
                     </div>
                 </form>
                 <div class="large">

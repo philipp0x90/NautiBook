@@ -4451,7 +4451,7 @@ def _equipier(gender, det=None):
     « Non-binaire » prend l'écriture inclusive avec point médian (« cette·te »
     n'existant pas, c'est la forme la plus lisible sans forme neutre établie en
     français). Genre non renseigné : l'écriture inclusive aussi, comme le reste
-    de l'app depuis le 26/11/2026 (l'onglet « Équipier·ères », « Nouvel·le
+    de l'app depuis le 26/11/2026 (« Liste des équipier·ères », « Nouvel·le
     équipier·ère »).
 
     Le point médian « · » (U+00B7) et non un point ordinaire : c'est celui que

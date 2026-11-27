@@ -649,7 +649,7 @@
                barre, hors du flux ; l'ancre repousse les icônes à droite. */
             /* La loupe à gauche, à côté de l'ancre (26/11/2026) : deux icônes de
                chaque côté du titre, qui a ainsi la place d'un mot long
-               (« Équipier·ères ») en restant centré sur l'écran. */
+               en restant centré sur l'écran. */
             .topbar-retour { order: 1; }
             .topbar .logo-menu { order: 2; }
             .topbar-chercher { order: 3; margin-right: auto; }
@@ -903,7 +903,7 @@
                menu Croisières : ils ne dépendent ni du navire courant ni d'une
                croisière (crew_members n'a pas de ship_id). #}
             <li class="{{ 'active' if active_section == 'crew' else '' }}">
-                <a href="/crew"><svg class="nav-ic" aria-hidden="true"><use href="#nav-equipiers"></use></svg><span class="nav-lib">Équipier·ères</span></a>
+                <a href="/crew"><svg class="nav-ic" aria-hidden="true"><use href="#nav-equipiers"></use></svg><span class="nav-lib">Équipages</span></a>
                 {# La liste, sa propre fiche (connecté), une nouvelle fiche
                    (selon le rang) — 26/11/2026. #}
                 {% set moi_menu = utilisateur(request) %}
@@ -952,7 +952,7 @@
 
     {# Téléphone : le nom de la section courante, à la place des onglets
        rangés sous ☰ (voir « menu hamburger » dans les styles). #}
-    <span class="topbar-section">{{ {'ship': 'Navire', 'crew': 'Équipier·ères', 'cruises': 'Croisières', 'routes': 'Route',
+    <span class="topbar-section">{{ {'ship': 'Navire', 'crew': 'Équipages', 'cruises': 'Croisières', 'routes': 'Route',
                                      'tools': 'Outils', 'gallery': 'Carnets', 'settings': 'Réglages'}.get(active_section, '') }}</span>
 
     {# Loupe : la recherche dans toute la base. Une icône plutôt qu'un champ,
@@ -1607,7 +1607,7 @@ document.querySelectorAll('form[data-avertir]').forEach(function (form) {
     addEventListener('pageshow', fermer);
 
     // Le titre de la section, centré sur l'écran. Un titre trop long pour y
-    // tenir en 18 px au moins (« Équipier·ères », un téléphone étroit) se
+    // tenir en 18 px au moins (un téléphone étroit, l'app de l'écran d'accueil) se
     // centre plutôt dans l'espace libre entre l'ancre et la loupe (.decale),
     // en 20 px ; et seulement si même là il manque de place, il rapetisse,
     // jusqu'à 15 px, au lieu d'être coupé.
