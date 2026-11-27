@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "ship/_place_select.html" import place_select %}
 {% block title %}{{ member.first_name or '' }} {{ member.last_name or (member.gender | equipier | capitalize) }} — NautiBook{% endblock %}
 
 {% block head %}
@@ -318,6 +319,10 @@
                     <option value="{{ val }}" selected>{{ val }}</option>
                     {% endif %}
                 </select>
+                {% elif field in ('country', 'nationality') %}
+                {# Les valeurs déjà saisies, « Autre… » pour une nouvelle (_crew_places). #}
+                {{ place_select('value', crew_countries if field == 'country' else crew_nationalities, val, '', true,
+                                nouveau='Nouveau pays' if field == 'country' else 'Nouvelle nationalité') }}
                 {% elif kind == 'date' %}
                 <input type="date" name="value" value="{{ (val or '')[:10] }}" onchange="this.form.submit()">
                 {% else %}

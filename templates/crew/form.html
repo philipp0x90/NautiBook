@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "ship/_place_select.html" import place_select %}
 {# Un seul gabarit pour la création et la modification : douze champs identiques
    de part et d'autre, qu'il aurait fallu maintenir en double. `member` est nul
    à la création. #}
@@ -155,7 +156,8 @@
             </div>
             <div>
                 <label>Pays</label>
-                <input type="text" name="country" value="{{ member.country or '' if edition else '' }}" placeholder="Belgique">
+                {# Les pays déjà saisis (équipier·ères, carnet d'adresses), « Autre… » pour un nouveau. #}
+                {{ place_select('country', crew_countries, member.country if edition else none, nouveau='Nouveau pays') }}
             </div>
         </div>
     </section>
@@ -175,7 +177,7 @@
         <div class="grid grille-une" style="grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px">
             <div>
                 <label>Nationalité</label>
-                <input type="text" name="nationality" value="{{ member.nationality or '' if edition else '' }}" placeholder="Belge">
+                {{ place_select('nationality', crew_nationalities, member.nationality if edition else none, nouveau='Nouvelle nationalité') }}
             </div>
             {# Liste fermée, avec l'option vide qui laisse le champ non renseigné —
                sans elle le navigateur présélectionne « Carte d'identité » et toute

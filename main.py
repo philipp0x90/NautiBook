@@ -4508,11 +4508,31 @@ async def crew_list(request: Request):
     )
 
 
+async def _crew_places(db) -> dict:
+    """Pays et nationalités déjà saisis, pour les listes déroulantes de la fiche
+    et du formulaire d'un équipier (modèle _place_select.html, avec « Autre… »
+    pour en taper un nouveau) — 26/11/2026. Les pays : ceux des équipier·ères
+    et du carnet d'adresses, tous navires confondus (ce sont les mêmes pays) ;
+    les nationalités : celles des équipier·ères. Une même orthographe pour
+    tous, plutôt que « Belgique » ici et « Belgium » là."""
+    cursor = await db.execute(
+        "SELECT country FROM crew_members WHERE country IS NOT NULL AND country != '' "
+        "UNION SELECT country FROM contacts WHERE country IS NOT NULL AND country != '' "
+        "ORDER BY 1 COLLATE NOCASE")
+    countries = [r[0] for r in await cursor.fetchall()]
+    cursor = await db.execute(
+        "SELECT DISTINCT nationality FROM crew_members WHERE nationality IS NOT NULL AND nationality != '' "
+        "ORDER BY nationality COLLATE NOCASE")
+    return {"crew_countries": countries, "crew_nationalities": [r[0] for r in await cursor.fetchall()]}
+
+
 @app.get("/crew/new", response_class=HTMLResponse)
 async def new_crew_form(request: Request):
+    async with connect() as db:
+        places = await _crew_places(db)
     return templates.TemplateResponse(
         "crew/form.html",
-        {"request": request, "active_section": "crew", "member": None},
+        {"request": request, "active_section": "crew", "member": None, **places},
     )
 
 
@@ -4603,6 +4623,7 @@ async def crew_detail(request: Request, crew_id: int):
         owned = [dict(r) for r in await cursor.fetchall()]
         cursor = await db.execute("SELECT COUNT(*) FROM users")
         has_users = (await cursor.fetchone())[0] > 0
+        places = await _crew_places(db)
     if member is None:
         raise HTTPException(status_code=404, detail="Crew member not found")
     i = ids.index(crew_id)
@@ -4619,7 +4640,7 @@ async def crew_detail(request: Request, crew_id: int):
             "info": request.query_params.get("info"),
             "cruises": [dict(c) for c in cruises],
             "owned": owned,
-            "crew_fields": CREW_FIELDS, "crew_choices": CREW_CHOICES,
+            "crew_fields": CREW_FIELDS, "crew_choices": CREW_CHOICES, **places,
             "prev_id": ids[i - 1] if i > 0 else None,
             "next_id": ids[i + 1] if i + 1 < len(ids) else None,
         },
@@ -4632,11 +4653,12 @@ async def edit_crew_form(request: Request, crew_id: int):
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM crew_members WHERE id = ?", (crew_id,))
         member = await cursor.fetchone()
+        places = await _crew_places(db)
     if member is None:
         raise HTTPException(status_code=404, detail="Crew member not found")
     return templates.TemplateResponse(
         "crew/form.html",
-        {"request": request, "active_section": "crew", "member": dict(member)},
+        {"request": request, "active_section": "crew", "member": dict(member), **places},
     )
 
 
